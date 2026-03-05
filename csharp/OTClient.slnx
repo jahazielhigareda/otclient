@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OTClient.Client/OTClient.Client.csproj" />
+    <Project Path="src/OTClient.Core/OTClient.Core.csproj" />
+    <Project Path="src/OTClient.Launcher/OTClient.Launcher.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OTClient.Tests/OTClient.Tests.csproj" />
+  </Folder>
+</Solution>
