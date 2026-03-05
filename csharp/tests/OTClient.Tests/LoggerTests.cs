@@ -86,7 +86,7 @@ public sealed class LoggerTests : IDisposable
     [Fact]
     public void GetHistory_CapsBeyondMaxHistory()
     {
-        // Logger caps at 1 000 messages internally; write 1 002 and verify cap
+        // Logger caps at 1,000 messages internally; write 1,002 and verify cap
         for (int i = 0; i < 1002; i++)
             _logger.Info($"msg {i}");
 
