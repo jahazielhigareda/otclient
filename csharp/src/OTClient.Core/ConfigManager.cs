@@ -39,7 +39,9 @@ public sealed class ConfigManager
             }
 
             var text = File.ReadAllText(filePath);
-            _data = JsonNode.Parse(text)?.AsObject() ?? [];
+            _data = string.IsNullOrWhiteSpace(text)
+                ? []
+                : JsonNode.Parse(text)?.AsObject() ?? [];
         }
     }
 
