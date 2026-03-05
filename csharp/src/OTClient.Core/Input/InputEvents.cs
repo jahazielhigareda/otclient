@@ -70,10 +70,14 @@ public enum MouseAction
 /// Strongly-typed mouse event dispatched by <see cref="InputManager"/>.
 /// Maps to the mouse-event data in <c>src/framework/platform/platformevent.h</c>.
 /// </summary>
+/// <remarks>
+/// <see cref="Button"/> is <c>null</c> for <see cref="MouseAction.Moved"/> and
+/// <see cref="MouseAction.WheelMoved"/> events, where no specific button is involved.
+/// </remarks>
 public readonly record struct MouseEvent(
     MouseAction Action,
     Vector2 Position,
     Vector2 Delta,
-    MouseButton Button,
+    MouseButton? Button,
     float WheelDelta,
     KeyModifiers Modifiers);

@@ -140,10 +140,10 @@ public sealed class Application : IDisposable
             // 3. Poll input (keyboard, mouse, text) for this frame
             Input.Poll();
 
-            // 3. Game/logic update
+            // 4. Game/logic update
             _loop?.Update(delta);
 
-            // 4. Render
+            // 5. Render
             Raylib.BeginDrawing();
             Raylib.ClearBackground(Color.Black);
             _loop?.Render();

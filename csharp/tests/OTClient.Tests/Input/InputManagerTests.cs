@@ -97,7 +97,7 @@ public sealed class InputManagerTests
         mgr.RemoveOnMouse(handler);
 
         mgr.DispatchMouseEventForTest(new MouseEvent(MouseAction.Moved, Vector2.Zero,
-                                                     Vector2.Zero, MouseButton.Left, 0f, KeyModifiers.None));
+                                                     Vector2.Zero, null, 0f, KeyModifiers.None));
 
         Assert.Equal(0, count);
     }

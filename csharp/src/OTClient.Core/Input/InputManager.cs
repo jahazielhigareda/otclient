@@ -300,7 +300,7 @@ public sealed class InputManager
         // Movement
         if (delta != Vector2.Zero)
         {
-            var ev = new MouseEvent(MouseAction.Moved, pos, delta, MouseButton.Left, 0f, mods);
+            var ev = new MouseEvent(MouseAction.Moved, pos, delta, null, 0f, mods);
             foreach (var h in _mouseHandlers) h(ev);
         }
 
@@ -323,7 +323,7 @@ public sealed class InputManager
         float wheel = Raylib.GetMouseWheelMove();
         if (wheel != 0f)
         {
-            var ev = new MouseEvent(MouseAction.WheelMoved, pos, Vector2.Zero, MouseButton.Left, wheel, mods);
+            var ev = new MouseEvent(MouseAction.WheelMoved, pos, Vector2.Zero, null, wheel, mods);
             foreach (var h in _mouseHandlers) h(ev);
         }
 
