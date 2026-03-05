@@ -33,6 +33,7 @@ public sealed class Application : IDisposable
     public ConfigManager Config { get; }
     public ModuleManager Modules { get; }
     public InputManager Input { get; }
+    public SoundManager Sound { get; }
 
     // ─── Window settings ─────────────────────────────────────────────────────
     private int _windowWidth;
@@ -64,6 +65,7 @@ public sealed class Application : IDisposable
         Config = new ConfigManager();
         Modules = new ModuleManager(Logger);
         Input = new InputManager();
+        Sound = new SoundManager();
     }
 
     // ─── Properties ───────────────────────────────────────────────────────────
@@ -107,9 +109,10 @@ public sealed class Application : IDisposable
         Dispatcher.Init();
         Clock.Update();
 
-        // Open the Raylib window (audio device is opened later in Phase 4)
+        // Open the Raylib window and audio device
         Raylib.InitWindow(_windowWidth, _windowHeight, _windowTitle);
         Raylib.SetTargetFPS(_targetFps);
+        Sound.Init();
 
         _lastFrameSeconds = Clock.Seconds;
         _running = true;
@@ -139,6 +142,9 @@ public sealed class Application : IDisposable
 
             // 3. Poll input (keyboard, mouse, text) for this frame
             Input.Poll();
+
+            // 4. Update audio streams
+            Sound.Update();
 
             // 4. Game/logic update
             _loop?.Update(delta);
@@ -185,6 +191,7 @@ public sealed class Application : IDisposable
     {
         Config.Save();
         Scheduler.Dispose();
+        Sound.Terminate();
         Logger.Info("Goodbye.");
         if (Raylib.IsWindowReady())
             Raylib.CloseWindow();
