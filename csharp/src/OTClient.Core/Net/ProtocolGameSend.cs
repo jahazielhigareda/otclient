@@ -1,0 +1,179 @@
+namespace OTClient.Framework.Net;
+
+/// <summary>
+/// Outgoing (client → server) packet methods for <see cref="ProtocolGame"/>.
+/// Maps to <c>src/client/protocolgamesend.cpp</c>.
+/// Task 5.7.
+/// </summary>
+public sealed partial class ProtocolGame
+{
+    // ─── Login server ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends the first login packet to the <em>login server</em>.
+    /// The RSA-encrypted block contains the XTEA session key and credentials.
+    /// </summary>
+    /// <param name="accountName">Account name or e-mail.</param>
+    /// <param name="password">Account password.</param>
+    /// <param name="characterName">Character to play (sent inside RSA block).</param>
+    /// <param name="os">Operating system identifier (1 = Windows, 2 = Linux, 3 = macOS).</param>
+    /// <param name="version">Client version (e.g. 1212 for Tibia 12.12).</param>
+    /// <param name="contentVersion">Content/dat CRC version.</param>
+    public void SendLoginRequest(
+        string accountName,
+        string password,
+        string characterName = "",
+        ushort os            = 2,
+        ushort version       = 1212,
+        uint   contentVersion = 0)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(password);
+
+        _accountName   = accountName;
+        _password      = password;
+        _characterName = characterName;
+
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LoginRequest);
+        msg.WriteU16(os);
+        msg.WriteU16(version);
+        msg.WriteU32(contentVersion);
+
+        // ── RSA block (128 bytes) ─────────────────────────────────────────────
+        // The RSA block is filled then encrypted with the server's public key.
+        // Layout inside the block:
+        //   [0]       = 0x00  (indicates valid RSA plaintext)
+        //   [1..4]    = XTEA key word 0
+        //   [5..8]    = XTEA key word 1
+        //   [9..12]   = XTEA key word 2
+        //   [13..16]  = XTEA key word 3
+        //   [17..]    = account name (Pascal string)
+        //               password     (Pascal string)
+        //   [rest]    = zero padding
+        // Total: 128 bytes (1024-bit RSA key).
+        var rsaBlock = new byte[128];
+        rsaBlock[0] = 0x00; // RSA plaintext marker
+        for (int i = 0; i < 4; i++)
+        {
+            uint k = _xteaKey[i];
+            int  b = 1 + i * 4;
+            rsaBlock[b]     = (byte)k;
+            rsaBlock[b + 1] = (byte)(k >> 8);
+            rsaBlock[b + 2] = (byte)(k >> 16);
+            rsaBlock[b + 3] = (byte)(k >> 24);
+        }
+
+        // Write credentials into the RSA block after the key (position 17)
+        using var inner = new System.IO.MemoryStream(rsaBlock, 17, rsaBlock.Length - 17, writable: true);
+        using var bw    = new System.IO.BinaryWriter(inner, System.Text.Encoding.UTF8, leaveOpen: true);
+        byte[] accBytes = System.Text.Encoding.UTF8.GetBytes(accountName);
+        byte[] pwdBytes = System.Text.Encoding.UTF8.GetBytes(password);
+        bw.Write((ushort)accBytes.Length);
+        bw.Write(accBytes);
+        bw.Write((ushort)pwdBytes.Length);
+        bw.Write(pwdBytes);
+
+        if (RsaHelper.HasPublicKey)
+            RsaHelper.Encrypt(rsaBlock);
+
+        msg.WriteBytes(rsaBlock);
+        Send(msg);
+    }
+
+    // ─── Game server ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends the <c>EnterGame</c> packet after the login server approves the session.
+    /// Enables XTEA encryption for subsequent game-server communication.
+    /// </summary>
+    public void SendEnterGame()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EnterGame);
+        if (_encryptEnabled)
+            SendEncrypted(msg, _xteaKey);
+        else
+            Send(msg);
+    }
+
+    /// <summary>Sends a <c>QuitGame</c> packet to gracefully disconnect.</summary>
+    public void SendQuitGame()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.QuitGame);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>Replies to a server <c>Ping</c> with a <c>PingBack</c> packet.</summary>
+    public void SendPingBack()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PingBack);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Movement ─────────────────────────────────────────────────────────────
+
+    private static readonly Dictionary<Direction, byte> WalkOpcode = new()
+    {
+        { Direction.North,     (byte)GameClientPacket.MoveNorth     },
+        { Direction.East,      (byte)GameClientPacket.MoveEast      },
+        { Direction.South,     (byte)GameClientPacket.MoveSouth     },
+        { Direction.West,      (byte)GameClientPacket.MoveWest      },
+        { Direction.NorthEast, (byte)GameClientPacket.MoveNorthEast },
+        { Direction.SouthEast, (byte)GameClientPacket.MoveSouthEast },
+        { Direction.SouthWest, (byte)GameClientPacket.MoveSouthWest },
+        { Direction.NorthWest, (byte)GameClientPacket.MoveNorthWest },
+    };
+
+    private static readonly Dictionary<Direction, byte> TurnOpcode = new()
+    {
+        { Direction.North, (byte)GameClientPacket.TurnNorth },
+        { Direction.East,  (byte)GameClientPacket.TurnEast  },
+        { Direction.South, (byte)GameClientPacket.TurnSouth },
+        { Direction.West,  (byte)GameClientPacket.TurnWest  },
+    };
+
+    /// <summary>Sends a single-step walk packet in <paramref name="dir"/>.</summary>
+    public void SendWalk(Direction dir)
+    {
+        if (!WalkOpcode.TryGetValue(dir, out byte op))
+            throw new ArgumentException($"Invalid walk direction: {dir}");
+        var msg = new OutputMessage();
+        msg.WriteU8(op);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>Sends a turn packet in <paramref name="dir"/>.</summary>
+    public void SendTurn(Direction dir)
+    {
+        if (!TurnOpcode.TryGetValue(dir, out byte op))
+            throw new ArgumentException($"Direction {dir} is not a cardinal turn direction.");
+        var msg = new OutputMessage();
+        msg.WriteU8(op);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Chat ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a chat message in the given <paramref name="mode"/>.
+    /// For <see cref="ChatMode.Private"/>, <paramref name="receiver"/> must be set.
+    /// </summary>
+    public void SendSay(string message, ChatMode mode = ChatMode.Say, string? receiver = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Say);
+        msg.WriteU8((byte)mode);
+        if (mode == ChatMode.Private)
+        {
+            if (string.IsNullOrWhiteSpace(receiver))
+                throw new ArgumentException("Receiver must be specified for private messages.");
+            msg.WriteString(receiver);
+        }
+        msg.WriteString(message);
+        SendEncrypted(msg, _xteaKey);
+    }
+}

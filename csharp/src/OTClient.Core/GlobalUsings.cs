@@ -7,4 +7,5 @@ global using System.Threading.Tasks;
 global using OTClient.Framework.Core;
 global using OTClient.Framework.Graphics;
 global using OTClient.Framework.Input;
+global using OTClient.Framework.Net;
 global using OTClient.Framework.Sound;
