@@ -1,7 +1,9 @@
 global using System;
 global using System.Collections.Generic;
+global using System.Linq;
 global using System.Numerics;
 global using System.Threading;
 global using System.Threading.Tasks;
 global using OTClient.Framework.Core;
 global using OTClient.Framework.Graphics;
+global using OTClient.Framework.Input;

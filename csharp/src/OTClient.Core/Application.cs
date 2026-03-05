@@ -32,6 +32,7 @@ public sealed class Application : IDisposable
     public Scheduler Scheduler { get; }
     public ConfigManager Config { get; }
     public ModuleManager Modules { get; }
+    public InputManager Input { get; }
 
     // ─── Window settings ─────────────────────────────────────────────────────
     private int _windowWidth;
@@ -62,6 +63,7 @@ public sealed class Application : IDisposable
         Scheduler = new Scheduler(Dispatcher, Clock);
         Config = new ConfigManager();
         Modules = new ModuleManager(Logger);
+        Input = new InputManager();
     }
 
     // ─── Properties ───────────────────────────────────────────────────────────
@@ -134,6 +136,9 @@ public sealed class Application : IDisposable
 
             // 2. Poll dispatcher (processes events queued from any thread)
             Dispatcher.Poll();
+
+            // 3. Poll input (keyboard, mouse, text) for this frame
+            Input.Poll();
 
             // 3. Game/logic update
             _loop?.Update(delta);
