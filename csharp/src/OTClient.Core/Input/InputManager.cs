@@ -259,7 +259,7 @@ public sealed class InputManager
             {
                 _heldKeys.Remove(key);
                 var ev = new KeyEvent(key, KeyAction.Released, mods);
-                foreach (var h in _keyHandlers) h(ev);
+                DispatchKeyEvent(ev);
             }
         }
     }

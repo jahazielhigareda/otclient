@@ -70,4 +70,55 @@ public sealed class KeyMapTests
         var result = KeyMap.FromRaylib(rk);
         Assert.Equal(key, result);
     }
+
+    // ─── KeyModifiers flag combinations ──────────────────────────────────────
+
+    [Fact]
+    public void KeyModifiers_None_IsZero()
+    {
+        Assert.Equal(0, (int)KeyModifiers.None);
+    }
+
+    [Fact]
+    public void KeyModifiers_CanCombineShiftAndControl()
+    {
+        var combined = KeyModifiers.Shift | KeyModifiers.Control;
+        Assert.True(combined.HasFlag(KeyModifiers.Shift));
+        Assert.True(combined.HasFlag(KeyModifiers.Control));
+        Assert.False(combined.HasFlag(KeyModifiers.Alt));
+        Assert.False(combined.HasFlag(KeyModifiers.Super));
+    }
+
+    [Fact]
+    public void KeyModifiers_AllFlagsCanBeSet()
+    {
+        var all = KeyModifiers.Shift | KeyModifiers.Control | KeyModifiers.Alt | KeyModifiers.Super;
+        Assert.True(all.HasFlag(KeyModifiers.Shift));
+        Assert.True(all.HasFlag(KeyModifiers.Control));
+        Assert.True(all.HasFlag(KeyModifiers.Alt));
+        Assert.True(all.HasFlag(KeyModifiers.Super));
+    }
+
+    // ─── Full key coverage spot-checks ───────────────────────────────────────
+
+    [Theory]
+    [InlineData(Key.D0, Raylib_cs.KeyboardKey.Zero)]
+    [InlineData(Key.D9, Raylib_cs.KeyboardKey.Nine)]
+    [InlineData(Key.Backspace, Raylib_cs.KeyboardKey.Backspace)]
+    [InlineData(Key.Delete,    Raylib_cs.KeyboardKey.Delete)]
+    [InlineData(Key.Insert,    Raylib_cs.KeyboardKey.Insert)]
+    [InlineData(Key.Home,      Raylib_cs.KeyboardKey.Home)]
+    [InlineData(Key.End,       Raylib_cs.KeyboardKey.End)]
+    [InlineData(Key.PageUp,    Raylib_cs.KeyboardKey.PageUp)]
+    [InlineData(Key.PageDown,  Raylib_cs.KeyboardKey.PageDown)]
+    [InlineData(Key.CapsLock,  Raylib_cs.KeyboardKey.CapsLock)]
+    [InlineData(Key.LeftAlt,   Raylib_cs.KeyboardKey.LeftAlt)]
+    [InlineData(Key.RightAlt,  Raylib_cs.KeyboardKey.RightAlt)]
+    [InlineData(Key.KpEnter,   Raylib_cs.KeyboardKey.KpEnter)]
+    [InlineData(Key.KpDecimal, Raylib_cs.KeyboardKey.KpDecimal)]
+    [InlineData(Key.Menu,      Raylib_cs.KeyboardKey.KeyboardMenu)]
+    public void ToRaylib_AdditionalKeys_ReturnCorrectRaylibKey(Key key, Raylib_cs.KeyboardKey expected)
+    {
+        Assert.Equal(expected, KeyMap.ToRaylib(key));
+    }
 }
