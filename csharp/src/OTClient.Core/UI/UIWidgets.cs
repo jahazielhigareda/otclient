@@ -78,11 +78,16 @@ public class UIButton : UILabel
     }
 }
 
-// ─── UITextEdit (7.11) ────────────────────────────────────────────────────────
+// ─── UITextEdit (7.11 / T31) ─────────────────────────────────────────────────
 
 /// <summary>
-/// A single-line (or multi-line) text input widget with cursor and selection.
-/// Task 7.11.
+/// A single-line (or multi-line) text-input widget with cursor, text selection,
+/// placeholder, password mode, read-only flag, and character-input handling.
+/// <para>
+/// Mirrors the C++ <c>UITextEdit</c> class
+/// (<c>src/framework/ui/uitextedit.{h,cpp}</c>).
+/// Task 7.11 / T31.
+/// </para>
 /// </summary>
 public class UITextEdit : UIWidget
 {
@@ -92,6 +97,8 @@ public class UITextEdit : UIWidget
     private int    _cursor = 0;
     private int    _selectionStart = -1;
     private int    _selectionEnd   = -1;
+
+    // ─── Text property ────────────────────────────────────────────────────────
 
     public string Text
     {
@@ -103,28 +110,91 @@ public class UITextEdit : UIWidget
         }
     }
 
-    public int    CursorPosition    => _cursor;
-    public bool   HasSelection      => _selectionStart >= 0 && _selectionStart != _selectionEnd;
-    public string SelectedText      => HasSelection
+    // ─── Cursor / selection ───────────────────────────────────────────────────
+
+    public int    CursorPosition => _cursor;
+    public bool   HasSelection   => _selectionStart >= 0 && _selectionStart != _selectionEnd;
+
+    /// <summary>Returns the selected substring, or an empty string when nothing is selected.</summary>
+    public string SelectedText   => HasSelection
         ? _text[Math.Min(_selectionStart, _selectionEnd)..Math.Max(_selectionStart, _selectionEnd)]
         : string.Empty;
 
+    public int SelectionStart => HasSelection ? Math.Min(_selectionStart, _selectionEnd) : -1;
+    public int SelectionEnd   => HasSelection ? Math.Max(_selectionStart, _selectionEnd) : -1;
+
+    // ─── Visual properties ────────────────────────────────────────────────────
+
     public float FontSize { get; set; } = 14f;
     public bool  IsMultiLine { get; set; } = false;
+
+    // Cursor draw
+    public Color CursorColor { get; set; } = Color.White;
+    public float CursorWidth { get; set; } = 2f;
+
+    // Selection highlight
+    public Color SelectionBackgroundColor { get; set; } = new Color(100, 150, 255, 150);
+    public Color SelectionForegroundColor { get; set; } = Color.White;
+
+    // Placeholder
+    /// <summary>
+    /// Greyed-out hint shown inside the widget when <see cref="Text"/> is empty.
+    /// Maps to <c>UITextEdit::setPlaceholder</c>.
+    /// </summary>
+    public string Placeholder      { get; set; } = string.Empty;
+    public Color  PlaceholderColor { get; set; } = new Color(128, 128, 128, 200);
+
+    // ─── Behaviour flags ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When <c>true</c> every character is rendered as a bullet (•) so that
+    /// passwords are not displayed in clear text.
+    /// Maps to <c>UITextEdit::setTextHidden</c>.
+    /// </summary>
+    public bool IsTextHidden { get; set; } = false;
+
+    /// <summary>
+    /// When <c>false</c> the widget is read-only: text cannot be typed or deleted.
+    /// Maps to <c>UITextEdit::setEditable</c>.
+    /// </summary>
+    public bool IsEditable { get; set; } = true;
+
+    /// <summary>
+    /// Maximum number of characters that the widget will accept.
+    /// 0 means unlimited.
+    /// Maps to <c>UITextEdit::setMaxLength</c>.
+    /// </summary>
+    public uint MaxLength { get; set; } = 0;
+
+    /// <summary>
+    /// When non-empty, only characters in this string are accepted during input.
+    /// Maps to <c>UITextEdit::setValidCharacters</c>.
+    /// </summary>
+    public string ValidCharacters { get; set; } = string.Empty;
+
+    // ─── Events ───────────────────────────────────────────────────────────────
 
     public event Action<UITextEdit>? OnTextChanged;
 
     // ─── Text manipulation ────────────────────────────────────────────────────
 
+    /// <summary>Inserts <paramref name="s"/> at position <paramref name="pos"/> and advances the cursor.</summary>
     public void InsertAt(int pos, string s)
     {
-        _text   = _text.Insert(Math.Clamp(pos, 0, _text.Length), s);
+        if (!IsEditable) return;
+        pos  = Math.Clamp(pos, 0, _text.Length);
+        // Trim to MaxLength if set
+        if (MaxLength > 0 && _text.Length + s.Length > (int)MaxLength)
+            s = s[..Math.Max(0, (int)MaxLength - _text.Length)];
+        if (s.Length == 0) return;
+        _text   = _text.Insert(pos, s);
         _cursor = Math.Clamp(pos + s.Length, 0, _text.Length);
         OnTextChanged?.Invoke(this);
     }
 
     public void DeleteAt(int pos, int length)
     {
+        if (!IsEditable) return;
         if (pos < 0 || pos >= _text.Length) return;
         length  = Math.Min(length, _text.Length - pos);
         _text   = _text.Remove(pos, length);
@@ -135,10 +205,19 @@ public class UITextEdit : UIWidget
     public void MoveCursor(int delta) =>
         _cursor = Math.Clamp(_cursor + delta, 0, _text.Length);
 
+    public void SetCursorPos(int pos) =>
+        _cursor = Math.Clamp(pos, 0, _text.Length);
+
     public void SelectAll()
     {
         _selectionStart = 0;
         _selectionEnd   = _text.Length;
+    }
+
+    public void SetSelection(int start, int end)
+    {
+        _selectionStart = Math.Clamp(start, 0, _text.Length);
+        _selectionEnd   = Math.Clamp(end,   0, _text.Length);
     }
 
     public void ClearSelection()
@@ -147,52 +226,204 @@ public class UITextEdit : UIWidget
         _selectionEnd   = -1;
     }
 
+    /// <summary>Deletes the selected region. No-op when nothing is selected.</summary>
+    public void DeleteSelection()
+    {
+        if (!HasSelection) return;
+        DeleteAt(SelectionStart, SelectionEnd - SelectionStart);
+        ClearSelection();
+    }
+
+    /// <summary>
+    /// Removes and returns the selected text (like Ctrl+X).
+    /// Returns an empty string when nothing is selected.
+    /// </summary>
     public string CutSelection()
     {
         var s = SelectedText;
-        if (HasSelection) DeleteAt(Math.Min(_selectionStart, _selectionEnd), s.Length);
-        ClearSelection();
+        if (HasSelection)
+        {
+            DeleteAt(SelectionStart, SelectionEnd - SelectionStart);
+            ClearSelection();
+        }
         return s;
     }
+
+    /// <summary>
+    /// Returns the selected text without removing it (like Ctrl+C).
+    /// </summary>
+    public string Copy() => SelectedText;
+
+    /// <summary>
+    /// Replaces the current selection (or inserts at cursor if none) with
+    /// <paramref name="text"/> (like Ctrl+V / clipboard paste).
+    /// </summary>
+    public void Paste(string text)
+    {
+        if (!IsEditable) return;
+        if (HasSelection) DeleteSelection();
+        // Filter invalid characters
+        if (!string.IsNullOrEmpty(ValidCharacters))
+            text = new string([.. text.Where(c => ValidCharacters.Contains(c, StringComparison.Ordinal))]);
+        InsertAt(_cursor, text);
+    }
+
+    /// <summary>
+    /// Appends one character at the current cursor position, respecting
+    /// <see cref="ValidCharacters"/>, <see cref="MaxLength"/>, and
+    /// <see cref="IsEditable"/>.
+    /// Maps to <c>UITextEdit::appendCharacter</c>.
+    /// </summary>
+    public void AppendCharacter(char c)
+    {
+        if (!IsEditable) return;
+        if (!string.IsNullOrEmpty(ValidCharacters) && !ValidCharacters.Contains(c))
+            return;
+        if (HasSelection) DeleteSelection();
+        InsertAt(_cursor, c.ToString());
+    }
+
+    /// <summary>
+    /// Appends a multi-character string at the current cursor position.
+    /// Maps to <c>UITextEdit::appendText</c>.
+    /// </summary>
+    public void AppendText(string text)
+    {
+        if (!IsEditable || string.IsNullOrEmpty(text)) return;
+        if (HasSelection) DeleteSelection();
+        Paste(text);
+    }
+
+    // ─── Draw ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the text as it should be displayed: masked with bullet characters
+    /// when <see cref="IsTextHidden"/> is <c>true</c>.
+    /// </summary>
+    public string GetDisplayedText() =>
+        IsTextHidden ? new string('•', _text.Length) : _text;
 
     public override void Draw(List<UIDrawCommand> commands)
     {
         if (!Visible) return;
         base.Draw(commands);
 
-        if (!string.IsNullOrEmpty(_text))
+        var origin = new Vector2(ComputedRect.X + Padding.Left, ComputedRect.Y + Padding.Top);
+        var displayed = GetDisplayedText();
+
+        // Placeholder when empty
+        if (displayed.Length == 0 && !string.IsNullOrEmpty(Placeholder))
+        {
             commands.Add(new UIDrawCommand.DrawText(
-                _text,
-                new Vector2(ComputedRect.X + Padding.Left, ComputedRect.Y + Padding.Top),
-                FontSize, ForegroundColor));
+                Placeholder, origin, FontSize, PlaceholderColor));
+            return;
+        }
+
+        // Selection highlight (behind text)
+        if (HasSelection && displayed.Length > 0)
+        {
+            // Approximate glyph width from FontSize for highlight geometry
+            float glyphW = FontSize * 0.6f;
+            int   selA   = SelectionStart;
+            int   selB   = SelectionEnd;
+            var   selRect = new Rectangle(
+                origin.X + selA * glyphW,
+                origin.Y,
+                (selB - selA) * glyphW,
+                FontSize + 2f);
+            commands.Add(new UIDrawCommand.FillRect(selRect, SelectionBackgroundColor));
+        }
+
+        // Main text
+        if (displayed.Length > 0)
+            commands.Add(new UIDrawCommand.DrawText(displayed, origin, FontSize, ForegroundColor));
+
+        // Cursor (only when focused and editable)
+        if (IsFocused && IsEditable)
+        {
+            float glyphW  = FontSize * 0.6f;
+            float cursorX = origin.X + _cursor * glyphW;
+            var   cursorRect = new Rectangle(cursorX, origin.Y, CursorWidth, FontSize);
+            commands.Add(new UIDrawCommand.FillRect(cursorRect, CursorColor));
+        }
     }
+
+    // ─── Input handling ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Handles printable character input.  Called by the UI manager when the
+    /// user types a character that does not map to a special key.
+    /// Maps to <c>UITextEdit::onKeyText</c>.
+    /// </summary>
+    internal virtual void RaiseKeyText(char c) => AppendCharacter(c);
 
     internal override void RaiseKeyDown(Input.KeyEvent ev)
     {
         base.RaiseKeyDown(ev);
         if (!Enabled || !IsFocused) return;
 
+        bool ctrl = ev.Modifiers.HasFlag(Input.KeyModifiers.Control);
+
         switch (ev.Key)
         {
-            case Input.Key.Left:  MoveCursor(-1); break;
-            case Input.Key.Right: MoveCursor(+1); break;
-            case Input.Key.Home:  _cursor = 0; break;
-            case Input.Key.End:   _cursor = _text.Length; break;
+            case Input.Key.Left:  MoveCursor(-1); ClearSelection(); break;
+            case Input.Key.Right: MoveCursor(+1); ClearSelection(); break;
+            case Input.Key.Home:  _cursor = 0; ClearSelection(); break;
+            case Input.Key.End:   _cursor = _text.Length; ClearSelection(); break;
 
             case Input.Key.Backspace:
-                if (HasSelection) { CutSelection(); break; }
-                if (_cursor > 0) { DeleteAt(_cursor - 1, 1); }
+                if (HasSelection) { DeleteSelection(); break; }
+                if (IsEditable && _cursor > 0) DeleteAt(_cursor - 1, 1);
                 break;
 
             case Input.Key.Delete:
-                if (HasSelection) { CutSelection(); break; }
-                if (_cursor < _text.Length) DeleteAt(_cursor, 1);
+                if (HasSelection) { DeleteSelection(); break; }
+                if (IsEditable && _cursor < _text.Length) DeleteAt(_cursor, 1);
                 break;
 
-            case Input.Key.A when ev.Modifiers.HasFlag(Input.KeyModifiers.Control):
+            case Input.Key.A when ctrl:
                 SelectAll();
                 break;
+
+            case Input.Key.C when ctrl:
+                _ = Copy();
+                break;
+
+            case Input.Key.X when ctrl:
+                _ = CutSelection();
+                break;
         }
+    }
+
+    // ─── OTUI style application ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Applies OTUI style properties to this widget.
+    /// Recognised keys (in addition to the base widget keys):
+    /// <c>placeholder</c>, <c>placeholder-color</c>, <c>max-length</c>,
+    /// <c>text-hidden</c>, <c>editable</c>, <c>valid-characters</c>,
+    /// <c>multiline</c>.
+    /// </summary>
+    public void ApplyStyle(IReadOnlyDictionary<string, string> props)
+    {
+        if (props.TryGetValue("placeholder", out var ph))
+            Placeholder = ph;
+        if (props.TryGetValue("placeholder-color", out var phc))
+            PlaceholderColor = OtuiParser.ParseColor(phc, PlaceholderColor);
+        if (props.TryGetValue("max-length", out var ml) && uint.TryParse(ml, out var maxl))
+            MaxLength = maxl;
+        if (props.TryGetValue("text-hidden", out var th))
+            IsTextHidden = th.Equals("true", StringComparison.OrdinalIgnoreCase);
+        if (props.TryGetValue("editable", out var ed))
+            IsEditable = ed.Equals("true", StringComparison.OrdinalIgnoreCase);
+        if (props.TryGetValue("valid-characters", out var vc))
+            ValidCharacters = vc;
+        if (props.TryGetValue("multiline", out var mlv))
+            IsMultiLine = mlv.Equals("true", StringComparison.OrdinalIgnoreCase);
+        if (props.TryGetValue("font-size", out var fs) &&
+            float.TryParse(fs, System.Globalization.NumberStyles.Float,
+                           System.Globalization.CultureInfo.InvariantCulture, out var fsf))
+            FontSize = fsf;
     }
 }
 

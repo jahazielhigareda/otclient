@@ -159,6 +159,249 @@ public sealed class UIWidgetTypeTests
         Assert.Contains(cmds, c => c is UIDrawCommand.DrawText dt && dt.Text == "Abc");
     }
 
+    // ─── T31 new features ────────────────────────────────────────────────────
+
+    [Fact]
+    public void UITextEdit_Placeholder_ShownWhenTextIsEmpty()
+    {
+        var te = new UITextEdit { Placeholder = "Enter text…", Size = new Vector2(200, 30) };
+        te.Layout(Screen);
+        var cmds = new List<UIDrawCommand>();
+        te.Draw(cmds);
+        Assert.Contains(cmds, c => c is UIDrawCommand.DrawText dt && dt.Text == "Enter text…");
+    }
+
+    [Fact]
+    public void UITextEdit_Placeholder_HiddenWhenTextIsNotEmpty()
+    {
+        var te = new UITextEdit { Text = "Hi", Placeholder = "Enter text…", Size = new Vector2(200, 30) };
+        te.Layout(Screen);
+        var cmds = new List<UIDrawCommand>();
+        te.Draw(cmds);
+        Assert.DoesNotContain(cmds, c => c is UIDrawCommand.DrawText dt && dt.Text == "Enter text…");
+    }
+
+    [Fact]
+    public void UITextEdit_IsTextHidden_MasksDisplayedText()
+    {
+        var te = new UITextEdit { Text = "secret", IsTextHidden = true };
+        Assert.Equal("••••••", te.GetDisplayedText());
+    }
+
+    [Fact]
+    public void UITextEdit_IsTextHidden_Draw_EmitsMaskedText()
+    {
+        var te = new UITextEdit { Text = "ab", IsTextHidden = true, Size = new Vector2(200, 30) };
+        te.Layout(Screen);
+        var cmds = new List<UIDrawCommand>();
+        te.Draw(cmds);
+        Assert.Contains(cmds, c => c is UIDrawCommand.DrawText dt && dt.Text == "••");
+    }
+
+    [Fact]
+    public void UITextEdit_MaxLength_LimitsInsert()
+    {
+        var te = new UITextEdit { MaxLength = 3 };
+        te.InsertAt(0, "Hello");
+        Assert.Equal("Hel", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_MaxLength_LimitsAppendCharacter()
+    {
+        var te = new UITextEdit { MaxLength = 2 };
+        te.AppendCharacter('A');
+        te.AppendCharacter('B');
+        te.AppendCharacter('C'); // should be rejected
+        Assert.Equal("AB", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_IsEditable_False_InsertIgnored()
+    {
+        var te = new UITextEdit { IsEditable = false };
+        te.InsertAt(0, "Hello");
+        Assert.Empty(te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_IsEditable_False_DeleteIgnored()
+    {
+        var te = new UITextEdit { Text = "Hello", IsEditable = false };
+        te.DeleteAt(0, 1);
+        Assert.Equal("Hello", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_IsEditable_False_AppendCharacterIgnored()
+    {
+        var te = new UITextEdit { IsEditable = false };
+        te.AppendCharacter('X');
+        Assert.Empty(te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_ValidCharacters_FiltersInput()
+    {
+        var te = new UITextEdit { ValidCharacters = "0123456789" };
+        te.AppendCharacter('5');
+        te.AppendCharacter('a'); // rejected
+        te.AppendCharacter('9');
+        Assert.Equal("59", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_Paste_InsertsText()
+    {
+        var te = new UITextEdit();
+        te.Paste("Hello");
+        Assert.Equal("Hello", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_Paste_ReplacesSelection()
+    {
+        var te = new UITextEdit { Text = "Hello" };
+        te.SelectAll();
+        te.Paste("World");
+        Assert.Equal("World", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_Paste_FiltersByValidCharacters()
+    {
+        var te = new UITextEdit { ValidCharacters = "abc" };
+        te.Paste("a1b2c3");
+        Assert.Equal("abc", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_Copy_ReturnsSelectedText()
+    {
+        var te = new UITextEdit { Text = "Hello" };
+        te.SelectAll();
+        Assert.Equal("Hello", te.Copy());
+        // original unchanged
+        Assert.Equal("Hello", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_AppendText_AppendsMultipleChars()
+    {
+        var te = new UITextEdit();
+        te.AppendText("Hi!");
+        Assert.Equal("Hi!", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_DeleteSelection_RemovesSelected()
+    {
+        var te = new UITextEdit { Text = "Hello World" };
+        te.SetSelection(6, 11);
+        te.DeleteSelection();
+        Assert.Equal("Hello ", te.Text);
+    }
+
+    [Fact]
+    public void UITextEdit_SetCursorPos_Clamps()
+    {
+        var te = new UITextEdit { Text = "Hi" };
+        te.SetCursorPos(999);
+        Assert.Equal(2, te.CursorPosition);
+    }
+
+    [Fact]
+    public void UITextEdit_SelectionStart_SelectionEnd_CorrectOrder()
+    {
+        var te = new UITextEdit { Text = "Hello" };
+        te.SetSelection(4, 1); // reversed
+        Assert.Equal(1, te.SelectionStart);
+        Assert.Equal(4, te.SelectionEnd);
+    }
+
+    [Fact]
+    public void UITextEdit_Draw_DrawsCursorWhenFocused()
+    {
+        var te = new UITextEdit { Text = "Hi", Size = new Vector2(200, 30), IsEditable = true };
+        te.Layout(Screen);
+        te.RaiseFocusGained();
+        var cmds = new List<UIDrawCommand>();
+        te.Draw(cmds);
+        // Should have text + cursor FillRect
+        Assert.Contains(cmds, c => c is UIDrawCommand.FillRect);
+    }
+
+    [Fact]
+    public void UITextEdit_Draw_NoCursorWhenNotFocused()
+    {
+        var te = new UITextEdit { Text = "Hi", Size = new Vector2(200, 30) };
+        te.Layout(Screen);
+        // not focused
+        var cmds = new List<UIDrawCommand>();
+        te.Draw(cmds);
+        // no FillRect for cursor (no selection either)
+        Assert.DoesNotContain(cmds, c => c is UIDrawCommand.FillRect);
+    }
+
+    [Fact]
+    public void UITextEdit_Draw_DrawsSelectionHighlight()
+    {
+        var te = new UITextEdit { Text = "Hello", Size = new Vector2(200, 30) };
+        te.Layout(Screen);
+        te.SelectAll();
+        var cmds = new List<UIDrawCommand>();
+        te.Draw(cmds);
+        Assert.Contains(cmds, c => c is UIDrawCommand.FillRect);
+    }
+
+    [Fact]
+    public void UITextEdit_ApplyStyle_Placeholder()
+    {
+        var te = new UITextEdit();
+        te.ApplyStyle(new Dictionary<string, string> { ["placeholder"] = "Type here" });
+        Assert.Equal("Type here", te.Placeholder);
+    }
+
+    [Fact]
+    public void UITextEdit_ApplyStyle_MaxLength()
+    {
+        var te = new UITextEdit();
+        te.ApplyStyle(new Dictionary<string, string> { ["max-length"] = "10" });
+        Assert.Equal(10u, te.MaxLength);
+    }
+
+    [Fact]
+    public void UITextEdit_ApplyStyle_TextHidden()
+    {
+        var te = new UITextEdit();
+        te.ApplyStyle(new Dictionary<string, string> { ["text-hidden"] = "true" });
+        Assert.True(te.IsTextHidden);
+    }
+
+    [Fact]
+    public void UITextEdit_ApplyStyle_Editable_False()
+    {
+        var te = new UITextEdit();
+        te.ApplyStyle(new Dictionary<string, string> { ["editable"] = "false" });
+        Assert.False(te.IsEditable);
+    }
+
+    [Fact]
+    public void UITextEdit_ApplyStyle_ValidCharacters()
+    {
+        var te = new UITextEdit();
+        te.ApplyStyle(new Dictionary<string, string> { ["valid-characters"] = "0123456789" });
+        Assert.Equal("0123456789", te.ValidCharacters);
+    }
+
+    [Fact]
+    public void UITextEdit_ApplyStyle_Multiline()
+    {
+        var te = new UITextEdit();
+        te.ApplyStyle(new Dictionary<string, string> { ["multiline"] = "true" });
+        Assert.True(te.IsMultiLine);
+    }
+
     // ─── UIScrollBar ─────────────────────────────────────────────────────────
 
     [Fact]
