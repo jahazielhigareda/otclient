@@ -231,4 +231,207 @@ public sealed class TileAndMapTests
         Assert.Equal(300, c.Speed);
         Assert.Equal(220, c.BaseSpeed);
     }
+
+    // ─── T07: Tile walkability helpers ───────────────────────────────────────
+
+    [Fact]
+    public void Tile_IsPathable_TrueWithNormalGround()
+    {
+        var tile = new Tile(Position.Zero);
+        tile.SetGround(MakeItem(ThingTypeFlag.Ground));
+        Assert.True(tile.IsPathable);
+    }
+
+    [Fact]
+    public void Tile_IsPathable_FalseWhenNotPathableItem()
+    {
+        var tile = new Tile(Position.Zero);
+        tile.SetGround(MakeItem(ThingTypeFlag.Ground));
+        tile.AddItem(MakeItem(ThingTypeFlag.NotPathable));
+        Assert.False(tile.IsPathable);
+    }
+
+    [Fact]
+    public void Tile_HasCreatures_FalseWhenEmpty()
+    {
+        var tile = new Tile(Position.Zero);
+        Assert.False(tile.HasCreatures);
+    }
+
+    [Fact]
+    public void Tile_HasCreatures_TrueAfterAddCreature()
+    {
+        var tile = new Tile(Position.Zero);
+        tile.AddCreature(new Creature { Id = 1, Position = Position.Zero });
+        Assert.True(tile.HasCreatures);
+    }
+
+    [Fact]
+    public void Tile_GetGroundSpeed_DefaultsTo150WhenNoGround()
+    {
+        var tile = new Tile(Position.Zero);
+        Assert.Equal(150, tile.GetGroundSpeed());
+    }
+
+    [Fact]
+    public void Tile_GetGroundSpeed_ReturnsGroundThingTypeSpeed()
+    {
+        var tile = new Tile(Position.Zero);
+        tile.SetGround(new Item
+        {
+            Id        = 1,
+            ThingType = new ThingType { Category = ThingCategory.Item, Id = 1,
+                Flags = ThingTypeFlag.Ground, GroundSpeed = 250 },
+        });
+        Assert.Equal(250, tile.GetGroundSpeed());
+    }
+
+    // ─── T07: PathFindResult / PathFindFlags enum values ─────────────────────
+
+    [Fact] public void PathFindResult_Ok_IsZero()         => Assert.Equal(0, (int)PathFindResult.Ok);
+    [Fact] public void PathFindResult_SamePosition_Is1()  => Assert.Equal(1, (int)PathFindResult.SamePosition);
+    [Fact] public void PathFindResult_Impossible_Is2()    => Assert.Equal(2, (int)PathFindResult.Impossible);
+    [Fact] public void PathFindResult_TooFar_Is3()        => Assert.Equal(3, (int)PathFindResult.TooFar);
+    [Fact] public void PathFindResult_NoWay_Is4()         => Assert.Equal(4, (int)PathFindResult.NoWay);
+    [Fact] public void PathFindFlags_AllowNotSeenTiles_Is1()  => Assert.Equal(1, (int)PathFindFlags.AllowNotSeenTiles);
+    [Fact] public void PathFindFlags_AllowCreatures_Is2()     => Assert.Equal(2, (int)PathFindFlags.AllowCreatures);
+    [Fact] public void PathFindFlags_AllowNonPathable_Is4()   => Assert.Equal(4, (int)PathFindFlags.AllowNonPathable);
+    [Fact] public void PathFindFlags_AllowNonWalkable_Is8()   => Assert.Equal(8, (int)PathFindFlags.AllowNonWalkable);
+    [Fact] public void PathFindFlags_IgnoreCreatures_Is16()   => Assert.Equal(16, (int)PathFindFlags.IgnoreCreatures);
+
+    // ─── T07: FindPath – trivial cases ───────────────────────────────────────
+
+    [Fact]
+    public void FindPath_SamePosition_ReturnsSamePosition()
+    {
+        var map = new Map();
+        var pos = new Position(100, 100, 7);
+        var (dirs, result) = map.FindPath(pos, pos);
+        Assert.Equal(PathFindResult.SamePosition, result);
+        Assert.Empty(dirs);
+    }
+
+    [Fact]
+    public void FindPath_DifferentZ_ReturnsImpossible()
+    {
+        var map = new Map();
+        var start = new Position(100, 100, 7);
+        var goal  = new Position(100, 100, 8);
+        var (dirs, result) = map.FindPath(start, goal);
+        Assert.Equal(PathFindResult.Impossible, result);
+        Assert.Empty(dirs);
+    }
+
+    [Fact]
+    public void FindPath_NotWalkableGoal_ReturnsNoWay()
+    {
+        var map = new Map();
+        var start = new Position(100, 100, 7);
+        var goal  = new Position(101, 100, 7);
+
+        // Create start as walkable
+        map.GetOrCreate(start).SetGround(MakeItem(ThingTypeFlag.Ground));
+
+        // Create goal as NOT walkable (wall)
+        var goalTile = map.GetOrCreate(goal);
+        goalTile.SetGround(MakeItem(ThingTypeFlag.Ground | ThingTypeFlag.NotWalkable));
+
+        var (dirs, result) = map.FindPath(start, goal, flags: PathFindFlags.AllowNotSeenTiles);
+        Assert.Equal(PathFindResult.NoWay, result);
+        Assert.Empty(dirs);
+    }
+
+    // ─── T07: FindPath – straight line ────────────────────────────────────────
+
+    private static Map BuildCorridor(Position start, Position end)
+    {
+        var map = new Map();
+        int x = start.X;
+        int endX = end.X;
+        int z = start.Z;
+        for (int cx = Math.Min(x, endX); cx <= Math.Max(x, endX); cx++)
+            map.GetOrCreate(new Position(cx, start.Y, z))
+               .SetGround(MakeItem(ThingTypeFlag.Ground));
+        return map;
+    }
+
+    [Fact]
+    public void FindPath_StraightEast_ReturnsDirectionList()
+    {
+        var start = new Position(100, 100, 7);
+        var goal  = new Position(103, 100, 7);
+        var map   = BuildCorridor(start, goal);
+
+        var (dirs, result) = map.FindPath(start, goal,
+            flags: PathFindFlags.AllowNotSeenTiles);
+
+        Assert.Equal(PathFindResult.Ok, result);
+        Assert.Equal(3, dirs.Count);
+        Assert.All(dirs, d => Assert.Equal(Direction.East, d));
+    }
+
+    [Fact]
+    public void FindPath_MaxComplexityExceeded_ReturnsTooFar()
+    {
+        // Build a very large open map and cap complexity at 1
+        var start = new Position(100, 100, 7);
+        var goal  = new Position(110, 100, 7);
+        var map   = BuildCorridor(start, goal);
+
+        var (_, result) = map.FindPath(start, goal,
+            maxComplexity: 1,
+            flags: PathFindFlags.AllowNotSeenTiles);
+
+        Assert.Equal(PathFindResult.TooFar, result);
+    }
+
+    [Fact]
+    public void FindPath_BlockedByCreature_WithoutFlag_ReturnsNoWay()
+    {
+        // Only add the 3 corridor tiles. Without AllowNotSeenTiles the
+        // pathfinder cannot leave to unseen neighbours.
+        var start = new Position(100, 100, 7);
+        var mid   = new Position(101, 100, 7);
+        var goal  = new Position(102, 100, 7);
+        var map   = BuildCorridor(start, goal);
+
+        // Place a creature on the middle tile
+        map.GetOrCreate(mid).AddCreature(new Creature { Id = 99, Position = mid });
+
+        // Without AllowCreatures, the only "seen" path through mid is blocked.
+        var (_, noCreaturesResult) = map.FindPath(start, goal);
+        Assert.Equal(PathFindResult.NoWay, noCreaturesResult);
+
+        // With AllowCreatures the path IS found because the creature tile is open.
+        var (dirs, okResult) = map.FindPath(start, goal,
+            flags: PathFindFlags.AllowCreatures);
+        Assert.Equal(PathFindResult.Ok, okResult);
+        Assert.NotEmpty(dirs);
+    }
+
+    // ─── T07: FindPathAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async System.Threading.Tasks.Task FindPathAsync_SamePosition_ReturnsSamePosition()
+    {
+        var map = new Map();
+        var pos = new Position(50, 50, 7);
+        var (dirs, result) = await map.FindPathAsync(pos, pos);
+        Assert.Equal(PathFindResult.SamePosition, result);
+        Assert.Empty(dirs);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task FindPathAsync_StraightPath_ReturnsOk()
+    {
+        var start = new Position(200, 200, 7);
+        var goal  = new Position(202, 200, 7);
+        var map   = BuildCorridor(start, goal);
+
+        var (dirs, result) = await map.FindPathAsync(start, goal,
+            flags: PathFindFlags.AllowNotSeenTiles);
+
+        Assert.Equal(PathFindResult.Ok, result);
+        Assert.Equal(2, dirs.Count);
+    }
 }

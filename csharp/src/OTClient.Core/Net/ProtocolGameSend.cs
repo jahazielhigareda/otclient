@@ -273,4 +273,67 @@ public sealed partial class ProtocolGame
         msg.WriteString(receiver);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── Combat (T12) ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends updated fight, chase and safe-mode settings to the server.
+    /// Protocol 1281: PvpMode byte is always included (GamePVPMode feature present).
+    /// Maps to <c>ProtocolGame::sendChangeFightModes</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendChangeFightModes(Game.FightMode fightMode, Game.ChaseMode chaseMode,
+        bool safeFight, Game.PvpMode pvpMode = Game.PvpMode.WhiteDove)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ChangeFightModes);
+        msg.WriteU8((byte)fightMode);
+        msg.WriteU8((byte)chaseMode);
+        msg.WriteU8(safeFight ? (byte)1 : (byte)0);
+        msg.WriteU8((byte)pvpMode);  // GamePVPMode — always present at protocol 1281
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends an attack request targeting <paramref name="creatureId"/>.
+    /// Pass 0 to cancel the current attack.
+    /// The sequence counter is included (GameAttackSeq feature always present at 1281).
+    /// Maps to <c>ProtocolGame::sendAttack</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendAttack(uint creatureId, uint seq = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Attack);
+        msg.WriteU32(creatureId);
+        msg.WriteU32(seq);  // GameAttackSeq — always present at protocol 1281
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a follow request targeting <paramref name="creatureId"/>.
+    /// Pass 0 to cancel following.
+    /// Maps to <c>ProtocolGame::sendFollow</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendFollow(uint creatureId, uint seq = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Follow);
+        msg.WriteU32(creatureId);
+        msg.WriteU32(seq);  // GameAttackSeq — always present at protocol 1281
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to cancel both the current attack and follow targets.
+    /// Maps to <c>ProtocolGame::sendCancelAttackAndFollow</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendCancelAttackAndFollow()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CancelAttackAndFollow);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

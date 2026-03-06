@@ -30,6 +30,10 @@ public enum GameClientPacket : byte
     JoinChannel        = 0x98,   // ClientJoinChannel (152)    — T10
     LeaveChannel       = 0x99,   // ClientLeaveChannel (153)   — T10
     OpenPrivateChannel = 0x9A,   // ClientOpenPrivateChannel (154) — T10
+    ChangeFightModes   = 0xA0,   // ClientChangeFightModes (160)  — T12
+    Attack             = 0xA1,   // ClientAttack (161)            — T12
+    Follow             = 0xA2,   // ClientFollow (162)            — T12
+    CancelAttackAndFollow = 0xBE, // ClientCancelAttackAndFollow (190) — T12
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>

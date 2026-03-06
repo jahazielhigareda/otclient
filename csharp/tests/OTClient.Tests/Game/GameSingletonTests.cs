@@ -503,4 +503,97 @@ public sealed class GameSingletonTests
         g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
         Assert.Throws<ArgumentException>(() => g.TalkPrivate("Alice", ""));
     }
+
+    // ─── T12: Combat methods ──────────────────────────────────────────────────
+
+    [Fact]
+    public void Attack_WhenOnline_FiresAttackRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        uint? gotId = null;
+        g.AttackRequested += id => gotId = id;
+        g.Attack(42);
+        Assert.Equal(42u, gotId);
+    }
+
+    [Fact]
+    public void Attack_WhenOffline_DoesNotFire()
+    {
+        var g = MakeGame();
+        bool fired = false;
+        g.AttackRequested += _ => fired = true;
+        g.Attack(42);
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void Follow_WhenOnline_FiresFollowRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        uint? gotId = null;
+        g.FollowRequested += id => gotId = id;
+        g.Follow(99);
+        Assert.Equal(99u, gotId);
+    }
+
+    [Fact]
+    public void CancelAttack_WhenOnline_FiresEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.CancelAttackRequested += () => fired = true;
+        g.CancelAttack();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void CancelFollow_WhenOnline_FiresEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.CancelFollowRequested += () => fired = true;
+        g.CancelFollow();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void CancelAttackAndFollow_WhenOnline_FiresEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.CancelAttackAndFollowRequested += () => fired = true;
+        g.CancelAttackAndFollow();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void SetFightModes_WhenOnline_FiresFightModesChanged()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        FightMode? gotFight = null; ChaseMode? gotChase = null;
+        bool? gotSafe = null; PvpMode? gotPvp = null;
+        g.FightModesChanged += (f, c, s, p) =>
+            { gotFight = f; gotChase = c; gotSafe = s; gotPvp = p; };
+        g.SetFightModes(FightMode.Offensive, ChaseMode.ChaseOpponent, true, PvpMode.WhiteHand);
+        Assert.Equal(FightMode.Offensive,      gotFight);
+        Assert.Equal(ChaseMode.ChaseOpponent,  gotChase);
+        Assert.True(gotSafe);
+        Assert.Equal(PvpMode.WhiteHand,        gotPvp);
+    }
+
+    [Fact]
+    public void SetFightModes_WhenOffline_DoesNotFire()
+    {
+        var g = MakeGame();
+        bool fired = false;
+        g.FightModesChanged += (_, _, _, _) => fired = true;
+        g.SetFightModes(FightMode.Offensive, ChaseMode.DontChase, false);
+        Assert.False(fired);
+    }
 }

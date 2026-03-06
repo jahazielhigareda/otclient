@@ -1204,6 +1204,13 @@ public sealed class ProtocolGameTests
     [Fact] public void GameClientPacket_LeaveChannel_Is0x99()    => Assert.Equal(0x99, (byte)GameClientPacket.LeaveChannel);
     [Fact] public void GameClientPacket_OpenPrivateChannel_Is0x9A() => Assert.Equal(0x9A, (byte)GameClientPacket.OpenPrivateChannel);
 
+    // ─── T12: Client opcode values ────────────────────────────────────────────
+
+    [Fact] public void GameClientPacket_ChangeFightModes_Is0xA0()       => Assert.Equal(0xA0, (byte)GameClientPacket.ChangeFightModes);
+    [Fact] public void GameClientPacket_Attack_Is0xA1()                 => Assert.Equal(0xA1, (byte)GameClientPacket.Attack);
+    [Fact] public void GameClientPacket_Follow_Is0xA2()                 => Assert.Equal(0xA2, (byte)GameClientPacket.Follow);
+    [Fact] public void GameClientPacket_CancelAttackAndFollow_Is0xBE()  => Assert.Equal(0xBE, (byte)GameClientPacket.CancelAttackAndFollow);
+
     // ─── T09: TalkMode enum values ────────────────────────────────────────────
 
     [Fact] public void TalkMode_Say_Is1()         => Assert.Equal(1,  (byte)TalkMode.Say);

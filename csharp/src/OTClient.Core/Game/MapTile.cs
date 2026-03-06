@@ -188,6 +188,33 @@ public sealed class Tile
         && !_items.Any(i => i.IsNotWalkable)
         && !(_ground.IsNotWalkable);
 
+    /// <summary>
+    /// Returns <c>true</c> when no item on this tile has the NotPathable flag.
+    /// Used by pathfinding to distinguish between tiles that creatures can walk
+    /// on but that the auto-walk algorithm should route around.
+    /// Maps to <c>Tile::isPathable()</c>.
+    /// Task T07.
+    /// </summary>
+    public bool IsPathable
+        => !_items.Any(i => i.ThingType?.IsNotPathable == true)
+        && (_ground?.ThingType?.IsNotPathable != true);
+
+    /// <summary>
+    /// Returns <c>true</c> when at least one creature occupies this tile.
+    /// Maps to <c>Tile::hasCreatures()</c>.
+    /// Task T07.
+    /// </summary>
+    public bool HasCreatures => _creatures.Count > 0;
+
+    /// <summary>
+    /// Returns the ground-tile movement speed (ms per tile).
+    /// Defaults to 150 when there is no ground.
+    /// Maps to <c>Tile::getGroundSpeed()</c>.
+    /// Task T07.
+    /// </summary>
+    public int GetGroundSpeed()
+        => _ground?.ThingType?.GroundSpeed ?? 150;
+
     // ─── Light ────────────────────────────────────────────────────────────────
 
     /// <summary>Maximum light level emitted from items on this tile.</summary>
@@ -204,6 +231,38 @@ public sealed class Tile
 
     public Color MinimapColor
         => _ground?.ThingType?.MinimapColor ?? Color.Black;
+}
+
+// ─── Pathfinding result / flags (T07) ────────────────────────────────────────
+
+/// <summary>
+/// Outcome returned by <see cref="Map.FindPath"/>.
+/// Maps to <c>Otc::PathFindResult</c> in <c>src/client/const.h</c>.
+/// Task T07.
+/// </summary>
+public enum PathFindResult : byte
+{
+    Ok             = 0,
+    SamePosition   = 1,
+    Impossible     = 2,
+    TooFar         = 3,
+    NoWay          = 4,
+}
+
+/// <summary>
+/// Control flags that modify pathfinding behaviour.
+/// Maps to the <c>Otc::PathFind*</c> constants in <c>src/client/const.h</c>.
+/// Task T07.
+/// </summary>
+[Flags]
+public enum PathFindFlags : int
+{
+    None                = 0,
+    AllowNotSeenTiles   = 1,
+    AllowCreatures      = 2,
+    AllowNonPathable    = 4,
+    AllowNonWalkable    = 8,
+    IgnoreCreatures     = 16,
 }
 
 // ─── Map ──────────────────────────────────────────────────────────────────────
@@ -357,5 +416,194 @@ public sealed class Map
             var t = Get(new Position(col, row, z));
             if (t is not null) yield return t;
         }
+    }
+
+    // ─── Pathfinding (T07) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Computes a walking path from <paramref name="start"/> to
+    /// <paramref name="goal"/> using the same weighted-Dijkstra algorithm as
+    /// <c>Map::findPath</c> in <c>src/client/map.cpp</c>.
+    /// </summary>
+    /// <param name="start">Starting world position.</param>
+    /// <param name="goal">Target world position.</param>
+    /// <param name="maxComplexity">
+    /// Maximum number of nodes explored before giving up
+    /// (<c>PathFindResultTooFar</c>).  Typical value: 3500 (C++ default).
+    /// </param>
+    /// <param name="flags">Bit-set controlling walkability rules.</param>
+    /// <returns>
+    /// A tuple of (directions, result) where <c>directions</c> is the ordered
+    /// list of steps from <paramref name="start"/> to <paramref name="goal"/>
+    /// and <c>result</c> describes the outcome.  On failure,
+    /// <c>directions</c> is empty.
+    /// </returns>
+    /// <remarks>
+    /// The algorithm is an A*-style priority-queue search where the priority
+    /// key is <c>g + h</c> (accumulated tile-speed cost + Chebyshev heuristic).
+    /// Diagonal steps cost 3× the walk-factor; cardinal steps cost 1×.
+    /// </remarks>
+    /// Task T07.
+    public (IReadOnlyList<Direction> Directions, PathFindResult Result) FindPath(
+        Position start, Position goal,
+        int maxComplexity = 3500,
+        PathFindFlags flags = PathFindFlags.None)
+    {
+        if (start == goal)
+            return ([], PathFindResult.SamePosition);
+
+        if (start.Z != goal.Z)
+            return ([], PathFindResult.Impossible);
+
+        // Verify goal walkability
+        var goalTile = Get(goal);
+        bool ignoreCreatures = (flags & PathFindFlags.IgnoreCreatures) != 0;
+        if (goalTile is not null && (flags & PathFindFlags.AllowNonWalkable) == 0)
+        {
+            if (!goalTile.IsWalkable)
+                return ([], PathFindResult.NoWay);
+        }
+
+        // ── A* (weighted Dijkstra) ─────────────────────────────────────────────
+        var nodes    = new Dictionary<Position, SearchNode>();
+        var queue    = new PriorityQueue<SearchNode, float>();
+
+        var root = new SearchNode(start);
+        nodes[start] = root;
+        queue.Enqueue(root, 0f);
+
+        SearchNode? foundNode = null;
+
+        while (queue.Count > 0)
+        {
+            if (nodes.Count > maxComplexity)
+                return ([], PathFindResult.TooFar);
+
+            var current = queue.Dequeue();
+
+            // Already found a cheaper path to goal — done
+            if (foundNode is not null && current.TotalCost >= foundNode.Cost)
+                break;
+
+            // Check for arrival
+            if (current.Pos == goal && (foundNode is null || current.Cost < foundNode.Cost))
+                foundNode = current;
+
+            // Expand 8 neighbours
+            for (int di = -1; di <= 1; di++)
+            for (int dj = -1; dj <= 1; dj++)
+            {
+                if (di == 0 && dj == 0) continue;
+
+                var npos = new Position(current.Pos.X + di, current.Pos.Y + dj, start.Z);
+                if (npos.X < 0 || npos.Y < 0) continue;
+
+                bool wasSeen        = false;
+                bool hasCreature    = false;
+                bool isNotWalkable  = false;   // unknown tiles: assume passable
+                bool isNotPathable  = false;
+                int  speed          = 100;
+
+                var ntile = Get(npos);
+                if (ntile is not null)
+                {
+                    wasSeen       = true;
+                    hasCreature   = ntile.HasCreatures && !ignoreCreatures;
+                    isNotWalkable = !ntile.IsWalkable;
+                    isNotPathable = !ntile.IsPathable;
+                    speed         = ntile.GetGroundSpeed();
+                }
+
+                bool isGoal = npos == goal;
+
+                if (!isGoal)
+                {
+                    if ((flags & PathFindFlags.AllowNotSeenTiles) == 0 && !wasSeen)
+                        continue;
+                    if (wasSeen)
+                    {
+                        if ((flags & PathFindFlags.AllowCreatures) == 0 && hasCreature)
+                            continue;
+                        if ((flags & PathFindFlags.AllowNonPathable) == 0 && isNotPathable)
+                            continue;
+                        if ((flags & PathFindFlags.AllowNonWalkable) == 0 && isNotWalkable)
+                            continue;
+                    }
+                }
+                else
+                {
+                    if ((flags & PathFindFlags.AllowNotSeenTiles) == 0 && !wasSeen)
+                        continue;
+                    if (wasSeen && (flags & PathFindFlags.AllowNonWalkable) == 0 && isNotWalkable)
+                        continue;
+                }
+
+                bool diagonal  = di != 0 && dj != 0;
+                float walkFactor = diagonal ? 3.0f : 1.0f;
+                float newCost  = current.Cost + (speed * walkFactor) / 100.0f;
+
+                if (nodes.TryGetValue(npos, out var existing))
+                {
+                    if (existing.Cost <= newCost)
+                        continue;
+                    existing.Cost      = newCost;
+                    existing.TotalCost = newCost + npos.ChebyshevDistance(goal);
+                    existing.Prev      = current;
+                    existing.Dir       = current.Pos.DirectionTo(npos);
+                    queue.Enqueue(existing, existing.TotalCost);
+                }
+                else
+                {
+                    var nn = new SearchNode(npos)
+                    {
+                        Cost      = newCost,
+                        TotalCost = newCost + npos.ChebyshevDistance(goal),
+                        Prev      = current,
+                        Dir       = current.Pos.DirectionTo(npos),
+                    };
+                    nodes[npos] = nn;
+                    queue.Enqueue(nn, nn.TotalCost);
+                }
+            }
+        }
+
+        if (foundNode is null)
+            return ([], PathFindResult.NoWay);
+
+        // Reconstruct path (reverse)
+        var dirs = new List<Direction>();
+        var node = foundNode;
+        while (node.Prev is not null)
+        {
+            dirs.Add(node.Dir);
+            node = node.Prev;
+        }
+        dirs.Reverse();
+        return (dirs, PathFindResult.Ok);
+    }
+
+    /// <summary>
+    /// Asynchronous wrapper around <see cref="FindPath"/>.
+    /// Runs the search on the thread pool and returns a <see cref="Task{T}"/>
+    /// with the result.
+    /// Maps to <c>Map::findPathAsync</c>.
+    /// Task T07.
+    /// </summary>
+    public Task<(IReadOnlyList<Direction> Directions, PathFindResult Result)> FindPathAsync(
+        Position start, Position goal,
+        int maxComplexity = 3500,
+        PathFindFlags flags = PathFindFlags.None,
+        System.Threading.CancellationToken cancellationToken = default)
+        => Task.Run(() => FindPath(start, goal, maxComplexity, flags), cancellationToken);
+
+    // ── Internal: search node for FindPath ────────────────────────────────────
+
+    private sealed class SearchNode(Position pos)
+    {
+        public Position    Pos       { get; } = pos;
+        public float       Cost      { get; set; } = 0f;
+        public float       TotalCost { get; set; } = 0f;
+        public SearchNode? Prev      { get; set; }
+        public Direction   Dir       { get; set; }
     }
 }

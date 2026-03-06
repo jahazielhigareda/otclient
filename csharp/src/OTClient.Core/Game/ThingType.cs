@@ -106,6 +106,7 @@ public sealed class ThingType
     public bool IsContainer      => (Flags & ThingTypeFlag.Container)    != 0;
     public bool IsPickupable     => (Flags & ThingTypeFlag.Pickupable)   != 0;
     public bool IsNotWalkable    => (Flags & ThingTypeFlag.NotWalkable)  != 0;
+    public bool IsNotPathable    => (Flags & ThingTypeFlag.NotPathable)  != 0;
     public bool IsBlockProjectile => (Flags & ThingTypeFlag.BlockProjectile) != 0;
     public bool IsFullGround     => (Flags & ThingTypeFlag.FullGround)   != 0;
     public bool IsAnimated       => Frames > 1;

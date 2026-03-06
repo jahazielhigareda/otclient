@@ -314,4 +314,103 @@ public sealed class Game
         if (!IsOnline) return;
         OpenPrivateChannelRequested?.Invoke(playerName);
     }
+
+    // ─── Combat (T12) ────────────────────────────────────────────────────────
+
+    /// <summary>Raised when the player attacks a creature.</summary>
+    public event Action<uint>? AttackRequested;
+
+    /// <summary>Raised when the player follows a creature.</summary>
+    public event Action<uint>? FollowRequested;
+
+    /// <summary>Raised when the player cancels attack.</summary>
+    public event Action? CancelAttackRequested;
+
+    /// <summary>Raised when the player cancels follow.</summary>
+    public event Action? CancelFollowRequested;
+
+    /// <summary>Raised when both attack and follow are cancelled at once.</summary>
+    public event Action? CancelAttackAndFollowRequested;
+
+    /// <summary>Raised when fight modes change.</summary>
+    public event Action<FightMode, ChaseMode, bool, PvpMode>? FightModesChanged;
+
+    /// <summary>
+    /// Attacks the creature with id <paramref name="creatureId"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="AttackRequested"/>.
+    /// Maps to <c>Game::attack()</c>.
+    /// Task T12.
+    /// </summary>
+    public void Attack(uint creatureId)
+    {
+        if (!IsOnline) return;
+        AttackRequested?.Invoke(creatureId);
+    }
+
+    /// <summary>
+    /// Follows the creature with id <paramref name="creatureId"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="FollowRequested"/>.
+    /// Maps to <c>Game::follow()</c>.
+    /// Task T12.
+    /// </summary>
+    public void Follow(uint creatureId)
+    {
+        if (!IsOnline) return;
+        FollowRequested?.Invoke(creatureId);
+    }
+
+    /// <summary>
+    /// Cancels the current attack.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="CancelAttackRequested"/>.
+    /// Maps to <c>Game::cancelAttack()</c>.
+    /// Task T12.
+    /// </summary>
+    public void CancelAttack()
+    {
+        if (!IsOnline) return;
+        CancelAttackRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Cancels the current follow target.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="CancelFollowRequested"/>.
+    /// Maps to <c>Game::cancelFollow()</c>.
+    /// Task T12.
+    /// </summary>
+    public void CancelFollow()
+    {
+        if (!IsOnline) return;
+        CancelFollowRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Cancels both attack and follow in a single operation.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="CancelAttackAndFollowRequested"/>.
+    /// Maps to <c>Game::cancelAttackAndFollow()</c>.
+    /// Task T12.
+    /// </summary>
+    public void CancelAttackAndFollow()
+    {
+        if (!IsOnline) return;
+        CancelAttackAndFollowRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Updates the player's fight/chase/safe/PvP mode settings.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="FightModesChanged"/>.
+    /// Maps to <c>Game::setFightMode()</c> / <c>Game::setChaseMode()</c> etc.
+    /// Task T12.
+    /// </summary>
+    public void SetFightModes(FightMode fightMode, ChaseMode chaseMode,
+        bool safeFight, PvpMode pvpMode = PvpMode.WhiteDove)
+    {
+        if (!IsOnline) return;
+        FightModesChanged?.Invoke(fightMode, chaseMode, safeFight, pvpMode);
+    }
 }
