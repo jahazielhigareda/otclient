@@ -1,3 +1,5 @@
+using System.Numerics;
+using OTClient.Framework.UI;
 using Raylib_cs;
 
 namespace OTClient.Framework.Game;
@@ -86,6 +88,28 @@ public sealed class Effect : Thing
     public bool      IsFinished => Animator.IsFinished;
 
     public void Update(int deltaMs) => Animator.Update(deltaMs);
+
+    /// <summary>
+    /// Emits draw commands to render this effect on the map.
+    /// Emits a 32×32 filled rectangle tinted by <see cref="Position"/>.
+    /// When the effect is finished or not visible in <paramref name="view"/>,
+    /// nothing is emitted.
+    /// Mirrors <c>Effect::draw</c>.
+    /// Task T20.
+    /// </summary>
+    public void Draw(List<UIDrawCommand> commands, MapView view)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(view);
+        if (IsFinished || !view.IsVisible(Position)) return;
+
+        var screen = view.WorldToScreen(Position);
+        int ts     = view.TileSize;
+        var rect   = new Rectangle(screen.X, screen.Y, ts, ts);
+
+        var color = new Color((byte)255, (byte)200, (byte)80, (byte)220); // amber placeholder
+        commands.Add(new UIDrawCommand.FillRect(rect, color));
+    }
 }
 
 // ─── Missile ──────────────────────────────────────────────────────────────────
@@ -119,6 +143,34 @@ public sealed class Missile : Thing
     public float CurrentX => From.X + (To.X - From.X) * _progress;
     /// <summary>Interpolated world Y.</summary>
     public float CurrentY => From.Y + (To.Y - From.Y) * _progress;
+
+    /// <summary>
+    /// Emits a draw command for this missile at its interpolated screen position.
+    /// When finished or the current position is outside the viewport, nothing is emitted.
+    /// Mirrors <c>Missile::draw</c>.
+    /// Task T20.
+    /// </summary>
+    public void Draw(List<UIDrawCommand> commands, MapView view)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(view);
+        if (IsFinished) return;
+
+        // Interpolated world position as a synthetic Position on the missile's floor
+        var worldPos = new Position((int)MathF.Round(CurrentX), (int)MathF.Round(CurrentY), From.Z);
+        if (!view.IsVisible(worldPos)) return;
+
+        // Compute sub-tile screen position using exact float coords
+        var fromScreen = view.WorldToScreen(From);
+        var toScreen   = view.WorldToScreen(To);
+        float sx = fromScreen.X + (toScreen.X - fromScreen.X) * _progress;
+        float sy = fromScreen.Y + (toScreen.Y - fromScreen.Y) * _progress;
+
+        int ts  = view.TileSize;
+        var rect = new Rectangle(sx - ts / 4f, sy - ts / 4f, ts / 2f, ts / 2f);
+        var color = new Color((byte)255, (byte)80, (byte)80, (byte)220); // red placeholder
+        commands.Add(new UIDrawCommand.FillRect(rect, color));
+    }
 }
 
 // ─── AnimatedText ─────────────────────────────────────────────────────────────
@@ -130,6 +182,11 @@ public sealed class Missile : Thing
 /// </summary>
 public sealed class AnimatedText
 {
+    // ─── Configuration constants ───────────────────────────────────────────────
+    private const float FloatHeightPx = 32f;   // total pixels the text rises
+    private const float FadeStartFrac = 0.75f;  // start fading after 75% of duration
+    private const float DefaultFontSize = 14f;
+
     public Position   Position   { get; set; }
     public string     Text       { get; set; } = string.Empty;
     public Color      Color      { get; set; } = Color.White;
@@ -138,9 +195,38 @@ public sealed class AnimatedText
     public bool       IsExpired  => ElapsedMs >= DurationMs;
 
     /// <summary>Vertical offset (pixels) for the float-up animation.</summary>
-    public float FloatOffset   => ElapsedMs / DurationMs * 32f;
+    public float FloatOffset   => ElapsedMs / DurationMs * FloatHeightPx;
 
     public void Update(float deltaMs) => ElapsedMs = Math.Min(ElapsedMs + deltaMs, DurationMs);
+
+    /// <summary>
+    /// Emits a <see cref="UIDrawCommand.DrawText"/> command for this floating
+    /// text at the correct world-to-screen position plus float-up offset.
+    /// Nothing is emitted when expired or outside the viewport.
+    /// Mirrors <c>AnimatedText::drawText</c>.
+    /// Task T19.
+    /// </summary>
+    public void Draw(List<UIDrawCommand> commands, MapView view)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(view);
+        if (IsExpired || !view.IsVisible(Position)) return;
+
+        var screen = view.WorldToScreen(Position);
+
+        // Float upward proportional to elapsed time
+        float yOffset = -FloatOffset;
+
+        // Fade out in the final portion of the animation
+        float frac = ElapsedMs / DurationMs;
+        byte  alpha = frac > FadeStartFrac
+            ? (byte)((1f - (frac - FadeStartFrac) / (1f - FadeStartFrac)) * 255)
+            : (byte)255;
+
+        var color = new Color(Color.R, Color.G, Color.B, (byte)alpha);
+        var pos   = new Vector2(screen.X, screen.Y + yOffset);
+        commands.Add(new UIDrawCommand.DrawText(Text, pos, DefaultFontSize, color));
+    }
 }
 
 // ─── StaticText ───────────────────────────────────────────────────────────────
@@ -152,6 +238,8 @@ public sealed class AnimatedText
 /// </summary>
 public sealed class StaticText
 {
+    private const float DefaultFontSize = 12f;
+
     public Position   Position      { get; set; }
     public string     Text          { get; set; } = string.Empty;
     public Color      Color         { get; set; } = Color.White;
@@ -160,4 +248,23 @@ public sealed class StaticText
     public bool       IsExpired     => ElapsedMs >= LifetimeMs;
 
     public void Update(float deltaMs) => ElapsedMs = Math.Min(ElapsedMs + deltaMs, LifetimeMs);
+
+    /// <summary>
+    /// Emits a <see cref="UIDrawCommand.DrawText"/> command for this static text
+    /// centered above the creature at <see cref="Position"/>.
+    /// Nothing is emitted when expired or outside the viewport.
+    /// Mirrors <c>StaticText::drawText</c>.
+    /// Task T19.
+    /// </summary>
+    public void Draw(List<UIDrawCommand> commands, MapView view)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(view);
+        if (IsExpired || !view.IsVisible(Position)) return;
+
+        var screen = view.WorldToScreen(Position);
+        // Offset upward by one full tile to appear above the creature's head
+        var pos = new Vector2(screen.X, screen.Y - view.TileSize);
+        commands.Add(new UIDrawCommand.DrawText(Text, pos, DefaultFontSize, Color));
+    }
 }
