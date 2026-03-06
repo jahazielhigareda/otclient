@@ -1,3 +1,4 @@
+using System.Numerics;
 using Raylib_cs;
 
 namespace OTClient.Framework.Graphics;
@@ -59,7 +60,8 @@ public sealed class Particle
 /// </summary>
 public sealed class ParticleEmitter
 {
-    private readonly List<Particle> _particles = [];
+    private readonly List<Particle>          _particles  = [];
+    private readonly List<ParticleAffector>  _affectors  = [];
     private float _emitAccumulator;
     private readonly Random _rng;
 
@@ -104,36 +106,68 @@ public sealed class ParticleEmitter
     /// <summary>Live particle count.</summary>
     public int ParticleCount => _particles.Count;
 
+    /// <summary>
+    /// Optional particle type template.  When set, new particles are spawned
+    /// using <see cref="ParticleType"/> instead of the inline emitter fields.
+    /// </summary>
+    public ParticleType? ParticleType { get; set; }
+
+    /// <summary>Read-only view of registered affectors.</summary>
+    public IReadOnlyList<ParticleAffector> Affectors => _affectors;
+
     public ParticleEmitter(Vector2 position, int? seed = null)
     {
         Position = position;
         _rng     = seed.HasValue ? new Random(seed.Value) : new Random();
     }
 
+    // ─── Affector management ──────────────────────────────────────────────────
+
+    /// <summary>Registers an affector that will be applied to every live particle each frame.</summary>
+    public void AddAffector(ParticleAffector affector)
+    {
+        ArgumentNullException.ThrowIfNull(affector);
+        _affectors.Add(affector);
+    }
+
+    /// <summary>Removes a previously registered affector.</summary>
+    public void RemoveAffector(ParticleAffector affector) => _affectors.Remove(affector);
+
     // ─── Update / Render ──────────────────────────────────────────────────────
 
     /// <summary>Advances all particles and emits new ones.</summary>
     public void Update(float deltaSeconds)
     {
+        // Advance affectors
+        foreach (var a in _affectors) a.Update(deltaSeconds);
+
         // Emit new particles
         if (IsEmitting)
         {
             _emitAccumulator += EmitRate * deltaSeconds;
             while (_emitAccumulator >= 1f)
             {
-                _particles.Add(CreateParticle());
+                _particles.Add(ParticleType is not null
+                    ? ParticleType.CreateParticle(Position, _rng)
+                    : CreateParticle());
                 _emitAccumulator -= 1f;
             }
         }
 
-        // Update and prune dead particles
+        // Update particles, apply affectors, prune dead ones
         for (int i = _particles.Count - 1; i >= 0; i--)
         {
             var p = _particles[i];
             p.Update(deltaSeconds);
             if (!p.IsAlive)
+            {
                 _particles.RemoveAt(i);
-            else
+                continue;
+            }
+            // Apply active affectors
+            foreach (var a in _affectors)
+                if (a.IsActive) a.UpdateParticle(p, deltaSeconds);
+            if (ParticleType is null)
                 LerpColor(p);
         }
     }
@@ -255,4 +289,285 @@ public sealed class ParticleManager
 
     /// <summary>Number of registered effects.</summary>
     public int EffectCount => _effects.Count;
+}
+
+// ─── ParticleAffector ─────────────────────────────────────────────────────────
+
+/// <summary>
+/// Base class for all particle affectors — objects that modify live particles
+/// every frame after they are emitted.  Affectors can be delayed and have an
+/// optional finite duration.
+/// Maps to <c>src/framework/graphics/particleaffector.{h,cpp}</c>.
+/// Task T30.
+/// </summary>
+public abstract class ParticleAffector
+{
+    private float _elapsed;
+
+    /// <summary>Seconds before the affector becomes active.</summary>
+    public float Delay    { get; set; } = 0f;
+
+    /// <summary>
+    /// Active duration in seconds. Negative means unlimited.
+    /// </summary>
+    public float Duration { get; set; } = -1f;
+
+    /// <summary><c>true</c> once the affector is past its <see cref="Delay"/>.</summary>
+    public bool IsActive    { get; private set; }
+
+    /// <summary><c>true</c> when the affector has completed its <see cref="Duration"/>.</summary>
+    public bool HasFinished { get; private set; }
+
+    /// <summary>
+    /// Advances the affector's internal clock.
+    /// Call this once per frame before applying the affector to particles.
+    /// </summary>
+    public void Update(float deltaSeconds)
+    {
+        if (HasFinished) return;
+
+        _elapsed += deltaSeconds;
+
+        if (!IsActive && _elapsed > Delay)
+            IsActive = true;
+
+        if (Duration >= 0 && _elapsed >= Delay + Duration)
+        {
+            HasFinished = true;
+            IsActive    = false;
+        }
+    }
+
+    /// <summary>
+    /// Applies this affector's effect to a single live <paramref name="particle"/>.
+    /// Only called when <see cref="IsActive"/> is <c>true</c>.
+    /// </summary>
+    public abstract void UpdateParticle(Particle particle, float deltaSeconds);
+}
+
+// ─── GravityAffector ─────────────────────────────────────────────────────────
+
+/// <summary>
+/// Adds a directional gravitational acceleration to each particle's velocity.
+/// Maps to <c>GravityAffector</c> in <c>particleaffector.{h,cpp}</c>.
+/// Task T30.
+/// </summary>
+public sealed class GravityAffector : ParticleAffector
+{
+    /// <summary>
+    /// Direction of gravity in standard mathematical degrees (0° = right/east,
+    /// 90° = down in screen coordinates, 270° = up in screen coordinates).
+    /// Default 270° mirrors the C++ default which points upward in screen space
+    /// (sin(270°) = -1 → negative Y).
+    /// </summary>
+    public float AngleDegrees { get; set; } = 270f;
+
+    /// <summary>Gravitational acceleration in pixels per second².</summary>
+    public float GravityStrength { get; set; } = 9.8f;
+
+    /// <inheritdoc/>
+    public override void UpdateParticle(Particle particle, float deltaSeconds)
+    {
+        float rad = AngleDegrees * MathF.PI / 180f;
+        particle.Velocity += new Vector2(
+            GravityStrength * deltaSeconds * MathF.Cos(rad),
+            GravityStrength * deltaSeconds * MathF.Sin(rad));
+    }
+}
+
+// ─── AttractionAffector ───────────────────────────────────────────────────────
+
+/// <summary>
+/// Accelerates particles toward (or away from) a fixed world position,
+/// with optional velocity-reduction damping.
+/// Maps to <c>AttractionAffector</c> in <c>particleaffector.{h,cpp}</c>.
+/// Task T30.
+/// </summary>
+public sealed class AttractionAffector : ParticleAffector
+{
+    /// <summary>Attraction / repulsion centre in world coordinates.</summary>
+    public Vector2 AttractPosition { get; set; }
+
+    /// <summary>Acceleration magnitude in pixels per second².</summary>
+    public float Acceleration { get; set; } = 32f;
+
+    /// <summary>
+    /// Velocity reduction percentage per second (0 = no damping).
+    /// Mirrors <c>velocity-reduction-percent</c>.
+    /// </summary>
+    public float VelocityReductionPercent { get; set; } = 0f;
+
+    /// <summary>When <c>true</c>, particles are pushed away instead of pulled in.</summary>
+    public bool Repelish { get; set; } = false;
+
+    /// <inheritdoc/>
+    public override void UpdateParticle(Particle particle, float deltaSeconds)
+    {
+        var delta = AttractPosition - particle.Position;
+        float len = delta.Length();
+        if (len == 0f) return;
+
+        var direction = Repelish ? -(delta / len) : (delta / len);
+        particle.Velocity += direction * Acceleration * deltaSeconds;
+
+        if (VelocityReductionPercent > 0f)
+            particle.Velocity -= particle.Velocity * (VelocityReductionPercent / 100f) * deltaSeconds;
+    }
+}
+
+// ─── ParticleType ─────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Named template that fully describes how to spawn and visually represent a
+/// class of particles.  <see cref="ParticleEmitter"/> uses an optional
+/// <see cref="ParticleType"/> to create particles instead of its own inline
+/// scalar properties.
+/// Maps to <c>src/framework/graphics/particletype.{h,cpp}</c>.
+/// Task T30.
+/// </summary>
+public sealed class ParticleType
+{
+    // ─── Identity ─────────────────────────────────────────────────────────────
+
+    /// <summary>Unique name used by the manager/OTML.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    // ─── Visual: multi-stop color gradient ────────────────────────────────────
+
+    /// <summary>Color values for the gradient (one entry per stop in <see cref="ColorStops"/>).</summary>
+    public List<Color> Colors { get; } = [Color.White];
+
+    /// <summary>
+    /// Normalised time values [0,1] for each color in <see cref="Colors"/>.
+    /// Must have the same count as <see cref="Colors"/>.
+    /// </summary>
+    public List<float> ColorStops { get; } = [0f];
+
+    // ─── Visual: composition ──────────────────────────────────────────────────
+
+    /// <summary>How the particle is composited onto the framebuffer.</summary>
+    public ParticleCompositionMode CompositionMode { get; set; } = ParticleCompositionMode.Normal;
+
+    // ─── Size ─────────────────────────────────────────────────────────────────
+
+    /// <summary>Radius of a freshly emitted particle (pixels).</summary>
+    public float StartRadius { get; set; } = 16f;
+
+    /// <summary>Radius at end of life (particles shrink/grow to this).</summary>
+    public float FinalRadius { get; set; } = 16f;
+
+    // ─── Position scatter (relative to emitter) ───────────────────────────────
+
+    public float MinPositionRadius { get; set; } = 0f;
+    public float MaxPositionRadius { get; set; } = 3f;
+    public float MinPositionAngle  { get; set; } = 0f;    // degrees
+    public float MaxPositionAngle  { get; set; } = 360f;  // degrees
+
+    // ─── Initial velocity ─────────────────────────────────────────────────────
+
+    public float MinVelocity      { get; set; } = 32f;
+    public float MaxVelocity      { get; set; } = 64f;
+    public float MinVelocityAngle { get; set; } = 0f;    // degrees
+    public float MaxVelocityAngle { get; set; } = 360f;  // degrees
+
+    // ─── Initial acceleration ─────────────────────────────────────────────────
+
+    public float MinAcceleration      { get; set; } = 0f;
+    public float MaxAcceleration      { get; set; } = 0f;
+    public float MinAccelerationAngle { get; set; } = 0f;    // degrees
+    public float MaxAccelerationAngle { get; set; } = 360f;  // degrees
+
+    // ─── Lifetime ─────────────────────────────────────────────────────────────
+
+    public float MinDuration { get; set; } = 0f;
+    public float MaxDuration { get; set; } = 10f;
+
+    // ─── Factory ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Spawns a new <see cref="Particle"/> using this type's configuration
+    /// and the supplied emitter position and RNG.
+    /// </summary>
+    public Particle CreateParticle(Vector2 emitterPos, Random rng)
+    {
+        ArgumentNullException.ThrowIfNull(rng);
+
+        // Scatter position inside an annular sector
+        float posAngle  = Rand(rng, MinPositionAngle, MaxPositionAngle) * MathF.PI / 180f;
+        float posRadius = Rand(rng, MinPositionRadius, MaxPositionRadius);
+        var   position  = emitterPos + new Vector2(MathF.Cos(posAngle) * posRadius,
+                                                   MathF.Sin(posAngle) * posRadius);
+
+        // Velocity
+        float velAngle = Rand(rng, MinVelocityAngle, MaxVelocityAngle) * MathF.PI / 180f;
+        float velMag   = Rand(rng, MinVelocity, MaxVelocity);
+        var   velocity = new Vector2(MathF.Cos(velAngle) * velMag, MathF.Sin(velAngle) * velMag);
+
+        // Acceleration
+        float accAngle = Rand(rng, MinAccelerationAngle, MaxAccelerationAngle) * MathF.PI / 180f;
+        float accMag   = Rand(rng, MinAcceleration, MaxAcceleration);
+        var   accel    = new Vector2(MathF.Cos(accAngle) * accMag, MathF.Sin(accAngle) * accMag);
+
+        float lifetime  = Rand(rng, MinDuration, MaxDuration);
+        float radiusDelta = lifetime > 0 ? (FinalRadius - StartRadius) / lifetime : 0f;
+
+        return new Particle
+        {
+            Position     = position,
+            Velocity     = velocity,
+            Acceleration = accel,
+            Radius       = StartRadius,
+            RadiusDelta  = radiusDelta,
+            Color        = SampleColor(0f),
+            Lifetime     = lifetime,
+            Age          = 0f,
+        };
+    }
+
+    /// <summary>
+    /// Returns the interpolated color at normalised age <paramref name="t"/> (0–1).
+    /// Uses the multi-stop gradient defined by <see cref="Colors"/> and <see cref="ColorStops"/>.
+    /// </summary>
+    public Color SampleColor(float t)
+    {
+        if (Colors.Count == 0) return Color.White;
+        if (Colors.Count == 1) return Colors[0];
+
+        // Find the two surrounding stops
+        for (int i = 0; i < ColorStops.Count - 1; i++)
+        {
+            float s0 = ColorStops[i];
+            float s1 = ColorStops[i + 1];
+            if (t <= s1)
+            {
+                float f  = s1 > s0 ? (t - s0) / (s1 - s0) : 0f;
+                var   c0 = Colors[i];
+                var   c1 = Colors[i + 1];
+                return new Color(
+                    (byte)(c0.R + (c1.R - c0.R) * f),
+                    (byte)(c0.G + (c1.G - c0.G) * f),
+                    (byte)(c0.B + (c1.B - c0.B) * f),
+                    (byte)(c0.A + (c1.A - c0.A) * f));
+            }
+        }
+
+        return Colors[^1];
+    }
+
+    private static float Rand(Random rng, float min, float max)
+        => min >= max ? min : rng.NextSingle() * (max - min) + min;
+}
+
+// ─── ParticleCompositionMode ──────────────────────────────────────────────────
+
+/// <summary>
+/// How a particle type's pixels are blended onto the framebuffer.
+/// Maps to <c>CompositionMode</c> in <c>particletype.h</c>.
+/// Task T30.
+/// </summary>
+public enum ParticleCompositionMode
+{
+    Normal,
+    Multiply,
+    Addition,
 }

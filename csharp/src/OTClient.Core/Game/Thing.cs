@@ -263,7 +263,8 @@ public sealed class StaticText
         if (IsExpired || !view.IsVisible(Position)) return;
 
         var screen = view.WorldToScreen(Position);
-        // Offset upward by one full tile to appear above the creature's head
+        // Position the text origin one tile above the creature; horizontal
+        // centering is left to the renderer which knows the actual text width.
         var pos = new Vector2(screen.X, screen.Y - view.TileSize);
         commands.Add(new UIDrawCommand.DrawText(Text, pos, DefaultFontSize, Color));
     }
