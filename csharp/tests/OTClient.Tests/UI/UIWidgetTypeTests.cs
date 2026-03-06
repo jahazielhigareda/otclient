@@ -281,7 +281,6 @@ public sealed class UIWidgetTypeTests
         var te = new UITextEdit { Text = "Hello" };
         te.SelectAll();
         Assert.Equal("Hello", te.Copy());
-        // original unchanged
         Assert.Equal("Hello", te.Text);
     }
 

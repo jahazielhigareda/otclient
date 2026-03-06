@@ -264,7 +264,7 @@ public class UITextEdit : UIWidget
         if (HasSelection) DeleteSelection();
         // Filter invalid characters
         if (!string.IsNullOrEmpty(ValidCharacters))
-            text = new string([.. text.Where(c => ValidCharacters.Contains(c, StringComparison.Ordinal))]);
+            text = string.Concat(text.Where(c => ValidCharacters.Contains(c, StringComparison.Ordinal)));
         InsertAt(_cursor, text);
     }
 
@@ -290,7 +290,7 @@ public class UITextEdit : UIWidget
     public void AppendText(string text)
     {
         if (!IsEditable || string.IsNullOrEmpty(text)) return;
-        if (HasSelection) DeleteSelection();
+        // Paste handles selection deletion and ValidCharacters filtering
         Paste(text);
     }
 
@@ -386,10 +386,14 @@ public class UITextEdit : UIWidget
                 break;
 
             case Input.Key.C when ctrl:
+                // Copy selected text.  System-clipboard integration is outside
+                // this layer — callers can subscribe to OnTextChanged or read
+                // Copy() directly when clipboard support is needed.
                 _ = Copy();
                 break;
 
             case Input.Key.X when ctrl:
+                // Cut selected text (same clipboard note as Ctrl+C above).
                 _ = CutSelection();
                 break;
         }
