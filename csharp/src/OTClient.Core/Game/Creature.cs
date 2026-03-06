@@ -100,6 +100,20 @@ public class Creature : Thing
 // ─── Player ───────────────────────────────────────────────────────────────────
 
 /// <summary>
+/// Combat skill identifiers matching the Tibia protocol skill ordering.
+/// </summary>
+public enum SkillType : int
+{
+    Fist      = 0,
+    Club      = 1,
+    Sword     = 2,
+    Axe       = 3,
+    Distance  = 4,
+    Shielding = 5,
+    Fishing   = 6,
+}
+
+/// <summary>
 /// A player-controlled creature.  Carries stat & skill info.
 /// Maps to <c>src/client/player.h</c>.
 /// Task 8.9.
@@ -108,8 +122,9 @@ public class Player : Creature
 {
     // ─── Level & experience ───────────────────────────────────────────────────
 
-    public int   Level  { get; set; } = 1;
-    public ulong Exp    { get; set; }
+    public int   Level        { get; set; } = 1;
+    public int   LevelPercent { get; set; }
+    public ulong Exp          { get; set; }
 
     // ─── Stats ────────────────────────────────────────────────────────────────
 
@@ -118,6 +133,32 @@ public class Player : Creature
 
     public int MaxCapacity   { get; set; } = 400;
     public int UsedCapacity  { get; set; }
+    public int FreeCapacity  { get; set; }
+
+    // ─── Magic level ──────────────────────────────────────────────────────────
+
+    public int MagicLevel        { get; set; }
+    public int MagicLevelPercent { get; set; }
+
+    // ─── Combat skills ────────────────────────────────────────────────────────
+
+    private static readonly int SkillCount = Enum.GetValues<SkillType>().Length;
+
+    private readonly int[] _skillLevel   = new int[Enum.GetValues<SkillType>().Length];
+    private readonly int[] _skillPercent = new int[Enum.GetValues<SkillType>().Length];
+
+    /// <summary>Returns the level of a combat skill.</summary>
+    public int GetSkillLevel(SkillType skill)   => _skillLevel[(int)skill];
+
+    /// <summary>Returns the percent progress (0–100) of a combat skill.</summary>
+    public int GetSkillPercent(SkillType skill) => _skillPercent[(int)skill];
+
+    /// <summary>Sets the level and percent progress of a combat skill.</summary>
+    public void SetSkill(SkillType skill, int level, int percent)
+    {
+        _skillLevel[(int)skill]   = level;
+        _skillPercent[(int)skill] = percent;
+    }
 
     // ─── Vocations ────────────────────────────────────────────────────────────
 
@@ -129,6 +170,15 @@ public class Player : Creature
 }
 
 // ─── LocalPlayer ──────────────────────────────────────────────────────────────
+
+/// <summary>Fight mode selected by the player.</summary>
+public enum FightMode : byte { Offensive = 1, Balanced = 2, Defensive = 3 }
+
+/// <summary>Chase mode selected by the player.</summary>
+public enum ChaseMode : byte { ChaseOpponent = 0, DontChase = 1 }
+
+/// <summary>PvP mode (available in newer protocols).</summary>
+public enum PvpMode : byte { WhiteDove = 0, WhiteHand = 1, YellowHand = 2, RedFist = 3 }
 
 /// <summary>
 /// The character controlled by the logged-in client — extends
@@ -146,6 +196,13 @@ public sealed class LocalPlayer : Player
     // ─── Condition flags ──────────────────────────────────────────────────────
 
     public uint Conditions   { get; set; }
+
+    // ─── Combat modes ─────────────────────────────────────────────────────────
+
+    public FightMode FightMode { get; set; } = FightMode.Balanced;
+    public ChaseMode ChaseMode { get; set; } = ChaseMode.DontChase;
+    public bool      SafeMode  { get; set; } = true;
+    public PvpMode   PvpMode   { get; set; } = PvpMode.WhiteDove;
 
     // ─── Premium ──────────────────────────────────────────────────────────────
 

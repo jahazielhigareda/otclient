@@ -46,6 +46,10 @@ public enum GameServerPacket : byte
     AddCreature   = 0x6A,
     RemoveCreature= 0x6B,
     MoveCreature  = 0x6C,
+    PlayerData    = 0xA0,   // parsePlayerStats
+    PlayerSkills  = 0xA1,   // parsePlayerSkills
+    PlayerState   = 0xA2,   // parsePlayerState
+    PlayerModes   = 0xA7,   // parsePlayerModes
     TextMessage   = 0xB4,
     PlayerSpeech  = 0x96,
 }
@@ -130,6 +134,31 @@ public sealed partial class ProtocolGame : Protocol
     /// <summary>A creature spoke in-game.</summary>
     public event Action<string, ChatMode, string>? SpeechReceived;
 
+    /// <summary>
+    /// Raised when the server sends updated player stat values.
+    /// Parameters: (health, maxHealth, mana, maxMana, freeCapacity, experience, level, levelPercent, stamina, soul)
+    /// </summary>
+    public event Action<int, int, int, int, int, ulong, int, int, int, int>? PlayerStatsUpdated;
+
+    /// <summary>
+    /// Raised when the server sends updated player skill values.
+    /// Parameters: (magicLevel, magicLevelPercent, fist, club, sword, axe, distance, shielding, fishing)
+    /// — all skill values are level only; percent for combat skills is also included in a separate event arg.
+    /// </summary>
+    public event Action<int, int, int[], int[]>? PlayerSkillsUpdated;
+
+    /// <summary>
+    /// Raised when the server sends updated player condition flags.
+    /// Parameter: bitmask of active conditions.
+    /// </summary>
+    public event Action<uint>? PlayerStateUpdated;
+
+    /// <summary>
+    /// Raised when the server sends updated player combat modes.
+    /// Parameters: (fightMode, chaseMode, safeMode, pvpMode)
+    /// </summary>
+    public event Action<Game.FightMode, Game.ChaseMode, bool, Game.PvpMode>? PlayerModesUpdated;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -146,6 +175,10 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.InitGame,       ParseInitGame);
         RegisterHandler((byte)GameServerPacket.TextMessage,    ParseTextMessage);
         RegisterHandler((byte)GameServerPacket.PlayerSpeech,   ParsePlayerSpeech);
+        RegisterHandler((byte)GameServerPacket.PlayerData,     ParsePlayerStats);
+        RegisterHandler((byte)GameServerPacket.PlayerSkills,   ParsePlayerSkills);
+        RegisterHandler((byte)GameServerPacket.PlayerState,    ParsePlayerState);
+        RegisterHandler((byte)GameServerPacket.PlayerModes,    ParsePlayerModes);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

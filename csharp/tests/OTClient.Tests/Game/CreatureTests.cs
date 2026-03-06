@@ -108,4 +108,47 @@ public sealed class CreatureTests
     {
         Assert.False(new LocalPlayer().IsKnown);
     }
+
+    // ─── Player skill fields (T05) ────────────────────────────────────────────
+
+    [Fact]
+    public void Player_FreeCapacity_DefaultZero()
+    {
+        Assert.Equal(0, new Player().FreeCapacity);
+    }
+
+    [Fact]
+    public void Player_SetSkill_GetSkill_RoundTrips()
+    {
+        var p = new Player();
+        p.SetSkill(SkillType.Sword, 42, 75);
+        Assert.Equal(42, p.GetSkillLevel(SkillType.Sword));
+        Assert.Equal(75, p.GetSkillPercent(SkillType.Sword));
+    }
+
+    [Fact]
+    public void Player_DefaultSkill_IsZero()
+    {
+        var p = new Player();
+        Assert.Equal(0, p.GetSkillLevel(SkillType.Fist));
+        Assert.Equal(0, p.GetSkillPercent(SkillType.Fist));
+    }
+
+    [Fact]
+    public void LocalPlayer_DefaultFightMode_IsBalanced()
+    {
+        Assert.Equal(FightMode.Balanced, new LocalPlayer().FightMode);
+    }
+
+    [Fact]
+    public void LocalPlayer_DefaultChaseMode_IsDontChase()
+    {
+        Assert.Equal(ChaseMode.DontChase, new LocalPlayer().ChaseMode);
+    }
+
+    [Fact]
+    public void LocalPlayer_DefaultSafeMode_IsTrue()
+    {
+        Assert.True(new LocalPlayer().SafeMode);
+    }
 }

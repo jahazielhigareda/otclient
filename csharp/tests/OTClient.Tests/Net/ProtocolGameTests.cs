@@ -282,6 +282,179 @@ public sealed class ProtocolGameTests
         Assert.Equal(3,    payload[2]);   // North = 3 in auto-walk wire encoding
     }
 
+    // ─── T05: ParsePlayerStats ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerStats_InvokesEvent_WithCorrectValues()
+    {
+        using var pg = new ProtocolGame();
+
+        int    health = 0, maxHealth = 0, mana = 0, maxMana = 0, freeCap = 0;
+        ulong  exp    = 0;
+        int    level  = 0, lvlPct = 0, stamina = 0, soul = 0;
+
+        pg.PlayerStatsUpdated += (h, mh, mn, mmn, fc, e, lv, lp, st, so) =>
+        {
+            health = h; maxHealth = mh; mana = mn; maxMana = mmn;
+            freeCap = fc; exp = e; level = lv; lvlPct = lp;
+            stamina = st; soul = so;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerData);
+        // health/maxHealth U32
+        out_.WriteU32(450);   // health
+        out_.WriteU32(500);   // maxHealth
+        // freeCapacity U32 (scaled by 100)
+        out_.WriteU32(40000); // 400.00 = 400
+        // experience U64
+        out_.WriteU32(1000); out_.WriteU32(0); // 1000 exp (lo+hi)
+        // level U16, levelPercent U8
+        out_.WriteU16(10);
+        out_.WriteU8(75);
+        // xp bonus fields: baseXpGain, grindingAddend, storeBoost, huntingFactor
+        out_.WriteU16(100); out_.WriteU16(0); out_.WriteU16(0); out_.WriteU16(100);
+        // mana/maxMana U32
+        out_.WriteU32(200); out_.WriteU32(300);
+        // soul U8, stamina U16
+        out_.WriteU8(90);
+        out_.WriteU16(2000);
+        // baseSpeed U16, regeneration U16, offlineTraining U16
+        out_.WriteU16(220); out_.WriteU16(60); out_.WriteU16(0);
+        // xpBoostTime U16, enableXpBoostStore U8
+        out_.WriteU16(0); out_.WriteU8(0);
+        // manaShield U32, maxManaShield U32
+        out_.WriteU32(0); out_.WriteU32(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(450,   health);
+        Assert.Equal(500,   maxHealth);
+        Assert.Equal(200,   mana);
+        Assert.Equal(300,   maxMana);
+        Assert.Equal(400,   freeCap);
+        Assert.Equal(1000UL, exp);
+        Assert.Equal(10,    level);
+        Assert.Equal(75,    lvlPct);
+        Assert.Equal(2000,  stamina);
+        Assert.Equal(90,    soul);
+    }
+
+    // ─── T05: ParsePlayerSkills ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerSkills_InvokesEvent_WithMagicAndSkills()
+    {
+        using var pg = new ProtocolGame();
+
+        int magicLv = 0, magicPct = 0;
+        int[]? levels = null, percents = null;
+
+        pg.PlayerSkillsUpdated += (ml, mp, lvs, pcts) =>
+        {
+            magicLv = ml; magicPct = mp; levels = lvs; percents = pcts;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerSkills);
+        // magic level: level U16, base U16, loyalty U16, percent U16
+        out_.WriteU16(5);    // magicLevel
+        out_.WriteU16(5);    // baseMagicLevel
+        out_.WriteU16(0);    // loyalty bonus
+        out_.WriteU16(3400); // 34% (3400/100)
+        // 7 combat skills: level U16, base U16, loyalty U16, percent U16
+        for (int i = 0; i < 7; i++)
+        {
+            out_.WriteU16((ushort)(10 + i)); // level
+            out_.WriteU16((ushort)(10 + i)); // base
+            out_.WriteU16(0);                // loyalty
+            out_.WriteU16((ushort)(5000));   // 50%
+        }
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(5,  magicLv);
+        Assert.Equal(34, magicPct);
+        Assert.NotNull(levels);
+        Assert.Equal(7, levels!.Length);
+        Assert.Equal(10, levels[0]);   // Fist
+        Assert.Equal(50, percents![0]);
+    }
+
+    // ─── T05: ParsePlayerState ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerState_InvokesEvent_WithStateBitmask()
+    {
+        using var pg = new ProtocolGame();
+
+        uint receivedState = 0;
+        pg.PlayerStateUpdated += s => receivedState = s;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerState);
+        out_.WriteU32(0b0101); // two condition flags set
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0b0101u, receivedState);
+    }
+
+    // ─── T05: ParsePlayerModes ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerModes_InvokesEvent_WithAllModes()
+    {
+        using var pg = new ProtocolGame();
+
+        OTClient.Framework.Game.FightMode fm = default;
+        OTClient.Framework.Game.ChaseMode cm = default;
+        bool safe = false;
+        OTClient.Framework.Game.PvpMode pm = default;
+
+        pg.PlayerModesUpdated += (f, c, s, p) => { fm = f; cm = c; safe = s; pm = p; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerModes);
+        out_.WriteU8((byte)OTClient.Framework.Game.FightMode.Offensive);
+        out_.WriteU8((byte)OTClient.Framework.Game.ChaseMode.ChaseOpponent);
+        out_.WriteU8(0);   // safeMode = false
+        out_.WriteU8((byte)OTClient.Framework.Game.PvpMode.WhiteHand);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(OTClient.Framework.Game.FightMode.Offensive,    fm);
+        Assert.Equal(OTClient.Framework.Game.ChaseMode.ChaseOpponent, cm);
+        Assert.False(safe);
+        Assert.Equal(OTClient.Framework.Game.PvpMode.WhiteHand, pm);
+    }
+
+    // ─── T05: New GameServerPacket opcodes ────────────────────────────────────
+
+    [Fact]
+    public void GameServerPacket_PlayerData_Is0xA0()
+    {
+        Assert.Equal(0xA0, (byte)GameServerPacket.PlayerData);
+    }
+
+    [Fact]
+    public void GameServerPacket_PlayerSkills_Is0xA1()
+    {
+        Assert.Equal(0xA1, (byte)GameServerPacket.PlayerSkills);
+    }
+
+    [Fact]
+    public void GameServerPacket_PlayerState_Is0xA2()
+    {
+        Assert.Equal(0xA2, (byte)GameServerPacket.PlayerState);
+    }
+
+    [Fact]
+    public void GameServerPacket_PlayerModes_Is0xA7()
+    {
+        Assert.Equal(0xA7, (byte)GameServerPacket.PlayerModes);
+    }
+
     // ─── Helper to invoke the protected HandleRawData method ──────────────────
 
     private static void InvokeHandleRawData(ProtocolGame pg, byte[] data)

@@ -164,7 +164,7 @@ public sealed partial class ProtocolGame
     }
 
     // Direction wire bytes used in the AutoWalk packet (Tibia protocol encoding).
-    // These differ from the <see cref="Direction"/> enum values.
+    // These differ from the Direction enum values.
     private static readonly Dictionary<Direction, byte> AutoWalkByte = new()
     {
         { Direction.East,      1 },
