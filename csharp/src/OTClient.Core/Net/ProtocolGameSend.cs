@@ -455,4 +455,33 @@ public sealed partial class ProtocolGame
         msg.WriteU8((byte)GameClientPacket.RejectTrade);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── VIP management (T21) ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a request to add a player to the VIP (friends) list.
+    /// Maps to <c>ProtocolGame::sendAddVip</c>.
+    /// Task T21.
+    /// </summary>
+    public void SendAddVip(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AddVip);
+        msg.WriteString(name);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to remove a player from the VIP (friends) list.
+    /// Maps to <c>ProtocolGame::sendRemoveVip</c>.
+    /// Task T21.
+    /// </summary>
+    public void SendRemoveVip(uint id)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RemoveVip);
+        msg.WriteU32(id);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

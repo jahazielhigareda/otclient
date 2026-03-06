@@ -545,4 +545,38 @@ public sealed class Game
         if (!IsOnline) return;
         RejectTradeRequested?.Invoke();
     }
+
+    // ─── VIP management (T21) ─────────────────────────────────────────────────
+
+    /// <summary>Raised to request adding a player to the VIP list.</summary>
+    public event Action<string>? AddVipRequested;   // name
+
+    /// <summary>Raised to request removing a player from the VIP list.</summary>
+    public event Action<uint>? RemoveVipRequested;  // id
+
+    /// <summary>
+    /// Adds a player to the VIP (friends) list.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="AddVipRequested"/>.
+    /// Maps to <c>Game::addVip()</c>.
+    /// Task T21.
+    /// </summary>
+    public void AddVip(string name)
+    {
+        if (!IsOnline) return;
+        AddVipRequested?.Invoke(name);
+    }
+
+    /// <summary>
+    /// Removes a player from the VIP (friends) list by their creature ID.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="RemoveVipRequested"/>.
+    /// Maps to <c>Game::removeVip()</c>.
+    /// Task T21.
+    /// </summary>
+    public void RemoveVip(uint id)
+    {
+        if (!IsOnline) return;
+        RemoveVipRequested?.Invoke(id);
+    }
 }

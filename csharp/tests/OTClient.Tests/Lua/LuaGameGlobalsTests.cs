@@ -175,6 +175,194 @@ public sealed class LuaGameGlobalsTests : IDisposable
         Assert.True(result.Boolean);
     }
 
+    // ─── g_game T21: movement methods ─────────────────────────────────────────
+
+    [Fact]
+    public void G_Game_Walk_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.walk(0) return true");   // 0 = North
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_Turn_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.turn(1) return true");   // 1 = East
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_Stop_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.stop() return true");
+        Assert.True(result.Boolean);
+    }
+
+    // ─── g_game T21: combat methods ───────────────────────────────────────────
+
+    [Fact]
+    public void G_Game_Attack_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.attack(42) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_Follow_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.follow(99) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_CancelAttack_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.cancelAttack() return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_CancelFollow_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.cancelFollow() return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_CancelAttackAndFollow_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.cancelAttackAndFollow() return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_SetFightModes_WhenOffline_DoesNotThrow()
+    {
+        // fightMode=1(Offensive), chaseMode=0(DontChase), safeFight=false
+        var result = _lua.DoString("g_game.setFightModes(1, 0, false) return true");
+        Assert.True(result.Boolean);
+    }
+
+    // ─── g_game T21: chat methods ─────────────────────────────────────────────
+
+    [Fact]
+    public void G_Game_Talk_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.talk('hello world') return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_TalkChannel_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.talkChannel(5, 'msg') return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_TalkPrivate_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.talkPrivate('Alice', 'hi') return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_RequestChannels_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.requestChannels() return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_JoinChannel_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.joinChannel(5) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_LeaveChannel_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.leaveChannel(5) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_OpenPrivateChannel_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.openPrivateChannel('Bob') return true");
+        Assert.True(result.Boolean);
+    }
+
+    // ─── g_game T21: NPC trade methods ────────────────────────────────────────
+
+    [Fact]
+    public void G_Game_InspectNpcTrade_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.inspectNpcTrade(2400, 1) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_BuyItem_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.buyItem(100, 1, 5, false, false) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_SellItem_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.sellItem(200, 0, 3, false) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_CloseNpcTrade_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.closeNpcTrade() return true");
+        Assert.True(result.Boolean);
+    }
+
+    // ─── g_game T21: player trade methods ─────────────────────────────────────
+
+    [Fact]
+    public void G_Game_InspectTrade_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.inspectTrade(false, 0) return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_AcceptTrade_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.acceptTrade() return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_RejectTrade_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.rejectTrade() return true");
+        Assert.True(result.Boolean);
+    }
+
+    // ─── g_game T21: VIP methods ──────────────────────────────────────────────
+
+    [Fact]
+    public void G_Game_AddVip_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.addVip('Alice') return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Game_RemoveVip_WhenOffline_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_game.removeVip(12345) return true");
+        Assert.True(result.Boolean);
+    }
+
     // ─── g_map (6.10) ────────────────────────────────────────────────────────
 
     [Fact]

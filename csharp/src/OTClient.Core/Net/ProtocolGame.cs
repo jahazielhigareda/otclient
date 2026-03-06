@@ -42,6 +42,8 @@ public enum GameClientPacket : byte
     InspectTrade       = 0x7E,   // ClientInspectTrade (126)      — T16
     AcceptTrade        = 0x7F,   // ClientAcceptTrade (127)       — T16
     RejectTrade        = 0x80,   // ClientRejectTrade (128)       — T16
+    AddVip             = 0xDC,   // ClientAddVip (220)            — T21
+    RemoveVip          = 0xDD,   // ClientRemoveVip (221)         — T21
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>

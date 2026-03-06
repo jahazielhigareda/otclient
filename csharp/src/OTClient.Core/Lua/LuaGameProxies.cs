@@ -202,6 +202,132 @@ public sealed class LuaGameProxy
 
     [LuaMethod] public bool isGM()               => false;
     [LuaMethod] public bool hasFeature(string f) => false;
+
+    // ─── Movement (T06/T07) ───────────────────────────────────────────────────
+
+    /// <summary>Walk in a direction. <paramref name="dir"/> is the Tibia wire byte (0=N,1=E,2=S,3=W…).</summary>
+    [LuaMethod] public void walk(int dir)     => _game.Walk((Game.Direction)dir);
+
+    /// <summary>Turn to face a direction without moving.</summary>
+    [LuaMethod] public void turn(int dir)     => _game.Turn((Game.Direction)dir);
+
+    /// <summary>Stops all movement.</summary>
+    [LuaMethod] public void stop()            => _game.Stop();
+
+    // ─── Combat (T12) ─────────────────────────────────────────────────────────
+
+    /// <summary>Attacks the creature with the given creature ID.</summary>
+    [LuaMethod] public void attack(uint creatureId)  => _game.Attack(creatureId);
+
+    /// <summary>Follows the creature with the given creature ID.</summary>
+    [LuaMethod] public void follow(uint creatureId)  => _game.Follow(creatureId);
+
+    /// <summary>Cancels the current attack.</summary>
+    [LuaMethod] public void cancelAttack()           => _game.CancelAttack();
+
+    /// <summary>Cancels the current follow target.</summary>
+    [LuaMethod] public void cancelFollow()           => _game.CancelFollow();
+
+    /// <summary>Cancels both attack and follow at once.</summary>
+    [LuaMethod] public void cancelAttackAndFollow()  => _game.CancelAttackAndFollow();
+
+    /// <summary>
+    /// Updates fight/chase/safe/PvP mode settings.
+    /// <paramref name="fightMode"/>: 1=Offensive, 2=Balanced, 3=Defensive.
+    /// <paramref name="chaseMode"/>: 0=DontChase, 1=ChaseOpponent.
+    /// <paramref name="pvpMode"/>: 0=WhiteDove (default), 1=WhiteHand, 2=YellowHand, 3=RedFist.
+    /// Defaults to <c>pvpMode = 0</c> (WhiteDove) matching the C++ default.
+    /// </summary>
+    [LuaMethod]
+    public void setFightModes(int fightMode, int chaseMode, bool safeFight, int pvpMode = 0)
+        => _game.SetFightModes(
+            (Game.FightMode)fightMode,
+            (Game.ChaseMode)chaseMode,
+            safeFight,
+            (Game.PvpMode)pvpMode);
+
+    // ─── Chat (T09/T10) ───────────────────────────────────────────────────────
+
+    /// <summary>Says a message in the default channel.</summary>
+    [LuaMethod] public void talk(string message)
+        => _game.TalkSay(message);
+
+    /// <summary>Sends a message to a channel by ID.</summary>
+    [LuaMethod] public void talkChannel(int channelId, string message)
+        => _game.TalkChannel((ushort)channelId, message);
+
+    /// <summary>Sends a private message to a player.</summary>
+    [LuaMethod] public void talkPrivate(string receiver, string message)
+        => _game.TalkPrivate(receiver, message);
+
+    /// <summary>Requests the list of available channels.</summary>
+    [LuaMethod] public void requestChannels()
+        => _game.RequestChannels();
+
+    /// <summary>Joins a channel by ID.</summary>
+    [LuaMethod] public void joinChannel(int channelId)
+        => _game.JoinChannel((ushort)channelId);
+
+    /// <summary>Leaves a channel by ID.</summary>
+    [LuaMethod] public void leaveChannel(int channelId)
+        => _game.LeaveChannel((ushort)channelId);
+
+    /// <summary>Opens a private chat channel with a player.</summary>
+    [LuaMethod] public void openPrivateChannel(string player)
+        => _game.OpenPrivateChannel(player);
+
+    // ─── NPC trade (T15) ──────────────────────────────────────────────────────
+
+    /// <summary>Requests detailed info for an NPC trade item.</summary>
+    [LuaMethod] public void inspectNpcTrade(int itemId, int count = 1)
+        => _game.InspectNpcTrade(itemId, count);
+
+    /// <summary>Buys an item from the active NPC.</summary>
+    [LuaMethod] public void buyItem(int itemId, int subType, int amount,
+        bool ignoreCapacity = false, bool buyWithBackpack = false)
+        => _game.BuyItem(itemId, subType, amount, ignoreCapacity, buyWithBackpack);
+
+    /// <summary>Sells an item to the active NPC.</summary>
+    [LuaMethod] public void sellItem(int itemId, int subType, int amount,
+        bool ignoreEquipped = false)
+        => _game.SellItem(itemId, subType, amount, ignoreEquipped);
+
+    /// <summary>Closes the active NPC trade window.</summary>
+    [LuaMethod] public void closeNpcTrade()
+        => _game.CloseNpcTrade();
+
+    // ─── Player-to-player trade (T16) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Initiates a player trade for the item at the given world position.
+    /// Parameters: <paramref name="x"/>/<paramref name="y"/>/<paramref name="z"/> — world position of the item;
+    /// <paramref name="itemId"/> — item type ID; <paramref name="stackPos"/> — stack position on tile;
+    /// <paramref name="creatureId"/> — target player creature ID.
+    /// </summary>
+    [LuaMethod] public void requestTrade(int x, int y, int z, int itemId, int stackPos, uint creatureId)
+        => _game.RequestTrade(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos, creatureId);
+
+    /// <summary>Inspects a slot in the current trade (own or partner).</summary>
+    [LuaMethod] public void inspectTrade(bool counterOffer, int index)
+        => _game.InspectTrade(counterOffer, index);
+
+    /// <summary>Accepts the current player trade.</summary>
+    [LuaMethod] public void acceptTrade()
+        => _game.AcceptTrade();
+
+    /// <summary>Rejects the current player trade.</summary>
+    [LuaMethod] public void rejectTrade()
+        => _game.RejectTrade();
+
+    // ─── VIP management (T21) ─────────────────────────────────────────────────
+
+    /// <summary>Adds a player to the VIP (friends) list.</summary>
+    [LuaMethod] public void addVip(string name)
+        => _game.AddVip(name);
+
+    /// <summary>Removes a player from the VIP (friends) list by creature ID.</summary>
+    [LuaMethod] public void removeVip(uint id)
+        => _game.RemoveVip(id);
 }
 
 // ─── g_map ────────────────────────────────────────────────────────────────────
