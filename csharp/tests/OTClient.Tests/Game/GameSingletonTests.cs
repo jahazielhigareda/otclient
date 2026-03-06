@@ -219,8 +219,12 @@ public sealed class GameSingletonTests
     {
         var mm  = new Minimap();
         var pos = new Position(10, 10, 7);
+        // Colors go through 8-bit palette quantisation (same as C++ Color::to8bit/from8bit)
+        // so exact round-trip is not guaranteed; we verify the tile is seen and non-black.
         mm.Record(pos, Raylib_cs.Color.Red);
-        Assert.Equal(Raylib_cs.Color.Red, mm.GetColor(pos));
+        var got = mm.GetColor(pos);
+        Assert.NotEqual(Raylib_cs.Color.Black, got);
+        Assert.True(got.R > 100); // clearly reddish
     }
 
     [Fact]
@@ -237,6 +241,186 @@ public sealed class GameSingletonTests
         var pos = new Position(5, 5, 7);
         mm.Record(pos, Raylib_cs.Color.White);
         Assert.True(mm.IsKnown(pos));
+    }
+
+    // ─── T18 Minimap extended ─────────────────────────────────────────────────
+
+    [Fact]
+    public void MinimapBlock_UpdateTile_RetrievesCorrectly()
+    {
+        var block = new MinimapBlock();
+        var td    = new MinimapTileData { Color = 42, Flags = MinimapTileFlags.WasSeen, Speed = 5 };
+        block.UpdateTile(3, 7, td);
+        Assert.Equal(td, block.GetTile(3, 7));
+    }
+
+    [Fact]
+    public void MinimapBlock_ResetTile_ReturnsDefault()
+    {
+        var block = new MinimapBlock();
+        block.UpdateTile(0, 0, new MinimapTileData { Color = 10 });
+        block.ResetTile(0, 0);
+        Assert.Equal(new MinimapTileData(), block.GetTile(0, 0));
+    }
+
+    [Fact]
+    public void MinimapBlock_IsDirty_AfterUpdateTileWithDifferentColor()
+    {
+        var block = new MinimapBlock();
+        block.ClearDirty();
+        block.UpdateTile(1, 1, new MinimapTileData { Color = 5 });
+        Assert.True(block.IsDirty);
+    }
+
+    [Fact]
+    public void MinimapBlock_WasSeen_AfterMarkSeen()
+    {
+        var block = new MinimapBlock();
+        Assert.False(block.WasSeen);
+        block.MarkSeen();
+        Assert.True(block.WasSeen);
+    }
+
+    [Fact]
+    public void MinimapTileData_Equality()
+    {
+        var a = new MinimapTileData { Color = 10, Flags = MinimapTileFlags.WasSeen, Speed = 2 };
+        var b = new MinimapTileData { Color = 10, Flags = MinimapTileFlags.WasSeen, Speed = 2 };
+        var c = new MinimapTileData { Color = 99 };
+        Assert.Equal(a, b);
+        Assert.NotEqual(a, c);
+        Assert.True(a == b);
+        Assert.True(a != c);
+    }
+
+    [Fact]
+    public void MinimapTileData_HasFlag_Works()
+    {
+        var td = new MinimapTileData { Flags = MinimapTileFlags.WasSeen | MinimapTileFlags.NotWalkable };
+        Assert.True(td.HasFlag(MinimapTileFlags.WasSeen));
+        Assert.True(td.HasFlag(MinimapTileFlags.NotWalkable));
+        Assert.False(td.HasFlag(MinimapTileFlags.NotPathable));
+    }
+
+    [Fact]
+    public void Minimap_Record_MakesIsKnownTrue()
+    {
+        var mm  = new Minimap();
+        var pos = new Position(100, 100, 7);
+        mm.Record(pos, Raylib_cs.Color.Green);
+        Assert.True(mm.IsKnown(pos));
+    }
+
+    [Fact]
+    public void Minimap_GetTile_UnseenReturnsDefault()
+    {
+        var mm  = new Minimap();
+        var td  = mm.GetTile(new Position(0, 0, 0));
+        Assert.False(td.HasFlag(MinimapTileFlags.WasSeen));
+    }
+
+    [Fact]
+    public void Minimap_GetTile_SeenAfterRecord()
+    {
+        var mm  = new Minimap();
+        var pos = new Position(5, 5, 7);
+        mm.Record(pos, Raylib_cs.Color.White);
+        var td  = mm.GetTile(pos);
+        Assert.True(td.HasFlag(MinimapTileFlags.WasSeen));
+    }
+
+    [Fact]
+    public void Minimap_Clear_ResetsKnownTiles()
+    {
+        var mm  = new Minimap();
+        var pos = new Position(1, 1, 7);
+        mm.Record(pos, Raylib_cs.Color.Red);
+        mm.Clear();
+        Assert.False(mm.IsKnown(pos));
+    }
+
+    [Fact]
+    public void Minimap_SaveAndLoad_RoundTrip()
+    {
+        var mm1 = new Minimap();
+        var pos = new Position(64, 128, 7);  // second block column, third block row
+        mm1.Record(pos, Raylib_cs.Color.Green);
+
+        using var ms = new System.IO.MemoryStream();
+        mm1.SaveOtmm(ms);
+        ms.Seek(0, System.IO.SeekOrigin.Begin);
+
+        var mm2 = new Minimap();
+        Assert.True(mm2.LoadOtmm(ms));
+        Assert.True(mm2.IsKnown(pos));
+    }
+
+    [Fact]
+    public void Minimap_LoadOtmm_InvalidSignature_ReturnsFalse()
+    {
+        using var ms = new System.IO.MemoryStream([0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        var mm = new Minimap();
+        Assert.False(mm.LoadOtmm(ms));
+    }
+
+    [Fact]
+    public void Minimap_GetTilePoint_SameFloor_ReturnsInsideRect()
+    {
+        var screenRect = new System.Drawing.Rectangle(0, 0, 200, 200);
+        var center     = new Position(100, 100, 7);
+        var pos        = new Position(100, 100, 7); // same as center → screen center
+        var pt = Minimap.GetTilePoint(pos, screenRect, center, scale: 1f);
+        Assert.Equal(100f, pt.X, 1f);
+        Assert.Equal(100f, pt.Y, 1f);
+    }
+
+    [Fact]
+    public void Minimap_GetTilePoint_DifferentFloor_ReturnsMinusOne()
+    {
+        var screenRect = new System.Drawing.Rectangle(0, 0, 200, 200);
+        var center     = new Position(100, 100, 7);
+        var pos        = new Position(100, 100, 6); // different floor
+        var pt = Minimap.GetTilePoint(pos, screenRect, center, scale: 1f);
+        Assert.Equal(-1, (int)pt.X);
+    }
+
+    [Fact]
+    public void Minimap_GetTilePosition_RoundTrip()
+    {
+        var screenRect = new System.Drawing.Rectangle(0, 0, 200, 200);
+        var center     = new Position(100, 100, 7);
+        var orig       = new Position(105, 97, 7);
+        var pt         = Minimap.GetTilePoint(orig, screenRect, center, scale: 1f);
+        var back       = Minimap.GetTilePosition(pt, screenRect, center, scale: 1f);
+        Assert.Equal(orig.X, back.X);
+        Assert.Equal(orig.Y, back.Y);
+        Assert.Equal(orig.Z, back.Z);
+    }
+
+    [Fact]
+    public void Minimap_GetTileRect_DifferentFloor_ReturnsEmpty()
+    {
+        var screenRect = new System.Drawing.Rectangle(0, 0, 200, 200);
+        var center     = new Position(100, 100, 7);
+        var pos        = new Position(100, 100, 6);
+        var r = Minimap.GetTileRect(pos, screenRect, center, scale: 2f);
+        Assert.Equal(System.Drawing.Rectangle.Empty, r);
+    }
+
+    [Fact]
+    public void MinimapBlock_ToBytes_CopyFromBytes_RoundTrip()
+    {
+        var b1 = new MinimapBlock();
+        b1.UpdateTile(0, 0, new MinimapTileData { Color = 7, Flags = MinimapTileFlags.WasSeen, Speed = 3 });
+        b1.UpdateTile(3, 5, new MinimapTileData { Color = 55, Flags = MinimapTileFlags.NotWalkable, Speed = 9 });
+
+        var bytes = b1.ToBytes();
+
+        var b2 = new MinimapBlock();
+        b2.CopyFromBytes(bytes);
+
+        Assert.Equal(b1.GetTile(0, 0), b2.GetTile(0, 0));
+        Assert.Equal(b1.GetTile(3, 5), b2.GetTile(3, 5));
     }
 
     // ─── PaperDoll ────────────────────────────────────────────────────────────

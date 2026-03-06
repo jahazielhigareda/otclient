@@ -1,46 +1,506 @@
+using System.IO;
+using System.Numerics;
 using Raylib_cs;
 
 namespace OTClient.Framework.Game;
 
+// ─── MinimapTileFlags ─────────────────────────────────────────────────────────
+
+/// <summary>
+/// Bitflags stored in every <see cref="MinimapTileData"/> cell.
+/// Mirrors <c>MinimapTileFlags</c> in <c>minimap.h</c>.
+/// Task T18.
+/// </summary>
+[Flags]
+public enum MinimapTileFlags : byte
+{
+    None          = 0,
+    WasSeen       = 1,
+    NotPathable   = 2,
+    NotWalkable   = 4,
+    Empty         = 8,
+}
+
+// ─── MinimapTileData ──────────────────────────────────────────────────────────
+
+/// <summary>
+/// Compact data stored for every visited tile (3 bytes, matching the C++ layout).
+/// <c>Color</c> = 8-bit palette index (255 = transparent/unknown).
+/// <c>Speed</c> = ground speed / 10, clamped to byte.
+/// Mirrors the C++ <c>MinimapTile</c> struct.
+/// Task T18.
+/// </summary>
+public struct MinimapTileData : IEquatable<MinimapTileData>
+{
+    /// <summary>8-bit palette colour index. 255 means "unseen" (transparent).</summary>
+    public byte Color = 255;
+    /// <summary>Bitflags — combination of <see cref="MinimapTileFlags"/>.</summary>
+    public MinimapTileFlags Flags = MinimapTileFlags.None;
+    /// <summary>Ground walk speed ÷ 10, clamped to [0,255].</summary>
+    public byte Speed = 10;
+
+    public MinimapTileData() { }
+
+    public readonly bool HasFlag(MinimapTileFlags flag) => (Flags & flag) != 0;
+    public readonly int  GetSpeed() => Speed * 10;
+
+    public readonly bool Equals(MinimapTileData other)
+        => Color == other.Color && Flags == other.Flags && Speed == other.Speed;
+    public override readonly bool Equals(object? obj) => obj is MinimapTileData m && Equals(m);
+    public override readonly int GetHashCode() => HashCode.Combine(Color, Flags, Speed);
+    public static bool operator ==(MinimapTileData a, MinimapTileData b) => a.Equals(b);
+    public static bool operator !=(MinimapTileData a, MinimapTileData b) => !a.Equals(b);
+}
+
+// ─── MinimapBlock ─────────────────────────────────────────────────────────────
+
+/// <summary>
+/// A 64×64 grid of <see cref="MinimapTileData"/> cells.
+/// Matches <c>MMBLOCK_SIZE = 64</c> and the C++ <c>MinimapBlock</c> class.
+/// Task T18.
+/// </summary>
+public sealed class MinimapBlock
+{
+    public const int BlockSize = 64;
+
+    private readonly MinimapTileData[] _tiles = new MinimapTileData[BlockSize * BlockSize];
+    private bool _wasSeen;
+    private bool _isDirty = true;
+
+    public bool WasSeen => _wasSeen;
+    public bool IsDirty => _isDirty;
+
+    private static int Index(int localX, int localY)
+        => (localY % BlockSize) * BlockSize + (localX % BlockSize);
+
+    /// <summary>Returns the tile at block-local coordinates.</summary>
+    public ref MinimapTileData GetTile(int localX, int localY)
+        => ref _tiles[Index(localX, localY)];
+
+    /// <summary>Updates the tile at block-local coordinates, marking dirty when colour changes.</summary>
+    public void UpdateTile(int localX, int localY, MinimapTileData tile)
+    {
+        int idx = Index(localX, localY);
+        if (_tiles[idx].Color != tile.Color) _isDirty = true;
+        _tiles[idx] = tile;
+    }
+
+    /// <summary>Resets the tile at block-local coordinates to default.</summary>
+    public void ResetTile(int localX, int localY) => _tiles[Index(localX, localY)] = new MinimapTileData();
+
+    /// <summary>Marks this block as having been visited.</summary>
+    public void MarkSeen() { _wasSeen = true; }
+
+    /// <summary>Signals that a render update is needed.</summary>
+    public void MarkDirty() => _isDirty = true;
+
+    /// <summary>Clears the dirty flag after a render flush.</summary>
+    public void ClearDirty() => _isDirty = false;
+
+    /// <summary>Clears all tile data and resets state.</summary>
+    public void Clean()
+    {
+        Array.Fill(_tiles, new MinimapTileData());
+        _isDirty  = false;
+        _wasSeen  = false;
+    }
+
+    /// <summary>Returns a read-only span over the raw tile array (for binary I/O).</summary>
+    internal ReadOnlySpan<MinimapTileData> GetRawSpan() => _tiles;
+
+    /// <summary>Copies raw bytes over the tile array (for binary I/O).</summary>
+    internal void CopyFromBytes(byte[] src)
+    {
+        // Each MinimapTileData = 3 bytes: Color, Flags, Speed
+        for (int i = 0; i < _tiles.Length && i * 3 + 2 < src.Length; i++)
+        {
+            _tiles[i].Color = src[i * 3];
+            _tiles[i].Flags = (MinimapTileFlags)src[i * 3 + 1];
+            _tiles[i].Speed = src[i * 3 + 2];
+        }
+    }
+
+    /// <summary>Serialises the tile array to a byte array (for binary I/O).</summary>
+    internal byte[] ToBytes()
+    {
+        var buf = new byte[_tiles.Length * 3];
+        for (int i = 0; i < _tiles.Length; i++)
+        {
+            buf[i * 3]     = _tiles[i].Color;
+            buf[i * 3 + 1] = (byte)_tiles[i].Flags;
+            buf[i * 3 + 2] = _tiles[i].Speed;
+        }
+        return buf;
+    }
+}
+
 // ─── Minimap ──────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Records minimap colours for visited tiles and provides fast lookup.
-/// Maps to <c>src/client/minimap.h</c>.
-/// Task 8.18.
+/// Records visited tile colours (and pathability metadata) across all floors,
+/// organised into 64×64 <see cref="MinimapBlock"/> cells for efficient I/O and
+/// rendering.  Provides OTMM binary load/save and coordinate-mapping helpers
+/// that mirror the C++ <c>Minimap</c> class.
+/// Maps to <c>src/client/minimap.h</c> and <c>src/client/minimap.cpp</c>.
+/// Task T18.
 /// </summary>
 public sealed class Minimap
 {
-    private readonly Dictionary<Position, Color> _colors = [];
+    // ─── Constants ────────────────────────────────────────────────────────────
 
-    /// <summary>Number of recorded tiles.</summary>
-    public int Count => _colors.Count;
+    public  const int    MaxFloors         = 16;            // floors 0–15
+    private const int    MapAxisSize       = 65536;          // total map size in tiles per axis
+    private const int    BlocksPerAxis     = MapAxisSize / MinimapBlock.BlockSize; // 1024
+    private const uint   OtmmSignature     = 0x4D4d544F;   // "OTMm"
+    private const ushort OtmmVersion       = 1;
+    private const ushort OtmmBlockSentinel = 65535;          // signals end-of-file in OTMM stream
+    private const int    SpeedDivisor      = 10;             // C++ MinimapTile::getSpeed() divisor
+    private const int    MaxSpeedValue     = 255;            // max byte value for speed field
 
-    /// <summary>Records the colour of a tile at <paramref name="pos"/>.</summary>
-    public void Record(Position pos, Color color) => _colors[pos] = color;
+    // ─── Storage: _blocks[floor][blockIndex] ──────────────────────────────────
 
-    /// <summary>Returns the recorded colour for <paramref name="pos"/>, or Black.</summary>
+    // Outer array is indexed by floor (0-15), inner dictionary by block index.
+    private readonly Dictionary<uint, MinimapBlock>[] _blocks =
+        Enumerable.Range(0, MaxFloors)
+                  .Select(_ => new Dictionary<uint, MinimapBlock>())
+                  .ToArray();
+
+    // ─── Legacy colour-only API (kept for backwards compat) ──────────────────
+
+    /// <summary>Total number of recorded tiles (all floors, legacy path only).</summary>
+    public int Count
+    {
+        get
+        {
+            int n = 0;
+            for (int z = 0; z < MaxFloors; z++)
+                foreach (var (_, b) in _blocks[z])
+                    foreach (var t in b.GetRawSpan())
+                        if (t.HasFlag(MinimapTileFlags.WasSeen)) n++;
+            return n;
+        }
+    }
+
+    /// <summary>Records the colour of a tile at <paramref name="pos"/> (legacy API).</summary>
+    public void Record(Position pos, Color color)
+    {
+        var td = new MinimapTileData
+        {
+            Color = RaylibColorTo8Bit(color),
+            Flags = MinimapTileFlags.WasSeen,
+            Speed = 10,
+        };
+        var (block, lx, ly) = GetOrCreateBlock(pos);
+        block.UpdateTile(lx, ly, td);
+        block.MarkSeen();
+    }
+
+    /// <summary>Returns the recorded colour for <paramref name="pos"/>, or Black (legacy API).</summary>
     public Color GetColor(Position pos)
-        => _colors.TryGetValue(pos, out var c) ? c : Color.Black;
+    {
+        var (block, lx, ly) = TryGetBlock(pos);
+        if (block is null) return Color.Black;
+        ref var t = ref block.GetTile(lx, ly);
+        return t.Color == 255 ? Color.Black : EightBitToRaylibColor(t.Color);
+    }
 
     /// <summary>Returns <c>true</c> when the tile has been visited.</summary>
-    public bool IsKnown(Position pos) => _colors.ContainsKey(pos);
+    public bool IsKnown(Position pos)
+    {
+        var (block, lx, ly) = TryGetBlock(pos);
+        if (block is null) return false;
+        return block.GetTile(lx, ly).HasFlag(MinimapTileFlags.WasSeen);
+    }
 
     /// <summary>Clears all recorded tiles.</summary>
-    public void Clear() => _colors.Clear();
+    public void Clear()
+    {
+        for (int z = 0; z < MaxFloors; z++) _blocks[z].Clear();
+    }
 
-    /// <summary>Transfers tile colours from a map's visible tiles.</summary>
+    // ─── Tile update from map ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Updates the minimap tile at <paramref name="pos"/> from a map <see cref="Tile"/>.
+    /// Passing <c>null</c> marks the position as not-walkable / not-pathable.
+    /// Maps to <c>Minimap::updateTile</c>.
+    /// </summary>
+    public void UpdateTile(Position pos, Tile? tile)
+    {
+        var td = new MinimapTileData();
+        if (tile is not null)
+        {
+            td.Color  = RaylibColorTo8Bit(tile.MinimapColor);
+            td.Flags  = MinimapTileFlags.WasSeen;
+            td.Speed  = (byte)Math.Min(Math.Max(1, (tile.GetGroundSpeed() + SpeedDivisor - 1) / SpeedDivisor), MaxSpeedValue);
+        }
+        else
+        {
+            td.Flags  = MinimapTileFlags.NotWalkable | MinimapTileFlags.NotPathable;
+        }
+
+        var (block, lx, ly) = GetOrCreateBlock(pos);
+        block.UpdateTile(lx, ly, td);
+        block.MarkSeen();
+    }
+
+    /// <summary>
+    /// Bulk-imports tile colours from all known tiles in <paramref name="map"/> (legacy helper).
+    /// </summary>
     public void Update(Map map)
     {
         ArgumentNullException.ThrowIfNull(map);
-        foreach (var (pos, tile) in map.KnownCreatures.Select(kv => (kv.Value.Position, (Tile?)null)))
-            _ = pos; // creatures don't have minimap colour — handled by tile below
+        foreach (var t in map.GetViewport(0, 0, Position.GroundFloor, int.MaxValue, int.MaxValue))
+            Record(t.Position, t.MinimapColor);
+    }
 
-        // Record ground colour for each tile
-        foreach (var tile in map.GetViewport(0, 0, Position.GroundFloor, int.MaxValue, int.MaxValue))
-            Record(tile.Position, tile.MinimapColor);
+    // ─── Tile access ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the <see cref="MinimapTileData"/> for the given map position.
+    /// Returns a default (unseen) tile when the position is not known.
+    /// </summary>
+    public MinimapTileData GetTile(Position pos)
+    {
+        var (block, lx, ly) = TryGetBlock(pos);
+        return block is null ? new MinimapTileData() : block.GetTile(lx, ly);
+    }
+
+    // ─── Coordinate mapping ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Maps a world <see cref="Position"/> to a pixel point inside
+    /// <paramref name="screenRect"/>, given that <paramref name="mapCenter"/>
+    /// is drawn at the centre of the rect at <paramref name="scale"/> px/tile.
+    /// Returns <c>(-1,-1)</c> when the position is on a different floor.
+    /// Mirrors <c>Minimap::getTilePoint</c>.
+    /// </summary>
+    public static Vector2 GetTilePoint(
+        Position pos,
+        System.Drawing.Rectangle screenRect,
+        Position mapCenter,
+        float scale)
+    {
+        if (pos.Z != mapCenter.Z) return new Vector2(-1, -1);
+
+        var mapRect  = CalcMapRect(screenRect, mapCenter, scale);
+        var offX     = (mapRect.Width  * scale - screenRect.Width)  / 2f;
+        var offY     = (mapRect.Height * scale - screenRect.Height) / 2f;
+        var posOffX  = (pos.X - mapRect.X) * scale;
+        var posOffY  = (pos.Y - mapRect.Y) * scale;
+        return new Vector2(
+            posOffX + screenRect.X - offX + scale / 2f,
+            posOffY + screenRect.Y - offY + scale / 2f);
+    }
+
+    /// <summary>
+    /// Converts a pixel <paramref name="point"/> inside <paramref name="screenRect"/>
+    /// back to a world <see cref="Position"/> on the same floor as
+    /// <paramref name="mapCenter"/>.
+    /// Mirrors <c>Minimap::getTilePosition</c>.
+    /// </summary>
+    public static Position GetTilePosition(
+        Vector2 point,
+        System.Drawing.Rectangle screenRect,
+        Position mapCenter,
+        float scale)
+    {
+        var mapRect = CalcMapRect(screenRect, mapCenter, scale);
+        var offX    = (mapRect.Width  * scale - screenRect.Width)  / 2f;
+        var offY    = (mapRect.Height * scale - screenRect.Height) / 2f;
+        int x       = (int)((point.X - screenRect.X + offX) / scale) + mapRect.X;
+        int y       = (int)((point.Y - screenRect.Y + offY) / scale) + mapRect.Y;
+        return new Position(x, y, mapCenter.Z);
+    }
+
+    /// <summary>
+    /// Returns the screen-space rectangle that the tile at <paramref name="pos"/>
+    /// occupies on the minimap display.
+    /// Mirrors <c>Minimap::getTileRect</c>.
+    /// </summary>
+    public static System.Drawing.Rectangle GetTileRect(
+        Position pos,
+        System.Drawing.Rectangle screenRect,
+        Position mapCenter,
+        float scale)
+    {
+        if (pos.Z != mapCenter.Z) return System.Drawing.Rectangle.Empty;
+        var center = GetTilePoint(pos, screenRect, mapCenter, scale);
+        int tileSize = Math.Max(1, (int)scale);
+        return new System.Drawing.Rectangle(
+            (int)(center.X - tileSize / 2f),
+            (int)(center.Y - tileSize / 2f),
+            tileSize, tileSize);
+    }
+
+    // ─── OTMM binary I/O ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads a binary <c>.otmm</c> minimap file into this instance.
+    /// The OTMM format: U32 signature, U16 data-start offset, U16 version,
+    /// U32 flags, then version-specific header, then block records until
+    /// an invalid position (x=65535 or z≥MaxFloors) is encountered.
+    /// Each block record: U16 x, U16 y, U8 z, then raw tile bytes
+    /// (64×64×3 = 12288 bytes, uncompressed for portability).
+    /// Mirrors <c>Minimap::loadOtmm</c>.
+    /// </summary>
+    public bool LoadOtmm(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        try
+        {
+            using var r = new BinaryReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+
+            uint sig = r.ReadUInt32();
+            if (sig != OtmmSignature) return false;
+
+            ushort dataStart = r.ReadUInt16();
+            ushort version   = r.ReadUInt16();
+            _ = r.ReadUInt32(); // flags (reserved)
+
+            if (version != 1) return false;
+
+            _ = r.ReadString(); // description
+
+            stream.Seek(dataStart, SeekOrigin.Begin);
+
+            while (stream.Position < stream.Length - 4)
+            {
+                ushort px = r.ReadUInt16();
+                ushort py = r.ReadUInt16();
+                byte   pz = r.ReadByte();
+
+                if (px >= OtmmBlockSentinel || pz >= MaxFloors) break; // sentinel
+
+                ushort len  = r.ReadUInt16();
+                byte[] data = r.ReadBytes(len);
+
+                var pos   = new Position(px, py, pz);
+                var (block, _, _) = GetOrCreateBlock(pos);
+                block.CopyFromBytes(data);
+                block.MarkDirty();
+                block.MarkSeen();
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Saves all visited minimap blocks to <paramref name="stream"/> in OTMM format.
+    /// Mirrors <c>Minimap::saveOtmm</c>.
+    /// </summary>
+    public void SaveOtmm(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        using var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+
+        // Header
+        w.Write(OtmmSignature);          // U32 signature
+        long startFieldPos = stream.Position;
+        w.Write((ushort)0);              // U16 data-start (placeholder)
+        w.Write(OtmmVersion);            // U16 version
+        w.Write((uint)0);               // U32 flags (reserved)
+        w.Write("OTMM 1.0");            // description
+
+        // Record actual start and rewrite placeholder
+        uint dataStart = (uint)stream.Position;
+        long savedPos  = stream.Position;
+        stream.Seek(startFieldPos, SeekOrigin.Begin);
+        w.Write((ushort)dataStart);
+        stream.Seek(savedPos, SeekOrigin.Begin);
+
+        // Block records
+        for (int z = 0; z < MaxFloors; z++)
+        {
+            foreach (var (blockIndex, block) in _blocks[z])
+            {
+                if (!block.WasSeen) continue;
+
+                var pos = IndexToPosition(blockIndex, z);
+                w.Write((ushort)pos.X);
+                w.Write((ushort)pos.Y);
+                w.Write((byte)pos.Z);
+
+                byte[] data = block.ToBytes();
+                w.Write((ushort)data.Length);
+                w.Write(data);
+            }
+        }
+
+        // Sentinel: position with x=OtmmBlockSentinel signals end-of-file
+        w.Write(OtmmBlockSentinel);
+        w.Write((ushort)0);
+        w.Write((byte)0);
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private static uint BlockIndex(Position pos)
+        => (uint)((pos.Y / MinimapBlock.BlockSize) * BlocksPerAxis
+                + (pos.X / MinimapBlock.BlockSize));
+
+    private static Position IndexToPosition(uint index, int z)
+    {
+        int bx = (int)(index % BlocksPerAxis) * MinimapBlock.BlockSize;
+        int by = (int)(index / BlocksPerAxis) * MinimapBlock.BlockSize;
+        return new Position(bx, by, z);
+    }
+
+    private (MinimapBlock block, int localX, int localY) GetOrCreateBlock(Position pos)
+    {
+        int z   = pos.Z;
+        uint bi = BlockIndex(pos);
+        if (!_blocks[z].TryGetValue(bi, out var block))
+        {
+            block = new MinimapBlock();
+            _blocks[z][bi] = block;
+        }
+        return (block, pos.X % MinimapBlock.BlockSize, pos.Y % MinimapBlock.BlockSize);
+    }
+
+    private (MinimapBlock? block, int localX, int localY) TryGetBlock(Position pos)
+    {
+        int z   = pos.Z;
+        uint bi = BlockIndex(pos);
+        if (!_blocks[z].TryGetValue(bi, out var block)) return (null, 0, 0);
+        return (block, pos.X % MinimapBlock.BlockSize, pos.Y % MinimapBlock.BlockSize);
+    }
+
+    private static System.Drawing.Rectangle CalcMapRect(
+        System.Drawing.Rectangle screenRect,
+        Position mapCenter,
+        float scale)
+    {
+        int w = (int)(screenRect.Width  / scale);
+        int h = (int)Math.Ceiling(screenRect.Height / scale);
+        return new System.Drawing.Rectangle(
+            mapCenter.X - w / 2,
+            mapCenter.Y - h / 2,
+            w, h);
+    }
+
+    // Very simple 8-bit colour approximation (matches C++ Color::to8bit / Color::from8bit).
+    private static byte RaylibColorTo8Bit(Color c)
+    {
+        byte r = (byte)((c.R >> 5) & 0x7);
+        byte g = (byte)((c.G >> 5) & 0x7);
+        byte b = (byte)((c.B >> 6) & 0x3);
+        return (byte)((r << 5) | (g << 2) | b);
+    }
+
+    private static Color EightBitToRaylibColor(byte c)
+    {
+        byte r = (byte)(((c >> 5) & 0x7) * 255 / 7);
+        byte g = (byte)(((c >> 2) & 0x7) * 255 / 7);
+        byte b = (byte)( (c       & 0x3) * 255 / 3);
+        return new Color(r, g, b, (byte)255);
     }
 }
+
 
 // ─── InventorySlot ────────────────────────────────────────────────────────────
 
