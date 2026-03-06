@@ -10,5 +10,6 @@ global using OTClient.Framework.Graphics;
 global using OTClient.Framework.Input;
 global using OTClient.Framework.Lua;
 global using OTClient.Framework.Net;
+global using OTClient.Framework.Resources;
 global using OTClient.Framework.Sound;
 global using OTClient.Framework.UI;
