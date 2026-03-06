@@ -1230,4 +1230,125 @@ public sealed partial class ProtocolGame
         }
         msg.ReadU8(); // groupsAmountLeft
     }
+
+    // ─── NPC trade handlers (T15) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>OpenNpcTrade</c> (0x7A / GameServerOpenNpcTrade).
+    /// Protocol 1281: reads optional npcName (GameNameOnNpcTrade), currency U16 +
+    /// string, then a U16 item count (GameDoubleNpcTrade) followed by each item's
+    /// type U16, count U8, name string, weight U32, buyPrice U32, sellPrice U32.
+    /// Raises <see cref="NpcTradeOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenNpcTrade</c>.
+    /// Task T15.
+    /// </summary>
+    private void ParseOpenNpcTrade(InputMessage msg)
+    {
+        // GameNameOnNpcTrade — always present at protocol 1281
+        msg.ReadString(); // npcName (consumed; surfaced to UI through the items list)
+
+        // Currency info — always present at protocol 1281 (clientVersion >= 1281)
+        msg.ReadU16();    // currency item type ID
+        msg.ReadString(); // currency name
+
+        // Item count: U16 for protocol >= 900 (always true at 1281)
+        int count = msg.ReadU16();
+        var items = new List<Game.NpcTradeItem>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            ushort itemId    = msg.ReadU16();
+            byte   itemCount = msg.ReadU8();
+            string name      = msg.ReadString();
+            uint   weight    = msg.ReadU32();
+            uint   buyPrice  = msg.ReadU32();
+            uint   sellPrice = msg.ReadU32();
+
+            var item = Game.Item.Create(itemId, itemCount);
+            items.Add(new Game.NpcTradeItem(item, name, weight, buyPrice, sellPrice));
+        }
+
+        NpcTradeOpened?.Invoke(items);
+    }
+
+    /// <summary>
+    /// Parses <c>PlayerGoods</c> (0x7B / GameServerPlayerGoods).
+    /// Protocol 1281: money field is skipped (server still sends it); item count is U8.
+    /// Raises <see cref="PlayerGoodsReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePlayerGoods</c>.
+    /// Task T15.
+    /// </summary>
+    private void ParsePlayerGoods(InputMessage msg)
+    {
+        // At protocol 1281 the server still sends the money U64 even though the
+        // client derives it from the resource balance — we consume it here.
+        ulong money = msg.ReadU64();
+
+        // Item count: U8 for protocol < 1334 (base 1281)
+        int count = msg.ReadU8();
+        var goods = new List<(int ItemId, int Amount)>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            int itemId = msg.ReadU16();
+            int amount = msg.ReadU8(); // U8 for protocol < GameDoubleShopSellAmount
+            goods.Add((itemId, amount));
+        }
+
+        PlayerGoodsReceived?.Invoke(money, goods);
+    }
+
+    /// <summary>
+    /// Parses <c>CloseNpcTrade</c> (0x7C / GameServerCloseNpcTrade).
+    /// No payload. Raises <see cref="NpcTradeClosed"/>.
+    /// Maps to <c>ProtocolGame::parseCloseNpcTrade</c>.
+    /// Task T15.
+    /// </summary>
+    private void ParseCloseNpcTrade(InputMessage _)
+        => NpcTradeClosed?.Invoke();
+
+    // ─── Player-to-player trade handlers (T16) ────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>OwnTrade</c> (0x7D / GameServerOwnTrade).
+    /// Reads partner name, item count U8, then each item via <see cref="ReadItemById"/>.
+    /// Raises <see cref="OwnTradeReceived"/>.
+    /// Maps to <c>ProtocolGame::parseOwnTrade</c>.
+    /// Task T16.
+    /// </summary>
+    private void ParseOwnTrade(InputMessage msg)
+    {
+        string name  = msg.ReadString();
+        int    count = msg.ReadU8();
+        var    items = new List<Game.Item>(count);
+        for (int i = 0; i < count; i++)
+            items.Add(ReadItemById(msg, msg.ReadU16()));
+        OwnTradeReceived?.Invoke(name, items);
+    }
+
+    /// <summary>
+    /// Parses <c>CounterTrade</c> (0x7E / GameServerCounterTrade).
+    /// Reads partner name, item count U8, then each item via <see cref="ReadItemById"/>.
+    /// Raises <see cref="CounterTradeReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCounterTrade</c>.
+    /// Task T16.
+    /// </summary>
+    private void ParseCounterTrade(InputMessage msg)
+    {
+        string name  = msg.ReadString();
+        int    count = msg.ReadU8();
+        var    items = new List<Game.Item>(count);
+        for (int i = 0; i < count; i++)
+            items.Add(ReadItemById(msg, msg.ReadU16()));
+        CounterTradeReceived?.Invoke(name, items);
+    }
+
+    /// <summary>
+    /// Parses <c>CloseTrade</c> (0x7F / GameServerCloseTrade).
+    /// No payload. Raises <see cref="PlayerTradeClosed"/>.
+    /// Maps to <c>ProtocolGame::parseCloseTrade</c>.
+    /// Task T16.
+    /// </summary>
+    private void ParseCloseTrade(InputMessage _)
+        => PlayerTradeClosed?.Invoke();
 }

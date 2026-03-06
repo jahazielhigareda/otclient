@@ -596,4 +596,129 @@ public sealed class GameSingletonTests
         g.SetFightModes(FightMode.Offensive, ChaseMode.DontChase, false);
         Assert.False(fired);
     }
+
+    // ─── T15: NPC trade methods ───────────────────────────────────────────────
+
+    [Fact]
+    public void InspectNpcTrade_WhenOnline_FiresInspectNpcTradeRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        int? gotId = null; int? gotCount = null;
+        g.InspectNpcTradeRequested += (id, c) => { gotId = id; gotCount = c; };
+        g.InspectNpcTrade(100, 3);
+        Assert.Equal(100, gotId);
+        Assert.Equal(3,   gotCount);
+    }
+
+    [Fact]
+    public void InspectNpcTrade_WhenOffline_DoesNotFire()
+    {
+        var g = MakeGame();
+        bool fired = false;
+        g.InspectNpcTradeRequested += (_, _) => fired = true;
+        g.InspectNpcTrade(100, 1);
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void BuyItem_WhenOnline_FiresBuyItemRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        int? gotId = null;
+        g.BuyItemRequested += (id, _, _, _, _) => gotId = id;
+        g.BuyItem(200, 1, 5, ignoreCapacity: false, buyWithBackpack: true);
+        Assert.Equal(200, gotId);
+    }
+
+    [Fact]
+    public void SellItem_WhenOnline_FiresSellItemRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        int? gotId = null; bool? gotIgnore = null;
+        g.SellItemRequested += (id, _, _, ignore) => { gotId = id; gotIgnore = ignore; };
+        g.SellItem(300, 0, 2, ignoreEquipped: true);
+        Assert.Equal(300, gotId);
+        Assert.True(gotIgnore);
+    }
+
+    [Fact]
+    public void CloseNpcTrade_WhenOnline_FiresCloseNpcTradeRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.CloseNpcTradeRequested += () => fired = true;
+        g.CloseNpcTrade();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void CloseNpcTrade_WhenOffline_DoesNotFire()
+    {
+        var g = MakeGame();
+        bool fired = false;
+        g.CloseNpcTradeRequested += () => fired = true;
+        g.CloseNpcTrade();
+        Assert.False(fired);
+    }
+
+    // ─── T16: Player-to-player trade methods ──────────────────────────────────
+
+    [Fact]
+    public void RequestTrade_WhenOnline_FiresRequestTradeRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        uint? gotCreatureId = null;
+        g.RequestTradeRequested += (_, _, _, cid) => gotCreatureId = cid;
+        g.RequestTrade(new Position(100, 200, 7), 500, 0, 42u);
+        Assert.Equal(42u, gotCreatureId);
+    }
+
+    [Fact]
+    public void RequestTrade_WhenOffline_DoesNotFire()
+    {
+        var g = MakeGame();
+        bool fired = false;
+        g.RequestTradeRequested += (_, _, _, _) => fired = true;
+        g.RequestTrade(new Position(1, 1, 7), 1, 0, 1u);
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void InspectTrade_WhenOnline_FiresInspectTradeRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool? gotCounter = null; int? gotIndex = null;
+        g.InspectTradeRequested += (c, i) => { gotCounter = c; gotIndex = i; };
+        g.InspectTrade(counterOffer: true, index: 2);
+        Assert.True(gotCounter);
+        Assert.Equal(2, gotIndex);
+    }
+
+    [Fact]
+    public void AcceptTrade_WhenOnline_FiresAcceptTradeRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.AcceptTradeRequested += () => fired = true;
+        g.AcceptTrade();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void RejectTrade_WhenOnline_FiresRejectTradeRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.RejectTradeRequested += () => fired = true;
+        g.RejectTrade();
+        Assert.True(fired);
+    }
 }

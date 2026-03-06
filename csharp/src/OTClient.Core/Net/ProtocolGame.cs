@@ -34,6 +34,14 @@ public enum GameClientPacket : byte
     Attack             = 0xA1,   // ClientAttack (161)            — T12
     Follow             = 0xA2,   // ClientFollow (162)            — T12
     CancelAttackAndFollow = 0xBE, // ClientCancelAttackAndFollow (190) — T12
+    InspectNpcTrade    = 0x79,   // ClientInspectNpcTrade (121)   — T15
+    BuyItem            = 0x7A,   // ClientBuyItem (122)           — T15
+    SellItem           = 0x7B,   // ClientSellItem (123)          — T15
+    CloseNpcTrade      = 0x7C,   // ClientCloseNpcTrade (124)     — T15
+    RequestTrade       = 0x7D,   // ClientRequestTrade (125)      — T16
+    InspectTrade       = 0x7E,   // ClientInspectTrade (126)      — T16
+    AcceptTrade        = 0x7F,   // ClientAcceptTrade (127)       — T16
+    RejectTrade        = 0x80,   // ClientRejectTrade (128)       — T16
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
@@ -64,6 +72,12 @@ public enum GameServerPacket : byte
     ContainerRemoveItem = 0x72, // GameServerDeleteInContainer (114)— parseContainerRemoveItem (T04)
     SetInventory     = 0x78,   // GameServerSetInventory (120)    — parseAddInventoryItem (T04)
     DeleteInventory  = 0x79,   // GameServerDeleteInventory (121) — parseRemoveInventoryItem (T04)
+    OpenNpcTrade     = 0x7A,   // GameServerOpenNpcTrade (122)    — parseOpenNpcTrade (T15)
+    PlayerGoods      = 0x7B,   // GameServerPlayerGoods (123)     — parsePlayerGoods (T15)
+    CloseNpcTrade    = 0x7C,   // GameServerCloseNpcTrade (124)   — parseCloseNpcTrade (T15)
+    OwnTrade         = 0x7D,   // GameServerOwnTrade (125)        — parseOwnTrade (T16)
+    CounterTrade     = 0x7E,   // GameServerCounterTrade (126)    — parseCounterTrade (T16)
+    CloseTrade       = 0x7F,   // GameServerCloseTrade (127)      — parseCloseTrade (T16)
     CreatureData     = 0x8B,   // GameServerCreatureData  (139)   — parseCreatureData (T03)
     CreatureHealth   = 0x8C,   // GameServerCreatureHealth (140)  — parseCreatureHealth (T03)
     CreatureOutfit   = 0x8E,   // GameServerCreatureOutfit (142)  — parseCreatureOutfit (T03)
@@ -436,6 +450,50 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<uint, uint>? VipStateChanged;
 
+    // ─── NPC trade events (T15) ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server opens the NPC trade window.
+    /// Parameters: list of <see cref="Game.NpcTradeItem"/> entries.
+    /// Maps to <c>ProtocolGame::parseOpenNpcTrade</c>.
+    /// </summary>
+    public event Action<IReadOnlyList<Game.NpcTradeItem>>? NpcTradeOpened;
+
+    /// <summary>
+    /// Raised when the server sends the player's current goods for trade.
+    /// Parameters: (totalMoney, list of (itemId, amount) pairs).
+    /// Maps to <c>ProtocolGame::parsePlayerGoods</c>.
+    /// </summary>
+    public event Action<ulong, IReadOnlyList<(int ItemId, int Amount)>>? PlayerGoodsReceived;
+
+    /// <summary>
+    /// Raised when the server closes the NPC trade window.
+    /// Maps to <c>ProtocolGame::parseCloseNpcTrade</c>.
+    /// </summary>
+    public event Action? NpcTradeClosed;
+
+    // ─── Player-to-player trade events (T16) ──────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends the player's own trade offer.
+    /// Parameters: (partnerName, list of items).
+    /// Maps to <c>ProtocolGame::parseOwnTrade</c>.
+    /// </summary>
+    public event Action<string, IReadOnlyList<Game.Item>>? OwnTradeReceived;
+
+    /// <summary>
+    /// Raised when the server sends the partner's trade counter-offer.
+    /// Parameters: (partnerName, list of items).
+    /// Maps to <c>ProtocolGame::parseCounterTrade</c>.
+    /// </summary>
+    public event Action<string, IReadOnlyList<Game.Item>>? CounterTradeReceived;
+
+    /// <summary>
+    /// Raised when the player-to-player trade is closed by the server.
+    /// Maps to <c>ProtocolGame::parseCloseTrade</c>.
+    /// </summary>
+    public event Action? PlayerTradeClosed;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -489,6 +547,12 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.VipAdd,            ParseVipAdd);
         RegisterHandler((byte)GameServerPacket.VipState,          ParseVipState);
         RegisterHandler((byte)GameServerPacket.VipLogout,         ParseVipLogout);
+        RegisterHandler((byte)GameServerPacket.OpenNpcTrade,      ParseOpenNpcTrade);
+        RegisterHandler((byte)GameServerPacket.PlayerGoods,       ParsePlayerGoods);
+        RegisterHandler((byte)GameServerPacket.CloseNpcTrade,     ParseCloseNpcTrade);
+        RegisterHandler((byte)GameServerPacket.OwnTrade,          ParseOwnTrade);
+        RegisterHandler((byte)GameServerPacket.CounterTrade,      ParseCounterTrade);
+        RegisterHandler((byte)GameServerPacket.CloseTrade,        ParseCloseTrade);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

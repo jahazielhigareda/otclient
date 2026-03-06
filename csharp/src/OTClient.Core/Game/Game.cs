@@ -413,4 +413,136 @@ public sealed class Game
         if (!IsOnline) return;
         FightModesChanged?.Invoke(fightMode, chaseMode, safeFight, pvpMode);
     }
+
+    // ─── NPC trade (T15) ──────────────────────────────────────────────────────
+
+    /// <summary>Raised to request the server sends InspectNpcTrade for an item.</summary>
+    public event Action<int, int>? InspectNpcTradeRequested;   // itemId, count
+
+    /// <summary>Raised to request a buy from an NPC.</summary>
+    public event Action<int, int, int, bool, bool>? BuyItemRequested;  // itemId, subType, amount, ignoreCapacity, buyWithBackpack
+
+    /// <summary>Raised to request a sell to an NPC.</summary>
+    public event Action<int, int, int, bool>? SellItemRequested;   // itemId, subType, amount, ignoreEquipped
+
+    /// <summary>Raised to request closing the NPC trade window.</summary>
+    public event Action? CloseNpcTradeRequested;
+
+    /// <summary>
+    /// Requests the server to inspect a specific NPC trade item.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="InspectNpcTradeRequested"/>.
+    /// Maps to <c>Game::inspectNpcTrade()</c>.
+    /// Task T15.
+    /// </summary>
+    public void InspectNpcTrade(int itemId, int count = 1)
+    {
+        if (!IsOnline) return;
+        InspectNpcTradeRequested?.Invoke(itemId, count);
+    }
+
+    /// <summary>
+    /// Requests the server to buy an item from an NPC.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="BuyItemRequested"/>.
+    /// Maps to <c>Game::buyItem()</c>.
+    /// Task T15.
+    /// </summary>
+    public void BuyItem(int itemId, int subType, int amount, bool ignoreCapacity = false, bool buyWithBackpack = false)
+    {
+        if (!IsOnline) return;
+        BuyItemRequested?.Invoke(itemId, subType, amount, ignoreCapacity, buyWithBackpack);
+    }
+
+    /// <summary>
+    /// Requests the server to sell an item to an NPC.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="SellItemRequested"/>.
+    /// Maps to <c>Game::sellItem()</c>.
+    /// Task T15.
+    /// </summary>
+    public void SellItem(int itemId, int subType, int amount, bool ignoreEquipped = false)
+    {
+        if (!IsOnline) return;
+        SellItemRequested?.Invoke(itemId, subType, amount, ignoreEquipped);
+    }
+
+    /// <summary>
+    /// Requests the server to close the active NPC trade window.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="CloseNpcTradeRequested"/>.
+    /// Maps to <c>Game::closeNpcTrade()</c>.
+    /// Task T15.
+    /// </summary>
+    public void CloseNpcTrade()
+    {
+        if (!IsOnline) return;
+        CloseNpcTradeRequested?.Invoke();
+    }
+
+    // ─── Player-to-player trade (T16) ─────────────────────────────────────────
+
+    /// <summary>Raised to request the server opens a player trade with an item.</summary>
+    public event Action<Position, int, int, uint>? RequestTradeRequested;   // position, itemId, stackPos, creatureId
+
+    /// <summary>Raised to request the server to inspect a trade slot.</summary>
+    public event Action<bool, int>? InspectTradeRequested;   // counterOffer, index
+
+    /// <summary>Raised to request the server to accept the trade.</summary>
+    public event Action? AcceptTradeRequested;
+
+    /// <summary>Raised to request the server to reject the trade.</summary>
+    public event Action? RejectTradeRequested;
+
+    /// <summary>
+    /// Requests the server to initiate a player-to-player trade.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="RequestTradeRequested"/>.
+    /// Maps to <c>Game::requestTrade()</c>.
+    /// Task T16.
+    /// </summary>
+    public void RequestTrade(Position position, int itemId, int stackPos, uint creatureId)
+    {
+        if (!IsOnline) return;
+        RequestTradeRequested?.Invoke(position, itemId, stackPos, creatureId);
+    }
+
+    /// <summary>
+    /// Requests the server to inspect a slot in the current trade.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="InspectTradeRequested"/>.
+    /// Maps to <c>Game::inspectTrade()</c>.
+    /// Task T16.
+    /// </summary>
+    public void InspectTrade(bool counterOffer, int index)
+    {
+        if (!IsOnline) return;
+        InspectTradeRequested?.Invoke(counterOffer, index);
+    }
+
+    /// <summary>
+    /// Accepts the current player-to-player trade.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="AcceptTradeRequested"/>.
+    /// Maps to <c>Game::acceptTrade()</c>.
+    /// Task T16.
+    /// </summary>
+    public void AcceptTrade()
+    {
+        if (!IsOnline) return;
+        AcceptTradeRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Rejects the current player-to-player trade.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="RejectTradeRequested"/>.
+    /// Maps to <c>Game::rejectTrade()</c>.
+    /// Task T16.
+    /// </summary>
+    public void RejectTrade()
+    {
+        if (!IsOnline) return;
+        RejectTradeRequested?.Invoke();
+    }
 }

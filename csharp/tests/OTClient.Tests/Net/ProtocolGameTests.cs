@@ -1611,6 +1611,165 @@ public sealed class ProtocolGameTests
         Assert.Equal(OTClient.Framework.Game.Direction.South, gotDir);
     }
 
+    // ─── T15: Opcode values ───────────────────────────────────────────────────
+
+    [Fact] public void GameServerPacket_OpenNpcTrade_Is0x7A()  => Assert.Equal(0x7A, (byte)GameServerPacket.OpenNpcTrade);
+    [Fact] public void GameServerPacket_PlayerGoods_Is0x7B()   => Assert.Equal(0x7B, (byte)GameServerPacket.PlayerGoods);
+    [Fact] public void GameServerPacket_CloseNpcTrade_Is0x7C() => Assert.Equal(0x7C, (byte)GameServerPacket.CloseNpcTrade);
+    [Fact] public void GameClientPacket_InspectNpcTrade_Is0x79() => Assert.Equal(0x79, (byte)GameClientPacket.InspectNpcTrade);
+    [Fact] public void GameClientPacket_BuyItem_Is0x7A()        => Assert.Equal(0x7A, (byte)GameClientPacket.BuyItem);
+    [Fact] public void GameClientPacket_SellItem_Is0x7B()       => Assert.Equal(0x7B, (byte)GameClientPacket.SellItem);
+    [Fact] public void GameClientPacket_CloseNpcTrade_Is0x7C()  => Assert.Equal(0x7C, (byte)GameClientPacket.CloseNpcTrade);
+
+    // ─── T15: ParseOpenNpcTrade ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseOpenNpcTrade_FiresNpcTradeOpened_WithItems()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.NpcTradeItem>? gotItems = null;
+        pg.NpcTradeOpened += items => gotItems = items;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenNpcTrade);
+        out_.WriteString("Nelly");          // npcName
+        out_.WriteU16(3031);                // currency item type id (gold coin)
+        out_.WriteString("gold coin");      // currency name
+        out_.WriteU16(2);                   // item count
+        // item 1
+        out_.WriteU16(100);  out_.WriteU8(1);  out_.WriteString("Sword");   out_.WriteU32(120);  out_.WriteU32(50);   out_.WriteU32(25);
+        // item 2
+        out_.WriteU16(200);  out_.WriteU8(1);  out_.WriteString("Shield");  out_.WriteU32(400);  out_.WriteU32(200);  out_.WriteU32(100);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotItems);
+        Assert.Equal(2, gotItems!.Count);
+        Assert.Equal(100,     gotItems[0].Item.Id);
+        Assert.Equal("Sword", gotItems[0].Name);
+        Assert.Equal(50u,     gotItems[0].BuyPrice);
+        Assert.Equal(25u,     gotItems[0].SellPrice);
+        Assert.Equal(200,     gotItems[1].Item.Id);
+    }
+
+    // ─── T15: ParsePlayerGoods ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerGoods_FiresPlayerGoodsReceived()
+    {
+        using var pg = new ProtocolGame();
+        ulong? gotMoney = null;
+        IReadOnlyList<(int ItemId, int Amount)>? gotGoods = null;
+        pg.PlayerGoodsReceived += (money, goods) => { gotMoney = money; gotGoods = goods; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerGoods);
+        out_.WriteU64(12345UL); // money (consumed by parser)
+        out_.WriteU8(1);        // 1 good
+        out_.WriteU16(3031);    out_.WriteU8(10); // gold coin × 10
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(12345UL, gotMoney);
+        Assert.NotNull(gotGoods);
+        Assert.Single(gotGoods!);
+        Assert.Equal(3031, gotGoods![0].ItemId);
+        Assert.Equal(10,   gotGoods![0].Amount);
+    }
+
+    // ─── T15: ParseCloseNpcTrade ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCloseNpcTrade_FiresNpcTradeClosed()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.NpcTradeClosed += () => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CloseNpcTrade);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+    }
+
+    // ─── T16: Opcode values ───────────────────────────────────────────────────
+
+    [Fact] public void GameServerPacket_OwnTrade_Is0x7D()     => Assert.Equal(0x7D, (byte)GameServerPacket.OwnTrade);
+    [Fact] public void GameServerPacket_CounterTrade_Is0x7E() => Assert.Equal(0x7E, (byte)GameServerPacket.CounterTrade);
+    [Fact] public void GameServerPacket_CloseTrade_Is0x7F()   => Assert.Equal(0x7F, (byte)GameServerPacket.CloseTrade);
+    [Fact] public void GameClientPacket_RequestTrade_Is0x7D() => Assert.Equal(0x7D, (byte)GameClientPacket.RequestTrade);
+    [Fact] public void GameClientPacket_InspectTrade_Is0x7E() => Assert.Equal(0x7E, (byte)GameClientPacket.InspectTrade);
+    [Fact] public void GameClientPacket_AcceptTrade_Is0x7F()  => Assert.Equal(0x7F, (byte)GameClientPacket.AcceptTrade);
+    [Fact] public void GameClientPacket_RejectTrade_Is0x80()  => Assert.Equal(0x80, (byte)GameClientPacket.RejectTrade);
+
+    // ─── T16: ParseOwnTrade ───────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseOwnTrade_FiresOwnTradeReceived()
+    {
+        using var pg = new ProtocolGame();
+        string? gotName = null;
+        IReadOnlyList<OTClient.Framework.Game.Item>? gotItems = null;
+        pg.OwnTradeReceived += (name, items) => { gotName = name; gotItems = items; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OwnTrade);
+        out_.WriteString("Alice");
+        out_.WriteU8(1);        // 1 item
+        out_.WriteU16(2400);    // item type id
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Alice", gotName);
+        Assert.NotNull(gotItems);
+        Assert.Single(gotItems!);
+        Assert.Equal(2400, gotItems![0].Id);
+    }
+
+    // ─── T16: ParseCounterTrade ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCounterTrade_FiresCounterTradeReceived()
+    {
+        using var pg = new ProtocolGame();
+        string? gotName = null;
+        IReadOnlyList<OTClient.Framework.Game.Item>? gotItems = null;
+        pg.CounterTradeReceived += (name, items) => { gotName = name; gotItems = items; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CounterTrade);
+        out_.WriteString("Bob");
+        out_.WriteU8(2);        // 2 items
+        out_.WriteU16(1234);
+        out_.WriteU16(5678);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Bob", gotName);
+        Assert.Equal(2, gotItems!.Count);
+        Assert.Equal(1234, gotItems![0].Id);
+        Assert.Equal(5678, gotItems![1].Id);
+    }
+
+    // ─── T16: ParseCloseTrade ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCloseTrade_FiresPlayerTradeClosed()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.PlayerTradeClosed += () => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CloseTrade);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+    }
+
     /// <summary>
     /// Builds a minimal <c>FullMap</c> wire packet: position (5 bytes) followed
     /// by enough floor terminator bytes to satisfy the aware-range decoder without

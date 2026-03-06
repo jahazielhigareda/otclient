@@ -336,4 +336,123 @@ public sealed partial class ProtocolGame
         msg.WriteU8((byte)GameClientPacket.CancelAttackAndFollow);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── NPC trade (T15) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Asks the server for detailed information on an NPC trade item.
+    /// Maps to <c>ProtocolGame::sendInspectNpcTrade</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendInspectNpcTrade(int itemId, int count)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectNpcTrade);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU16((ushort)count);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the server to buy an item from the active NPC.
+    /// Maps to <c>ProtocolGame::sendBuyItem</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendBuyItem(int itemId, int subType, int amount, bool ignoreCapacity, bool buyWithBackpack)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BuyItem);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)subType);
+        msg.WriteU16((ushort)amount);
+        msg.WriteU8(ignoreCapacity  ? (byte)1 : (byte)0);
+        msg.WriteU8(buyWithBackpack ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the server to sell an item to the active NPC.
+    /// Maps to <c>ProtocolGame::sendSellItem</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendSellItem(int itemId, int subType, int amount, bool ignoreEquipped)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.SellItem);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)subType);
+        msg.WriteU16((ushort)amount);
+        msg.WriteU8(ignoreEquipped ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Notifies the server that the player closed the NPC trade window.
+    /// Maps to <c>ProtocolGame::sendCloseNpcTrade</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendCloseNpcTrade()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseNpcTrade);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Player-to-player trade (T16) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the server to initiate a player trade with the specified item.
+    /// Maps to <c>ProtocolGame::sendRequestTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendRequestTrade(Game.Position position, int itemId, int stackPos, uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestTrade);
+        msg.WriteU16((ushort)position.X);
+        msg.WriteU16((ushort)position.Y);
+        msg.WriteU8((byte)position.Z);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Asks the server to inspect a trade slot (own or partner's).
+    /// Maps to <c>ProtocolGame::sendInspectTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendInspectTrade(bool counterOffer, int index)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectTrade);
+        msg.WriteU8(counterOffer ? (byte)1 : (byte)0);
+        msg.WriteU8((byte)index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Accepts the current player-to-player trade.
+    /// Maps to <c>ProtocolGame::sendAcceptTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendAcceptTrade()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AcceptTrade);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Rejects the current player-to-player trade.
+    /// Maps to <c>ProtocolGame::sendRejectTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendRejectTrade()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RejectTrade);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

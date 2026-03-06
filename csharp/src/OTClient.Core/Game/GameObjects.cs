@@ -241,6 +241,22 @@ public sealed class AttachedEffectManager
     public IEnumerable<AttachedEffect> All => _effects.Values;
 }
 
+// ─── NpcTradeItem ─────────────────────────────────────────────────────────────
+
+/// <summary>
+/// A single entry in an NPC's trade list as received from the server.
+/// Carries the item prototype, its display name, weight, and buy/sell prices.
+/// Maps to the tuple elements in <c>parseOpenNpcTrade</c> /
+/// <c>Game::processOpenNpcTrade</c>.
+/// Task T15.
+/// </summary>
+public sealed record NpcTradeItem(
+    Item   Item,
+    string Name,
+    uint   Weight,
+    uint   BuyPrice,
+    uint   SellPrice);
+
 // ─── GameConfig ────────────────────────────────────────────────────────────────
 
 /// <summary>
