@@ -465,4 +465,102 @@ public sealed class LuaGameGlobalsTests : IDisposable
         var result = _lua.DoString("g_ui.clearWidgets() return true");
         Assert.True(result.Boolean);
     }
+
+    // ─── g_minimap (T36) ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void G_Minimap_IsRegistered()
+    {
+        var result = _lua.DoString("return g_minimap ~= nil");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Minimap_Clean_DoesNotThrow()
+    {
+        var result = _lua.DoString("g_minimap.clean() return true");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Minimap_IsKnown_UnseenTileReturnsFalse()
+    {
+        var result = _lua.DoString("return g_minimap.isKnown(1000, 1000, 7)");
+        Assert.False(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTileColor_UnseenTileReturns255()
+    {
+        // Default MinimapTileData has Color=255 (transparent/unknown)
+        var result = _lua.DoString("return g_minimap.getTileColor(5000, 5000, 7)");
+        Assert.Equal(255.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTileFlags_UnseenTileReturnsZero()
+    {
+        var result = _lua.DoString("return g_minimap.getTileFlags(5000, 5000, 7)");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTileSpeed_UnseenTileReturnsDefault()
+    {
+        // Default MinimapTileData has Speed=10
+        var result = _lua.DoString("return g_minimap.getTileSpeed(5000, 5000, 7)");
+        Assert.Equal(10.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTilePoint_DifferentFloorReturnsNil()
+    {
+        // center on floor 7, ask for a tile on floor 6 → nil
+        var result = _lua.DoString(
+            "return g_minimap.getTilePoint(100, 100, 6,  0,0,800,600,  100,100,7,  32)");
+        Assert.Equal(DataType.Nil, result.Type);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTilePoint_SameFloorReturnsTable()
+    {
+        // tile at the exact center position should land near mid-screen
+        var result = _lua.DoString(
+            "local pt = g_minimap.getTilePoint(100, 100, 7,  0,0,800,600,  100,100,7,  32)" +
+            " return pt ~= nil and type(pt.x) == 'number' and type(pt.y) == 'number'");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTilePosition_ReturnsTable()
+    {
+        var result = _lua.DoString(
+            "local p = g_minimap.getTilePosition(400, 300,  0,0,800,600,  100,100,7,  32)" +
+            " return type(p.x) == 'number' and type(p.y) == 'number' and p.z == 7");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTileRect_DifferentFloorReturnsNil()
+    {
+        var result = _lua.DoString(
+            "return g_minimap.getTileRect(100, 100, 6,  0,0,800,600,  100,100,7,  32)");
+        Assert.Equal(DataType.Nil, result.Type);
+    }
+
+    [Fact]
+    public void G_Minimap_GetTileRect_SameFloorReturnsTable()
+    {
+        var result = _lua.DoString(
+            "local r = g_minimap.getTileRect(100, 100, 7,  0,0,800,600,  100,100,7,  32)" +
+            " return r ~= nil and type(r.x) == 'number' and r.width >= 1");
+        Assert.True(result.Boolean);
+    }
+
+    [Fact]
+    public void G_Minimap_LoadOtmm_MissingFileReturnsFalse()
+    {
+        var result = _lua.DoString("return g_minimap.loadOtmm('/no/such/file.otmm')");
+        Assert.False(result.Boolean);
+    }
 }

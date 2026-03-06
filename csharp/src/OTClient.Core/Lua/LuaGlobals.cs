@@ -92,10 +92,11 @@ public static class LuaGlobals
         // ── g_mouse (task 6.7) ────────────────────────────────────────────────
         lua.SetGlobal("g_mouse", new LuaMouseProxy());
 
-        // ── g_game, g_map, g_things, g_sprites, g_creatures, g_client (task 6.10)
+        // ── g_game, g_map, g_minimap, g_things, g_sprites, g_creatures, g_client (task 6.10 / T36)
         var g = game ?? new Game.Game();
         lua.SetGlobal("g_game",      new LuaGameProxy(g));
         lua.SetGlobal("g_map",       new LuaMapProxy(g.Map));
+        lua.SetGlobal("g_minimap",   new LuaMinimapProxy(g.Minimap));
         lua.SetGlobal("g_things",    new LuaThingsProxy(g.Things));
         lua.SetGlobal("g_sprites",   new LuaSpritesProxy());
         lua.SetGlobal("g_creatures", new LuaCreaturesProxy(g.Creatures));
@@ -138,6 +139,7 @@ public static class LuaGlobals
         // Task 6.10 — game globals
         LuaBinder.RegisterType<LuaGameProxy>();
         LuaBinder.RegisterType<LuaMapProxy>();
+        LuaBinder.RegisterType<LuaMinimapProxy>();
         LuaBinder.RegisterType<LuaThingsProxy>();
         LuaBinder.RegisterType<LuaSpritesProxy>();
         LuaBinder.RegisterType<LuaCreaturesProxy>();

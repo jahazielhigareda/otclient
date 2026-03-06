@@ -1,5 +1,6 @@
 using MoonSharp.Interpreter;
 using System.Numerics;
+using System.IO;
 
 namespace OTClient.Framework.Lua;
 
@@ -574,5 +575,166 @@ public sealed class LuaUiProxy
             if (found is not null) return found;
         }
         return null;
+    }
+}
+
+// ─── g_minimap ────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Lua proxy for the minimap, exposed as <c>g_minimap</c>.
+/// Wraps <see cref="Game.Minimap"/> and mirrors the C++ bindings registered in
+/// <c>luafunctions.cpp</c>: clean, loadOtmm, saveOtmm, isKnown, getTileColor,
+/// getTileFlags, getTileSpeed, getTilePoint, getTilePosition, getTileRect, update.
+/// Task T36.
+/// </summary>
+[LuaBinding("g_minimap")]
+[MoonSharpUserData]
+public sealed class LuaMinimapProxy
+{
+    private readonly Game.Minimap _minimap;
+
+    public LuaMinimapProxy(Game.Minimap minimap)
+    {
+        ArgumentNullException.ThrowIfNull(minimap);
+        _minimap = minimap;
+    }
+
+    /// <summary>Clears all recorded minimap tiles. Mirrors <c>Minimap::clean</c>.</summary>
+    [LuaMethod] public void clean() => _minimap.Clear();
+
+    /// <summary>
+    /// Returns whether the minimap tile at (x, y, z) has been visited.
+    /// Mirrors <c>Minimap::isKnown</c>.
+    /// </summary>
+    [LuaMethod]
+    public bool isKnown(int x, int y, int z)
+        => _minimap.IsKnown(new Game.Position((ushort)x, (ushort)y, (byte)z));
+
+    /// <summary>
+    /// Returns the 8-bit minimap color (0–255) for tile (x, y, z).
+    /// Returns 255 (transparent/unknown) for unseen tiles.
+    /// </summary>
+    [LuaMethod]
+    public int getTileColor(int x, int y, int z)
+    {
+        var td = _minimap.GetTile(new Game.Position((ushort)x, (ushort)y, (byte)z));
+        return td.Color;
+    }
+
+    /// <summary>
+    /// Returns the raw <see cref="Game.MinimapTileFlags"/> byte for tile (x, y, z).
+    /// </summary>
+    [LuaMethod]
+    public int getTileFlags(int x, int y, int z)
+    {
+        var td = _minimap.GetTile(new Game.Position((ushort)x, (ushort)y, (byte)z));
+        return (int)td.Flags;
+    }
+
+    /// <summary>
+    /// Returns the movement speed byte (1–254) stored for tile (x, y, z).
+    /// Returns 10 (default) for unseen tiles.
+    /// </summary>
+    [LuaMethod]
+    public int getTileSpeed(int x, int y, int z)
+    {
+        var td = _minimap.GetTile(new Game.Position((ushort)x, (ushort)y, (byte)z));
+        return td.Speed;
+    }
+
+    /// <summary>
+    /// Converts world position (x, y, z) to a pixel point in
+    /// screenRect (sx, sy, sw, sh) given mapCenter (cx, cy, cz) and scale.
+    /// Returns a table {x=…, y=…} or nil when z ≠ cz.
+    /// Mirrors <c>Minimap::getTilePoint</c>.
+    /// </summary>
+    [LuaMethod]
+    public object? getTilePoint(
+        int x, int y, int z,
+        int sx, int sy, int sw, int sh,
+        int cx, int cy, int cz,
+        float scale)
+    {
+        var pos        = new Game.Position((ushort)x,  (ushort)y,  (byte)z);
+        var screenRect = new System.Drawing.Rectangle(sx, sy, sw, sh);
+        var center     = new Game.Position((ushort)cx, (ushort)cy, (byte)cz);
+        var pt         = Game.Minimap.GetTilePoint(pos, screenRect, center, scale);
+        if (pt.X < 0 && pt.Y < 0) return null;
+        var t = new Table(null);
+        t["x"] = (double)pt.X;
+        t["y"] = (double)pt.Y;
+        return t;
+    }
+
+    /// <summary>
+    /// Converts pixel point (px, py) in screenRect to a world Position.
+    /// Returns a table {x=…, y=…, z=…}.
+    /// Mirrors <c>Minimap::getTilePosition</c>.
+    /// </summary>
+    [LuaMethod]
+    public Table getTilePosition(
+        float px, float py,
+        int sx, int sy, int sw, int sh,
+        int cx, int cy, int cz,
+        float scale)
+    {
+        var point      = new Vector2(px, py);
+        var screenRect = new System.Drawing.Rectangle(sx, sy, sw, sh);
+        var center     = new Game.Position((ushort)cx, (ushort)cy, (byte)cz);
+        var pos        = Game.Minimap.GetTilePosition(point, screenRect, center, scale);
+        var t = new Table(null);
+        t["x"] = (double)pos.X;
+        t["y"] = (double)pos.Y;
+        t["z"] = (double)pos.Z;
+        return t;
+    }
+
+    /// <summary>
+    /// Returns the screen rectangle {x, y, width, height} that tile (x,y,z) occupies.
+    /// Returns nil when the tile is on a different floor.
+    /// Mirrors <c>Minimap::getTileRect</c>.
+    /// </summary>
+    [LuaMethod]
+    public object? getTileRect(
+        int x, int y, int z,
+        int sx, int sy, int sw, int sh,
+        int cx, int cy, int cz,
+        float scale)
+    {
+        var pos        = new Game.Position((ushort)x,  (ushort)y,  (byte)z);
+        var screenRect = new System.Drawing.Rectangle(sx, sy, sw, sh);
+        var center     = new Game.Position((ushort)cx, (ushort)cy, (byte)cz);
+        var rect       = Game.Minimap.GetTileRect(pos, screenRect, center, scale);
+        if (rect.IsEmpty) return null;
+        var t = new Table(null);
+        t["x"]      = (double)rect.X;
+        t["y"]      = (double)rect.Y;
+        t["width"]  = (double)rect.Width;
+        t["height"] = (double)rect.Height;
+        return t;
+    }
+
+    /// <summary>
+    /// Loads an OTMM binary minimap file from <paramref name="path"/>.
+    /// Returns <c>true</c> on success.
+    /// Mirrors <c>Minimap::loadOtmm</c>.
+    /// </summary>
+    [LuaMethod]
+    public bool loadOtmm(string path)
+    {
+        if (!File.Exists(path)) return false;
+        using var fs = File.OpenRead(path);
+        return _minimap.LoadOtmm(fs);
+    }
+
+    /// <summary>
+    /// Saves all visited minimap blocks to an OTMM binary file at <paramref name="path"/>.
+    /// Mirrors <c>Minimap::saveOtmm</c>.
+    /// </summary>
+    [LuaMethod]
+    public void saveOtmm(string path)
+    {
+        using var fs = File.Open(path, FileMode.Create, FileAccess.Write);
+        _minimap.SaveOtmm(fs);
     }
 }
