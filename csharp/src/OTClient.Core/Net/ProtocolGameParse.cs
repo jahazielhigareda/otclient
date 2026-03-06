@@ -816,4 +816,167 @@ public sealed partial class ProtocolGame
                 break;
         }
     }
+
+    // ─── Container handlers (T04) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>OpenContainer</c> (0x6E / GameServerOpenContainer).
+    /// Reads all container meta-data and initial item list, creates a
+    /// <see cref="Game.Container"/> in <c>_containers[id]</c>, and raises
+    /// <see cref="ContainerOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenContainer</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseOpenContainer(InputMessage msg)
+    {
+        int  containerId    = msg.ReadU8();
+        var  containerItem  = ReadItemById(msg, msg.ReadU16());
+        string name         = msg.ReadString();
+        int  capacity       = msg.ReadU8();
+        bool hasParent      = msg.ReadU8() != 0;
+
+        // Protocol 1281: show-search-icon byte (discard)
+        msg.ReadU8();
+
+        // GameContainerPagination fields (present for protocol 1281)
+        bool   isUnlocked     = msg.ReadU8() != 0;
+        bool   hasPages       = msg.ReadU8() != 0;
+        int    containerSize  = msg.ReadU16();
+        int    firstIndex     = msg.ReadU16();
+
+        int    itemCount      = msg.ReadU8();
+        var    items          = new List<Game.Item>(itemCount);
+        for (int i = 0; i < itemCount; i++)
+            items.Add(ReadItemById(msg, msg.ReadU16()));
+
+        // Close any previously open container at this slot
+        var previous = GetContainer(containerId);
+        previous?.Close();
+
+        var container = new Game.Container
+        {
+            Id            = containerId,
+            Name          = name,
+            Capacity      = capacity,
+            ContainerItem = containerItem,
+            HasParent     = hasParent,
+            IsUnlocked    = isUnlocked,
+            HasPages      = hasPages,
+            Size          = containerSize,
+            FirstIndex    = firstIndex,
+        };
+        container.AddItems(items);
+
+        _containers[containerId] = container;
+        ContainerOpened?.Invoke(container);
+    }
+
+    /// <summary>
+    /// Parses <c>CloseContainer</c> (0x6F / GameServerCloseContainer).
+    /// Maps to <c>ProtocolGame::parseCloseContainer</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseCloseContainer(InputMessage msg)
+    {
+        int containerId = msg.ReadU8();
+        var container   = GetContainer(containerId);
+        if (container is not null)
+        {
+            container.Close();
+            _containers[containerId] = null;
+        }
+        ContainerClosed?.Invoke(containerId);
+    }
+
+    /// <summary>
+    /// Parses <c>ContainerAddItem</c> (0x70 / GameServerCreateContainer / wire opcode 112).
+    /// Reads a slot index (U16 for paginated bags) and item ID, adds the item
+    /// to the container, and raises <see cref="ContainerItemAdded"/>.
+    /// Maps to <c>ProtocolGame::parseContainerAddItem</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseContainerAddItem(InputMessage msg)
+    {
+        int containerId = msg.ReadU8();
+        int slot        = msg.ReadU16();   // GameContainerPagination always U16 at 1281
+        var item        = ReadItemById(msg, msg.ReadU16());
+
+        GetContainer(containerId)?.AddItem(item, slot);
+        ContainerItemAdded?.Invoke(containerId, slot, item);
+    }
+
+    /// <summary>
+    /// Parses <c>ContainerUpdateItem</c> (0x71 / GameServerChangeInContainer).
+    /// Maps to <c>ProtocolGame::parseContainerUpdateItem</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseContainerUpdateItem(InputMessage msg)
+    {
+        int containerId = msg.ReadU8();
+        int slot        = msg.ReadU16();   // U16 at 1281 (GameContainerPagination)
+        var item        = ReadItemById(msg, msg.ReadU16());
+
+        GetContainer(containerId)?.UpdateAt(slot, item);
+        ContainerItemUpdated?.Invoke(containerId, slot, item);
+    }
+
+    /// <summary>
+    /// Parses <c>ContainerRemoveItem</c> (0x72 / GameServerDeleteInContainer).
+    /// Reads the slot, then an optional last-item ID (non-zero = paginated bag
+    /// moves the item from the hidden overflow into view after the removal).
+    /// Maps to <c>ProtocolGame::parseContainerRemoveItem</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseContainerRemoveItem(InputMessage msg)
+    {
+        int  containerId = msg.ReadU8();
+        int  slot        = msg.ReadU16();   // GameContainerPagination → always U16
+
+        Game.Item? lastItem = null;
+        ushort lastId = msg.ReadU16();
+        if (lastId != 0)
+            lastItem = ReadItemById(msg, lastId);
+
+        GetContainer(containerId)?.RemoveAt(slot, lastItem);
+        ContainerItemRemoved?.Invoke(containerId, slot, lastItem);
+    }
+
+    // ─── Inventory handlers (T04) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>SetInventory</c> (0x78 / GameServerSetInventory).
+    /// Sets an inventory slot to the supplied item and raises
+    /// <see cref="InventoryItemChanged"/>.
+    /// Maps to <c>ProtocolGame::parseAddInventoryItem</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseAddInventoryItem(InputMessage msg)
+    {
+        var slot = (Game.InventorySlot)msg.ReadU8();
+        var item = ReadItemById(msg, msg.ReadU16());
+
+        int idx = (int)slot;
+        if ((uint)idx < InventorySlotCount)
+            _inventory[idx] = item;
+
+        InventoryItemChanged?.Invoke(slot, item);
+    }
+
+    /// <summary>
+    /// Parses <c>DeleteInventory</c> (0x79 / GameServerDeleteInventory).
+    /// Clears an inventory slot and raises <see cref="InventoryItemChanged"/> with
+    /// a null item.
+    /// Maps to <c>ProtocolGame::parseRemoveInventoryItem</c>.
+    /// Task T04.
+    /// </summary>
+    private void ParseRemoveInventoryItem(InputMessage msg)
+    {
+        var slot = (Game.InventorySlot)msg.ReadU8();
+
+        int idx = (int)slot;
+        if ((uint)idx < InventorySlotCount)
+            _inventory[idx] = null;
+
+        InventoryItemChanged?.Invoke(slot, null);
+    }
 }

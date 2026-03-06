@@ -49,6 +49,13 @@ public enum GameServerPacket : byte
     TileTransformThing = 0x6B, // GameServerChangeOnMap (107)     — parseTileTransformThing (T02)
     TileRemoveThing  = 0x6C,   // GameServerDeleteOnMap (108)     — parseTileRemoveThing (T02)
     MoveCreature     = 0x6D,   // GameServerMoveCreature (109)    — parseCreatureMove (T03)
+    OpenContainer    = 0x6E,   // GameServerOpenContainer (110)   — parseOpenContainer (T04)
+    CloseContainer   = 0x6F,   // GameServerCloseContainer (111)  — parseCloseContainer (T04)
+    ContainerAddItem    = 0x70, // GameServerCreateContainer (112) — parseContainerAddItem (T04)
+    ContainerUpdateItem = 0x71, // GameServerChangeInContainer (113)— parseContainerUpdateItem (T04)
+    ContainerRemoveItem = 0x72, // GameServerDeleteInContainer (114)— parseContainerRemoveItem (T04)
+    SetInventory     = 0x78,   // GameServerSetInventory (120)    — parseAddInventoryItem (T04)
+    DeleteInventory  = 0x79,   // GameServerDeleteInventory (121) — parseRemoveInventoryItem (T04)
     CreatureData     = 0x8B,   // GameServerCreatureData  (139)   — parseCreatureData (T03)
     CreatureHealth   = 0x8C,   // GameServerCreatureHealth (140)  — parseCreatureHealth (T03)
     CreatureOutfit   = 0x8E,   // GameServerCreatureOutfit (142)  — parseCreatureOutfit (T03)
@@ -113,6 +120,21 @@ public sealed partial class ProtocolGame : Protocol
 
     /// <summary>The game map populated by incoming map-description packets.</summary>
     public Game.Map Map => _map;
+
+    // ─── Container / inventory state (T04/T08) ────────────────────────────────
+
+    private const int MaxContainers = 64;
+    private readonly Game.Container?[] _containers = new Game.Container[MaxContainers];
+
+    /// <summary>
+    /// Returns the open container at wire slot <paramref name="id"/>, or <c>null</c>.
+    /// </summary>
+    public Game.Container? GetContainer(int id)
+        => (uint)id < MaxContainers ? _containers[id] : null;
+
+    // Inventory (slots 0-15; slot 0 unused, 1=Head … 15=Ext4)
+    private const int InventorySlotCount = 16;
+    private readonly Game.Item?[] _inventory = new Game.Item[InventorySlotCount];
 
     // ─── Player / session state ───────────────────────────────────────────────
 
@@ -236,6 +258,44 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<Game.Position>? TileDescriptionSet;
 
+    // ─── Container and inventory events (T04) ────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server opens a container.
+    /// Parameters: (container)
+    /// </summary>
+    public event Action<Game.Container>? ContainerOpened;
+
+    /// <summary>
+    /// Raised when the server closes a container.
+    /// Parameters: (containerId)
+    /// </summary>
+    public event Action<int>? ContainerClosed;
+
+    /// <summary>
+    /// Raised when an item is added to a container slot.
+    /// Parameters: (containerId, slot, item)
+    /// </summary>
+    public event Action<int, int, Game.Item>? ContainerItemAdded;
+
+    /// <summary>
+    /// Raised when an item in a container slot is replaced.
+    /// Parameters: (containerId, slot, newItem)
+    /// </summary>
+    public event Action<int, int, Game.Item>? ContainerItemUpdated;
+
+    /// <summary>
+    /// Raised when an item is removed from a container slot.
+    /// Parameters: (containerId, slot, lastItem — may be null for non-paginated)
+    /// </summary>
+    public event Action<int, int, Game.Item?>? ContainerItemRemoved;
+
+    /// <summary>
+    /// Raised when an inventory slot is set or cleared.
+    /// Parameters: (slot, item — null when the slot is cleared)
+    /// </summary>
+    public event Action<Game.InventorySlot, Game.Item?>? InventoryItemChanged;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -266,7 +326,14 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.PlayerState,       ParsePlayerState);
         RegisterHandler((byte)GameServerPacket.PlayerModes,       ParsePlayerModes);
         RegisterHandler((byte)GameServerPacket.MoveCreature,      ParseCreatureMove);
-        RegisterHandler((byte)GameServerPacket.CreatureData,      ParseCreatureData);
+        RegisterHandler((byte)GameServerPacket.OpenContainer,      ParseOpenContainer);
+        RegisterHandler((byte)GameServerPacket.CloseContainer,     ParseCloseContainer);
+        RegisterHandler((byte)GameServerPacket.ContainerAddItem,   ParseContainerAddItem);
+        RegisterHandler((byte)GameServerPacket.ContainerUpdateItem,ParseContainerUpdateItem);
+        RegisterHandler((byte)GameServerPacket.ContainerRemoveItem,ParseContainerRemoveItem);
+        RegisterHandler((byte)GameServerPacket.SetInventory,       ParseAddInventoryItem);
+        RegisterHandler((byte)GameServerPacket.DeleteInventory,    ParseRemoveInventoryItem);
+        RegisterHandler((byte)GameServerPacket.CreatureData,       ParseCreatureData);
         RegisterHandler((byte)GameServerPacket.CreatureHealth,    ParseCreatureHealth);
         RegisterHandler((byte)GameServerPacket.CreatureOutfit,    ParseCreatureOutfit);
         RegisterHandler((byte)GameServerPacket.CreatureSpeed,     ParseCreatureSpeed);

@@ -42,43 +42,167 @@ public sealed class Minimap
     }
 }
 
+// ─── InventorySlot ────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Equipment slots on the player's paper-doll.  Wire values match the C++
+/// <c>Otc::InventorySlot</c> enum (1-based).
+/// Task T04.
+/// </summary>
+public enum InventorySlot : byte
+{
+    Head      = 1,
+    Necklace  = 2,
+    Backpack  = 3,
+    Armor     = 4,
+    Right     = 5,
+    Left      = 6,
+    Legs      = 7,
+    Feet      = 8,
+    Ring      = 9,
+    Ammo      = 10,
+    Purse     = 11,
+    Ext1      = 12,
+    Ext2      = 13,
+    Ext3      = 14,
+    Ext4      = 15,
+    /// <summary>Sentinel value — not a real slot; equals the total slot count + 1.</summary>
+    MaxValue  = 16,
+}
+
 // ─── Container ────────────────────────────────────────────────────────────────
 
 /// <summary>
 /// An ordered collection of <see cref="Item"/> objects (backpack / container item).
-/// Maps to <c>src/client/container.h</c>.
-/// Task 8.22.
+/// Mirrors <c>src/client/container.h</c>.
+/// Task T08.
 /// </summary>
 public sealed class Container
 {
-    public int    Id       { get; init; }
-    public string Name     { get; init; } = string.Empty;
-    public int    Capacity { get; init; } = 20;
-    public int    ItemId   { get; init; }    // appearance of the container itself
+    /// <summary>Wire container ID (0–63).</summary>
+    public int    Id           { get; init; }
+
+    /// <summary>Display name shown in the container window title.</summary>
+    public string Name         { get; init; } = string.Empty;
+
+    /// <summary>Maximum number of items this container can hold.</summary>
+    public int    Capacity     { get; init; } = 20;
+
+    /// <summary>
+    /// The item that represents the container itself (e.g. a backpack item).
+    /// Mirrors <c>m_containerItem</c>.
+    /// </summary>
+    public Item?  ContainerItem { get; init; }
+
+    /// <summary>
+    /// <c>true</c> when this container was opened from inside another container.
+    /// Mirrors <c>m_hasParent</c>.
+    /// </summary>
+    public bool HasParent    { get; init; }
+
+    /// <summary>
+    /// <c>true</c> when items can be dragged into/out of this container.
+    /// Mirrors <c>m_unlocked</c> (GameContainerPagination).
+    /// </summary>
+    public bool IsUnlocked   { get; init; } = true;
+
+    /// <summary>
+    /// <c>true</c> when the container supports pagination (large bags).
+    /// Mirrors <c>m_hasPages</c>.
+    /// </summary>
+    public bool HasPages     { get; init; }
+
+    /// <summary>
+    /// Total number of slots in the container (may exceed <see cref="Capacity"/>
+    /// for paginated bags).  Mirrors <c>m_size</c>.
+    /// </summary>
+    public int  Size         { get; init; }
+
+    /// <summary>
+    /// First visible slot index (non-zero for paginated bags scrolled down).
+    /// Mirrors <c>m_firstIndex</c>.
+    /// </summary>
+    public int  FirstIndex   { get; init; }
+
+    /// <summary><c>true</c> when the container has been closed by the server.</summary>
+    public bool IsClosed     { get; private set; }
+
+    // ─── Contents ─────────────────────────────────────────────────────────────
 
     private readonly List<Item> _contents = [];
-    public  IReadOnlyList<Item> Contents  => _contents;
-    public  int                 Count     => _contents.Count;
-    public  bool                IsFull    => _contents.Count >= Capacity;
-    public  bool                IsEmpty   => _contents.Count == 0;
 
-    public bool AddItem(Item item)
+    /// <summary>The ordered list of items currently in this container.</summary>
+    public  IReadOnlyList<Item> Contents  => _contents;
+
+    /// <summary>Number of items currently in this container.</summary>
+    public  int                 Count     => _contents.Count;
+
+    public  bool IsFull  => _contents.Count >= Capacity;
+    public  bool IsEmpty => _contents.Count == 0;
+
+    // ─── Mutation methods ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Appends all items in <paramref name="items"/> to the container
+    /// (used when the server sends the initial item list in <c>OpenContainer</c>).
+    /// </summary>
+    public void AddItems(IEnumerable<Item> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        foreach (var item in items)
+            _contents.Add(item);
+    }
+
+    /// <summary>
+    /// Inserts <paramref name="item"/> at position <paramref name="slot"/>,
+    /// clamping to the end if <paramref name="slot"/> is out of range.
+    /// Mirrors <c>Container::onAddItem</c> with the paginated slot.
+    /// </summary>
+    public void AddItem(Item item, int slot = -1)
     {
         ArgumentNullException.ThrowIfNull(item);
-        if (IsFull) return false;
-        _contents.Add(item);
+        if (slot < 0 || slot >= _contents.Count)
+            _contents.Add(item);
+        else
+            _contents.Insert(slot, item);
+    }
+
+    /// <summary>
+    /// Replaces the item at <paramref name="slot"/> with <paramref name="newItem"/>.
+    /// Returns <c>true</c> on success, <c>false</c> when <paramref name="slot"/>
+    /// is out of range.
+    /// Mirrors <c>Container::onUpdateItem</c>.
+    /// </summary>
+    public bool UpdateAt(int slot, Item newItem)
+    {
+        ArgumentNullException.ThrowIfNull(newItem);
+        if (slot < 0 || slot >= _contents.Count) return false;
+        _contents[slot] = newItem;
         return true;
     }
 
-    public bool RemoveAt(int slot)
+    /// <summary>
+    /// Removes the item at <paramref name="slot"/>, optionally appending
+    /// <paramref name="lastItem"/> to the end (pagination: last page item
+    /// moves forward after removal).
+    /// Returns <c>false</c> when <paramref name="slot"/> is out of range.
+    /// Mirrors <c>Container::onRemoveItem</c>.
+    /// </summary>
+    public bool RemoveAt(int slot, Item? lastItem = null)
     {
         if (slot < 0 || slot >= _contents.Count) return false;
         _contents.RemoveAt(slot);
+        if (lastItem is not null)
+            _contents.Add(lastItem);
         return true;
     }
 
+    /// <summary>Returns the item at <paramref name="slot"/>, or <c>null</c>.</summary>
     public Item? GetAt(int slot)
         => slot >= 0 && slot < _contents.Count ? _contents[slot] : null;
+
+    /// <summary>Marks the container as closed.</summary>
+    public void Close() => IsClosed = true;
 }
 
 // ─── AttachedEffect ────────────────────────────────────────────────────────────

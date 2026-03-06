@@ -857,6 +857,335 @@ public sealed class ProtocolGameTests
         Assert.Equal(0x1234, (int)msg.ReadU16()); // second value still readable
     }
 
+    // ─── T04: GameServerPacket opcode values ──────────────────────────────────
+
+    [Fact] public void GameServerPacket_OpenContainer_Is0x6E()       => Assert.Equal(0x6E, (byte)GameServerPacket.OpenContainer);
+    [Fact] public void GameServerPacket_CloseContainer_Is0x6F()      => Assert.Equal(0x6F, (byte)GameServerPacket.CloseContainer);
+    [Fact] public void GameServerPacket_ContainerAddItem_Is0x70()    => Assert.Equal(0x70, (byte)GameServerPacket.ContainerAddItem);
+    [Fact] public void GameServerPacket_ContainerUpdateItem_Is0x71() => Assert.Equal(0x71, (byte)GameServerPacket.ContainerUpdateItem);
+    [Fact] public void GameServerPacket_ContainerRemoveItem_Is0x72() => Assert.Equal(0x72, (byte)GameServerPacket.ContainerRemoveItem);
+    [Fact] public void GameServerPacket_SetInventory_Is0x78()        => Assert.Equal(0x78, (byte)GameServerPacket.SetInventory);
+    [Fact] public void GameServerPacket_DeleteInventory_Is0x79()     => Assert.Equal(0x79, (byte)GameServerPacket.DeleteInventory);
+
+    // ─── T04: ParseOpenContainer ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseOpenContainer_PopulatesContainerAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        OTClient.Framework.Game.Container? received = null;
+        pg.ContainerOpened += c => received = c;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenContainer);
+        out_.WriteU8(3);          // containerId = 3
+        out_.WriteU16(2854);      // containerItem typeId (backpack item)
+        out_.WriteString("Backpack");  // name
+        out_.WriteU8(20);         // capacity
+        out_.WriteU8(0);          // hasParent = false
+        out_.WriteU8(0);          // showSearchIcon (v1281, discard)
+        out_.WriteU8(1);          // isUnlocked = true (GameContainerPagination)
+        out_.WriteU8(0);          // hasPages = false
+        out_.WriteU16(0);         // containerSize
+        out_.WriteU16(0);         // firstIndex
+        out_.WriteU8(2);          // itemCount = 2
+        out_.WriteU16(3031);      // item 1 typeId (gold coin)
+        out_.WriteU16(3277);      // item 2 typeId (sword)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(received);
+        Assert.Equal(3,           received.Id);
+        Assert.Equal("Backpack",  received.Name);
+        Assert.Equal(20,          received.Capacity);
+        Assert.False(received.HasParent);
+        Assert.True(received.IsUnlocked);
+        Assert.Equal(2,           received.Count);
+        Assert.NotNull(pg.GetContainer(3));
+    }
+
+    [Fact]
+    public void ParseOpenContainer_ReplacesExistingContainer()
+    {
+        using var pg = new ProtocolGame();
+        pg.ContainerOpened += _ => { };
+
+        // Open container 0 twice — second open should close the first
+        for (int pass = 0; pass < 2; pass++)
+        {
+            var out_ = new OutputMessage();
+            out_.WriteU8((byte)GameServerPacket.OpenContainer);
+            out_.WriteU8(0);          // containerId = 0
+            out_.WriteU16(2854);      // containerItem typeId
+            out_.WriteString("Bag");
+            out_.WriteU8(5);          // capacity
+            out_.WriteU8(0);          // hasParent
+            out_.WriteU8(0);          // showSearchIcon
+            out_.WriteU8(1);          // isUnlocked
+            out_.WriteU8(0);          // hasPages
+            out_.WriteU16(0);         // containerSize
+            out_.WriteU16(0);         // firstIndex
+            out_.WriteU8(0);          // itemCount = 0
+            InvokeHandleRawData(pg, out_.ToArray());
+        }
+
+        var container = pg.GetContainer(0);
+        Assert.NotNull(container);
+        Assert.False(container.IsClosed);
+    }
+
+    // ─── T04: ParseCloseContainer ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCloseContainer_ClosesContainerAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        int? closedId = null;
+        pg.ContainerClosed += id => closedId = id;
+
+        // First open container 5
+        {
+            var open = new OutputMessage();
+            open.WriteU8((byte)GameServerPacket.OpenContainer);
+            open.WriteU8(5);
+            open.WriteU16(2854);
+            open.WriteString("Bag");
+            open.WriteU8(5);
+            open.WriteU8(0);
+            open.WriteU8(0);
+            open.WriteU8(1);
+            open.WriteU8(0);
+            open.WriteU16(0);
+            open.WriteU16(0);
+            open.WriteU8(0);
+            InvokeHandleRawData(pg, open.ToArray());
+        }
+
+        // Now close it
+        var close = new OutputMessage();
+        close.WriteU8((byte)GameServerPacket.CloseContainer);
+        close.WriteU8(5);
+        InvokeHandleRawData(pg, close.ToArray());
+
+        Assert.Equal(5, closedId);
+        Assert.Null(pg.GetContainer(5));
+    }
+
+    // ─── T04: ParseContainerAddItem ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseContainerAddItem_AddsItemAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        // Open a container first
+        {
+            var open = new OutputMessage();
+            open.WriteU8((byte)GameServerPacket.OpenContainer);
+            open.WriteU8(1);
+            open.WriteU16(2854);
+            open.WriteString("Bag");
+            open.WriteU8(10);
+            open.WriteU8(0);
+            open.WriteU8(0);
+            open.WriteU8(1);
+            open.WriteU8(0);
+            open.WriteU16(0);
+            open.WriteU16(0);
+            open.WriteU8(0);   // 0 items initially
+            InvokeHandleRawData(pg, open.ToArray());
+        }
+
+        int? firedContainer = null;
+        int? firedSlot      = null;
+        OTClient.Framework.Game.Item? firedItem = null;
+        pg.ContainerItemAdded += (cid, slot, item) =>
+        {
+            firedContainer = cid; firedSlot = slot; firedItem = item;
+        };
+
+        var add = new OutputMessage();
+        add.WriteU8((byte)GameServerPacket.ContainerAddItem);
+        add.WriteU8(1);        // containerId
+        add.WriteU16(0);       // slot (paginated U16)
+        add.WriteU16(3031);    // item typeId (gold coin)
+        InvokeHandleRawData(pg, add.ToArray());
+
+        Assert.Equal(1,    firedContainer);
+        Assert.Equal(0,    firedSlot);
+        Assert.NotNull(firedItem);
+        Assert.Equal(1, pg.GetContainer(1)!.Count);
+    }
+
+    // ─── T04: ParseContainerUpdateItem ────────────────────────────────────────
+
+    [Fact]
+    public void ParseContainerUpdateItem_UpdatesSlotAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        // Open container 2 with 1 item
+        {
+            var open = new OutputMessage();
+            open.WriteU8((byte)GameServerPacket.OpenContainer);
+            open.WriteU8(2);
+            open.WriteU16(2854);
+            open.WriteString("Bag");
+            open.WriteU8(10);
+            open.WriteU8(0);
+            open.WriteU8(0);
+            open.WriteU8(1);
+            open.WriteU8(0);
+            open.WriteU16(0);
+            open.WriteU16(0);
+            open.WriteU8(1);   // 1 item
+            open.WriteU16(3031); // gold coin
+            InvokeHandleRawData(pg, open.ToArray());
+        }
+
+        int? firedSlot = null;
+        pg.ContainerItemUpdated += (_, slot, _) => firedSlot = slot;
+
+        var upd = new OutputMessage();
+        upd.WriteU8((byte)GameServerPacket.ContainerUpdateItem);
+        upd.WriteU8(2);        // containerId
+        upd.WriteU16(0);       // slot
+        upd.WriteU16(3277);    // new item typeId (sword)
+        InvokeHandleRawData(pg, upd.ToArray());
+
+        Assert.Equal(0, firedSlot);
+        Assert.Equal(3277, pg.GetContainer(2)!.GetAt(0)!.Id);
+    }
+
+    // ─── T04: ParseContainerRemoveItem ────────────────────────────────────────
+
+    [Fact]
+    public void ParseContainerRemoveItem_RemovesSlotAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        // Open container 4 with 1 item
+        {
+            var open = new OutputMessage();
+            open.WriteU8((byte)GameServerPacket.OpenContainer);
+            open.WriteU8(4);
+            open.WriteU16(2854);
+            open.WriteString("Bag");
+            open.WriteU8(10);
+            open.WriteU8(0);
+            open.WriteU8(0);
+            open.WriteU8(1);
+            open.WriteU8(0);
+            open.WriteU16(0);
+            open.WriteU16(0);
+            open.WriteU8(1);   // 1 item
+            open.WriteU16(3031); // gold coin
+            InvokeHandleRawData(pg, open.ToArray());
+        }
+
+        int? firedSlot = null;
+        pg.ContainerItemRemoved += (_, slot, _) => firedSlot = slot;
+
+        var rem = new OutputMessage();
+        rem.WriteU8((byte)GameServerPacket.ContainerRemoveItem);
+        rem.WriteU8(4);        // containerId
+        rem.WriteU16(0);       // slot
+        rem.WriteU16(0);       // lastItemId = 0 (no last item)
+        InvokeHandleRawData(pg, rem.ToArray());
+
+        Assert.Equal(0, firedSlot);
+        Assert.Equal(0, pg.GetContainer(4)!.Count);
+    }
+
+    // ─── T04: ParseAddInventoryItem ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseAddInventoryItem_FiresInventoryChangedWithItem()
+    {
+        using var pg = new ProtocolGame();
+
+        OTClient.Framework.Game.InventorySlot? firedSlot = null;
+        OTClient.Framework.Game.Item? firedItem = null;
+        pg.InventoryItemChanged += (slot, item) => { firedSlot = slot; firedItem = item; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SetInventory);
+        out_.WriteU8(3);       // slot = Backpack
+        out_.WriteU16(2854);   // item typeId
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(OTClient.Framework.Game.InventorySlot.Backpack, firedSlot);
+        Assert.NotNull(firedItem);
+    }
+
+    // ─── T04: ParseRemoveInventoryItem ────────────────────────────────────────
+
+    [Fact]
+    public void ParseRemoveInventoryItem_FiresInventoryChangedWithNull()
+    {
+        using var pg = new ProtocolGame();
+
+        OTClient.Framework.Game.InventorySlot? firedSlot = null;
+        bool firedNullItem = false;
+        pg.InventoryItemChanged += (slot, item) => { firedSlot = slot; firedNullItem = item is null; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DeleteInventory);
+        out_.WriteU8(6);       // slot = Left hand (InventorySlotLeft = 6)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(OTClient.Framework.Game.InventorySlot.Left, firedSlot);
+        Assert.True(firedNullItem);
+    }
+
+    // ─── T08: Container model extended behavior ────────────────────────────────
+
+    [Fact]
+    public void Container_UpdateAt_ReplacesItem()
+    {
+        var c    = new OTClient.Framework.Game.Container { Capacity = 5 };
+        var item1 = OTClient.Framework.Game.Item.Create(100);
+        var item2 = OTClient.Framework.Game.Item.Create(200);
+        c.AddItem(item1);
+        bool updated = c.UpdateAt(0, item2);
+        Assert.True(updated);
+        Assert.Same(item2, c.GetAt(0));
+    }
+
+    [Fact]
+    public void Container_RemoveAt_WithLastItem_AppendsTail()
+    {
+        var c    = new OTClient.Framework.Game.Container { Capacity = 5 };
+        c.AddItem(OTClient.Framework.Game.Item.Create(1));
+        c.AddItem(OTClient.Framework.Game.Item.Create(2));
+        var tail = OTClient.Framework.Game.Item.Create(3);
+        bool removed = c.RemoveAt(0, tail);
+        Assert.True(removed);
+        Assert.Equal(2, c.Count);
+        Assert.Same(tail, c.GetAt(1));  // tail is appended to end
+    }
+
+    [Fact]
+    public void Container_Close_SetsIsClosed()
+    {
+        var c = new OTClient.Framework.Game.Container { Capacity = 5 };
+        Assert.False(c.IsClosed);
+        c.Close();
+        Assert.True(c.IsClosed);
+    }
+
+    [Fact]
+    public void InventorySlot_Enum_Values_MatchWireProtocol()
+    {
+        Assert.Equal(1,  (byte)OTClient.Framework.Game.InventorySlot.Head);
+        Assert.Equal(3,  (byte)OTClient.Framework.Game.InventorySlot.Backpack);
+        Assert.Equal(10, (byte)OTClient.Framework.Game.InventorySlot.Ammo);
+    }
+
     // ─── Helper builders ──────────────────────────────────────────────────────
 
     /// <summary>
