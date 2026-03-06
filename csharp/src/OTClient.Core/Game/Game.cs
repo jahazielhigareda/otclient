@@ -720,4 +720,219 @@ public sealed class Game
         if (!IsOnline) return;
         EditListSentRequested?.Invoke(id, doorId, text);
     }
+
+    // ─── Container / Inventory state (T39) ────────────────────────────────────
+
+    private const int MaxContainers    = 64;
+    private const int InventorySlots   = 16;
+
+    private readonly Dictionary<int, Container> _containers = new();
+    private readonly Item?[]                    _inventory  = new Item[InventorySlots];
+
+    /// <summary>Returns the open container at wire slot <paramref name="id"/>, or <c>null</c>.</summary>
+    public Container? GetContainer(int id)
+        => _containers.TryGetValue(id, out var c) ? c : null;
+
+    /// <summary>Returns all currently open containers.</summary>
+    public IReadOnlyDictionary<int, Container> GetContainers() => _containers;
+
+    /// <summary>Returns the item in inventory slot <paramref name="slot"/>, or <c>null</c>.</summary>
+    public Item? GetInventoryItem(InventorySlot slot)
+    {
+        int idx = (int)slot;
+        return (uint)idx < InventorySlots ? _inventory[idx] : null;
+    }
+
+    /// <summary>Returns the full inventory array (slots 0–15; slot 0 unused).</summary>
+    public IReadOnlyList<Item?> GetInventory() => _inventory;
+
+    /// <summary>
+    /// Called by the protocol layer when the server opens a container.
+    /// Closes any existing container at the same slot.
+    /// </summary>
+    public void OpenContainer(Container container)
+    {
+        ArgumentNullException.ThrowIfNull(container);
+        if (_containers.TryGetValue(container.Id, out var prev))
+            prev.Close();
+        _containers[container.Id] = container;
+    }
+
+    /// <summary>Called by the protocol layer when the server closes a container.</summary>
+    public void CloseContainerSlot(int id)
+    {
+        if (_containers.TryGetValue(id, out var c))
+        {
+            c.Close();
+            _containers.Remove(id);
+        }
+    }
+
+    /// <summary>Sets an inventory slot item (called by the protocol layer).</summary>
+    public void SetInventoryItem(InventorySlot slot, Item? item)
+    {
+        int idx = (int)slot;
+        if ((uint)idx < InventorySlots)
+            _inventory[idx] = item;
+    }
+
+    // ─── Item action events (T39) ─────────────────────────────────────────────
+
+    /// <summary>Fired when Lua calls <c>g_game.use()</c>.</summary>
+    public event Action<Position, int, int, int>? UseItemRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.useWith()</c>.</summary>
+    public event Action<Position, int, int, Position, int, int>? UseItemWithRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.useOnCreature()</c>.</summary>
+    public event Action<Position, int, int, uint>? UseOnCreatureRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.move()</c>.</summary>
+    public event Action<Position, int, int, Position, int>? MoveItemRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.look()</c>.</summary>
+    public event Action<Position, int, int>? LookAtRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.lookCreature()</c>.</summary>
+    public event Action<uint>? LookCreatureRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.rotate()</c>.</summary>
+    public event Action<Position, int, int>? RotateItemRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.close()</c> with a container ID.</summary>
+    public event Action<int>? CloseContainerRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.openParent()</c> with a container ID.</summary>
+    public event Action<int>? UpContainerRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.browseField()</c>.</summary>
+    public event Action<Position>? BrowseFieldRequested;
+
+    /// <summary>Fired when Lua calls <c>g_game.seekInContainer()</c>.</summary>
+    public event Action<int, int>? SeekInContainerRequested;
+
+    // ─── Item action methods (T39) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Uses item at <paramref name="pos"/> with type <paramref name="itemId"/>,
+    /// stack position <paramref name="stackPos"/>, and container index <paramref name="index"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="UseItemRequested"/>.
+    /// Maps to <c>Game::use()</c>.
+    /// </summary>
+    public void UseItem(Position pos, int itemId, int stackPos, int index)
+    {
+        if (!IsOnline) return;
+        UseItemRequested?.Invoke(pos, itemId, stackPos, index);
+    }
+
+    /// <summary>
+    /// Uses item at <paramref name="fromPos"/> on item at <paramref name="toPos"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="UseItemWithRequested"/>.
+    /// Maps to <c>Game::useWith()</c>.
+    /// </summary>
+    public void UseItemWith(Position fromPos, int itemId, int fromStackPos,
+                             Position toPos, int toItemId, int toStackPos)
+    {
+        if (!IsOnline) return;
+        UseItemWithRequested?.Invoke(fromPos, itemId, fromStackPos, toPos, toItemId, toStackPos);
+    }
+
+    /// <summary>
+    /// Uses item at <paramref name="pos"/> on creature <paramref name="creatureId"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="UseOnCreatureRequested"/>.
+    /// Maps to <c>Game::useOnCreature()</c>.
+    /// </summary>
+    public void UseOnCreature(Position pos, int itemId, int stackPos, uint creatureId)
+    {
+        if (!IsOnline) return;
+        UseOnCreatureRequested?.Invoke(pos, itemId, stackPos, creatureId);
+    }
+
+    /// <summary>
+    /// Moves an item from <paramref name="fromPos"/> to <paramref name="toPos"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="MoveItemRequested"/>.
+    /// Maps to <c>Game::move()</c>.
+    /// </summary>
+    public void MoveItem(Position fromPos, int itemId, int stackPos, Position toPos, int count)
+    {
+        if (!IsOnline) return;
+        MoveItemRequested?.Invoke(fromPos, itemId, stackPos, toPos, count);
+    }
+
+    /// <summary>
+    /// Looks at the item at <paramref name="pos"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="LookAtRequested"/>.
+    /// Maps to <c>Game::look()</c>.
+    /// </summary>
+    public void LookAt(Position pos, int itemId, int stackPos)
+    {
+        if (!IsOnline) return;
+        LookAtRequested?.Invoke(pos, itemId, stackPos);
+    }
+
+    /// <summary>
+    /// Looks at a creature.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="LookCreatureRequested"/>.
+    /// Maps to <c>Game::lookCreature()</c>.
+    /// </summary>
+    public void LookCreature(uint creatureId)
+    {
+        if (!IsOnline) return;
+        LookCreatureRequested?.Invoke(creatureId);
+    }
+
+    /// <summary>
+    /// Rotates the item at <paramref name="pos"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="RotateItemRequested"/>.
+    /// Maps to <c>Game::rotate()</c>.
+    /// </summary>
+    public void RotateItem(Position pos, int itemId, int stackPos)
+    {
+        if (!IsOnline) return;
+        RotateItemRequested?.Invoke(pos, itemId, stackPos);
+    }
+
+    /// <summary>
+    /// Closes an open container.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="CloseContainerRequested"/>.
+    /// Maps to <c>Game::close()</c>.
+    /// </summary>
+    public void CloseContainer(int containerId)
+    {
+        if (!IsOnline) return;
+        CloseContainerRequested?.Invoke(containerId);
+    }
+
+    /// <summary>
+    /// Navigates up to the parent container.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="UpContainerRequested"/>.
+    /// Maps to <c>Game::openParent()</c>.
+    /// </summary>
+    public void UpContainer(int containerId)
+    {
+        if (!IsOnline) return;
+        UpContainerRequested?.Invoke(containerId);
+    }
+
+    /// <summary>
+    /// Browses the field at <paramref name="pos"/> (opens a stack-view).
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="BrowseFieldRequested"/>.
+    /// Maps to <c>Game::browseField()</c>.
+    /// </summary>
+    public void BrowseField(Position pos)
+    {
+        if (!IsOnline) return;
+        BrowseFieldRequested?.Invoke(pos);
+    }
+
+    /// <summary>
+    /// Seeks to page <paramref name="index"/> within paginated container <paramref name="containerId"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="SeekInContainerRequested"/>.
+    /// Maps to <c>Game::seekInContainer()</c>.
+    /// </summary>
+    public void SeekInContainer(int containerId, int index)
+    {
+        if (!IsOnline) return;
+        SeekInContainerRequested?.Invoke(containerId, index);
+    }
 }

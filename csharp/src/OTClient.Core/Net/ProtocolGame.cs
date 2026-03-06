@@ -54,6 +54,19 @@ public enum GameClientPacket : byte
     MarketCreate       = 0xF6,   // ClientMarketCreate (246)      — T26
     MarketCancel       = 0xF7,   // ClientMarketCancel (247)      — T26
     MarketAccept       = 0xF8,   // ClientMarketAccept (248)      — T26
+    // Item and container operations (T39)
+    MoveItem           = 0x78,   // ClientMove (120)               — T39
+    UseItem            = 0x82,   // ClientUseItem (130)            — T39
+    UseItemWith        = 0x83,   // ClientUseItemWith (131)        — T39
+    UseOnCreature      = 0x84,   // ClientUseOnCreature (132)      — T39
+    RotateItem         = 0x85,   // ClientRotateItem (133)         — T39
+    CloseContainer     = 0x87,   // ClientCloseContainer (135)     — T39
+    UpContainer        = 0x88,   // ClientUpContainer (136)        — T39
+    OnWrapItem         = 0x8B,   // ClientOnWrapItem (139)         — T39
+    LookAt             = 0x8C,   // ClientLook (140)               — T39
+    LookCreature       = 0x8D,   // ClientLookCreature (141)       — T39
+    BrowseField        = 0xCB,   // ClientBrowseField (203)        — T39
+    SeekInContainer    = 0xCC,   // ClientSeekInContainer (204)    — T39
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>

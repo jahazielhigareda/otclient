@@ -122,6 +122,10 @@ public sealed class ThingType
     public bool IsNotPathable    => (Flags & ThingTypeFlag.NotPathable)  != 0;
     public bool IsBlockProjectile => (Flags & ThingTypeFlag.BlockProjectile) != 0;
     public bool IsFullGround     => (Flags & ThingTypeFlag.FullGround)   != 0;
+    /// <summary>Fluid container (bucket, vial, etc.).</summary>
+    public bool IsFluidContainer => (Flags & ThingTypeFlag.FluidContainer) != 0;
+    /// <summary>Item can be listed on the in-game market.</summary>
+    public bool IsMarketable     => (Flags & ThingTypeFlag.Market)        != 0;
     /// <summary>
     /// Returns <c>true</c> when this thing fully blocks sight/projectiles from above.
     /// Maps to <c>ThingType::isOpaque()</c> in the C++ client.

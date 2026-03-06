@@ -162,6 +162,10 @@ public static class LuaGlobals
         LuaBinder.RegisterType<Game.Monster>();
         LuaBinder.RegisterType<Game.Npc>();
 
+        // T39 — Item and Container as Lua userdata
+        LuaBinder.RegisterType<Game.Item>();
+        LuaBinder.RegisterType<Game.Container>();
+
         // Task 6.11 — UI
         LuaBinder.RegisterType<LuaUiProxy>();
         LuaBinder.RegisterType<UI.UIWidget>();

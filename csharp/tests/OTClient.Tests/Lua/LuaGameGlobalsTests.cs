@@ -1204,4 +1204,392 @@ public sealed class LuaGameGlobalsTests : IDisposable
         Assert.Equal("Guard", result.String);
         lua.Dispose();
     }
+
+    // ─── T39: Item as Lua userdata ────────────────────────────────────────────
+
+    [Fact]
+    public void Item_IsLuaUserdata_WhenReturnedFromContainer()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 0, Name = "Backpack" };
+        con.AddItem(Item.Create(100, 3));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local c = g_game.getContainer(0) return type(c:getItem(0))");
+        Assert.Equal("userdata", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_GetId_ReturnsId()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 0 };
+        con.AddItem(Item.Create(555));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local c = g_game.getContainer(0) return c:getItem(0):getId()");
+        Assert.Equal(555.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_GetCount_ReturnsCount()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 0 };
+        var item = Item.Create(10, 7);
+        item.ThingType = new ThingType { Id = 10, Flags = ThingTypeFlag.Stackable };
+        con.AddItem(item);
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local c = g_game.getContainer(0) return c:getItem(0):getCount()");
+        Assert.Equal(7.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_SetAndGetTooltip_RoundTrip()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 1 };
+        con.AddItem(Item.Create(20));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local c = g_game.getContainer(1) " +
+            "local item = c:getItem(0) " +
+            "item:setTooltip('hello') " +
+            "return item:getTooltip()");
+        Assert.Equal("hello", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_SetAndGetTier_RoundTrip()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 2 };
+        con.AddItem(Item.Create(30));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local item = g_game.getContainer(2):getItem(0) " +
+            "item:setTier(5) " +
+            "return item:getTier()");
+        Assert.Equal(5.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_Clone_ReturnsNewInstanceWithSameId()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 3 };
+        con.AddItem(Item.Create(99));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local item = g_game.getContainer(3):getItem(0) " +
+            "local copy = item:clone() " +
+            "return copy:getId()");
+        Assert.Equal(99.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_IsContainer_FalseByDefault()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 4 };
+        con.AddItem(Item.Create(50));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(4):getItem(0):isContainer()");
+        Assert.False(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Item_IsStackable_TrueWhenFlagSet()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 5 };
+        var item = Item.Create(60);
+        item.ThingType = new ThingType { Id = 60, Flags = ThingTypeFlag.Stackable };
+        con.AddItem(item);
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(5):getItem(0):isStackable()");
+        Assert.True(result.Boolean);
+        lua.Dispose();
+    }
+
+    // ─── T39: Container as Lua userdata ──────────────────────────────────────
+
+    [Fact]
+    public void Container_IsLuaUserdata_WhenReturnedFromGGame()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        g.OpenContainer(new Container { Id = 0, Name = "Bag" });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return type(g_game.getContainer(0))");
+        Assert.Equal("userdata", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Container_GetId_ReturnsId()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.OpenContainer(new Container { Id = 7, Name = "Chest" });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(7):getId()");
+        Assert.Equal(7.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Container_GetName_ReturnsName()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.OpenContainer(new Container { Id = 8, Name = "Loot Bag" });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(8):getName()");
+        Assert.Equal("Loot Bag", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Container_GetCapacity_ReturnsCapacity()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.OpenContainer(new Container { Id = 9, Name = "Backpack", Capacity = 20 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(9):getCapacity()");
+        Assert.Equal(20.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Container_GetItemsCount_ReturnsCount()
+    {
+        var g   = new OTClient.Framework.Game.Game();
+        var con = new Container { Id = 10, Capacity = 5 };
+        con.AddItem(Item.Create(1));
+        con.AddItem(Item.Create(2));
+        g.OpenContainer(con);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(10):getItemsCount()");
+        Assert.Equal(2.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Container_IsClosed_FalseWhenOpen()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.OpenContainer(new Container { Id = 11 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(11):isClosed()");
+        Assert.False(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_GetContainer_ReturnsNilForUnknown()
+    {
+        var g = new OTClient.Framework.Game.Game();
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getContainer(63)");
+        Assert.Equal(DataType.Nil, result.Type);
+        lua.Dispose();
+    }
+
+    // ─── T39: g_game inventory accessors ─────────────────────────────────────
+
+    [Fact]
+    public void G_Game_GetInventoryItem_ReturnsItemWhenSet()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.SetInventoryItem(InventorySlot.Armor, Item.Create(300));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        // Armor = slot 4
+        var result = lua.DoString("local item = g_game.getInventoryItem(4) return item:getId()");
+        Assert.Equal(300.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_GetInventoryItem_ReturnsNilWhenEmpty()
+    {
+        var g = new OTClient.Framework.Game.Game();
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getInventoryItem(1)");
+        Assert.Equal(DataType.Nil, result.Type);
+        lua.Dispose();
+    }
+
+    // ─── T39: g_game item-action events ──────────────────────────────────────
+
+    [Fact]
+    public void G_Game_Use_FiresEventWhenOnline()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        (Position pos, int itemId, int stackPos, int index) captured = default;
+        g.UseItemRequested += (p, id, sp, idx) => captured = (p, id, sp, idx);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        lua.DoString("g_game.use(100, 200, 7, 555, 3, 0)");
+        Assert.Equal(555, captured.itemId);
+        Assert.Equal(3,   captured.stackPos);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_Look_FiresEventWhenOnline()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        Position capturedPos = default;
+        int capturedId = 0;
+        g.LookAtRequested += (p, id, _) => { capturedPos = p; capturedId = id; };
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        lua.DoString("g_game.look(10, 20, 7, 888, 1)");
+        Assert.Equal(10,  capturedPos.X);
+        Assert.Equal(888, capturedId);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_LookCreature_FiresEventWhenOnline()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        uint captured = 0;
+        g.LookCreatureRequested += id => captured = id;
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        lua.DoString("g_game.lookCreature(9999)");
+        Assert.Equal(9999u, captured);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_Close_FiresEventWhenOnline()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        int captured = -1;
+        g.CloseContainerRequested += id => captured = id;
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        lua.DoString("g_game.close(5)");
+        Assert.Equal(5, captured);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_Move_FiresEventWhenOnline()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        int capturedItemId = 0;
+        g.MoveItemRequested += (_, id, _, _, _) => capturedItemId = id;
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        lua.DoString("g_game.move(1,2,7, 77, 0, 3,4,7, 1)");
+        Assert.Equal(77, capturedItemId);
+        lua.Dispose();
+    }
 }

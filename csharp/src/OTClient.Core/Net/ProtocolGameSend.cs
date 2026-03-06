@@ -652,4 +652,190 @@ public sealed partial class ProtocolGame
         msg.WriteU16(amount);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── Item / container operations (T39) ────────────────────────────────────
+
+    private void WritePosition(OutputMessage msg, Game.Position pos)
+    {
+        msg.WriteU16((ushort)pos.X);
+        msg.WriteU16((ushort)pos.Y);
+        msg.WriteU8((byte)pos.Z);
+    }
+
+    /// <summary>
+    /// Moves an item from one position to another (drag-and-drop).
+    /// Wire: U8 opcode, fromPos (U16x,U16y,U8z), U16 itemId, U8 stackPos,
+    ///       toPos (U16x,U16y,U8z), U16 count.
+    /// Maps to <c>ProtocolGame::sendMove</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendMoveItem(Game.Position fromPos, int itemId, int stackPos,
+                              Game.Position toPos, int count)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MoveItem);
+        WritePosition(msg, fromPos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        WritePosition(msg, toPos);
+        msg.WriteU16((ushort)count);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Uses an item on the ground or in a container.
+    /// Wire: U8 opcode, pos (U16x,U16y,U8z), U16 itemId, U8 stackPos, U8 containerIndex.
+    /// Maps to <c>ProtocolGame::sendUseItem</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUseItem(Game.Position pos, int itemId, int stackPos, int containerIndex)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UseItem);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        msg.WriteU8((byte)containerIndex);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Uses item from <paramref name="fromPos"/> on item at <paramref name="toPos"/>.
+    /// Wire: U8 opcode, fromPos, U16 itemId, U8 stackPos, toPos, U16 toItemId, U8 toStackPos.
+    /// Maps to <c>ProtocolGame::sendUseItemWith</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUseItemWith(Game.Position fromPos, int itemId, int fromStackPos,
+                                 Game.Position toPos, int toItemId, int toStackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UseItemWith);
+        WritePosition(msg, fromPos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)fromStackPos);
+        WritePosition(msg, toPos);
+        msg.WriteU16((ushort)toItemId);
+        msg.WriteU8((byte)toStackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Uses item at <paramref name="pos"/> on creature <paramref name="creatureId"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendUseOnCreature</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUseOnCreature(Game.Position pos, int itemId, int stackPos, uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UseOnCreature);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Rotates item at <paramref name="pos"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos.
+    /// Maps to <c>ProtocolGame::sendRotateItem</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendRotateItem(Game.Position pos, int itemId, int stackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RotateItem);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests to close the container at wire slot <paramref name="containerId"/>.
+    /// Wire: U8 opcode, U8 containerId.
+    /// Maps to <c>ProtocolGame::sendCloseContainer</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendCloseContainer(int containerId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseContainer);
+        msg.WriteU8((byte)containerId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Navigates up to the parent container (open-parent).
+    /// Wire: U8 opcode, U8 containerId.
+    /// Maps to <c>ProtocolGame::sendUpContainer</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUpContainer(int containerId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UpContainer);
+        msg.WriteU8((byte)containerId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Looks at the item at <paramref name="pos"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos.
+    /// Maps to <c>ProtocolGame::sendLook</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendLookAt(Game.Position pos, int itemId, int stackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LookAt);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Looks at a creature.
+    /// Wire: U8 opcode, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendLookCreature</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendLookCreature(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LookCreature);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Browses the field at <paramref name="pos"/> (opens a tile stack view).
+    /// Wire: U8 opcode, pos.
+    /// Maps to <c>ProtocolGame::sendBrowseField</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendBrowseField(Game.Position pos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BrowseField);
+        WritePosition(msg, pos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Seeks to page <paramref name="index"/> within paginated container <paramref name="containerId"/>.
+    /// Wire: U8 opcode, U8 containerId, U16 index.
+    /// Maps to <c>ProtocolGame::sendSeekInContainer</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendSeekInContainer(int containerId, int index)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.SeekInContainer);
+        msg.WriteU8((byte)containerId);
+        msg.WriteU16((ushort)index);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

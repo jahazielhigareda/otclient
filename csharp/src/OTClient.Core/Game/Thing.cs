@@ -1,3 +1,4 @@
+using MoonSharp.Interpreter;
 using System.Numerics;
 using OTClient.Framework.UI;
 using Raylib_cs;
@@ -33,8 +34,9 @@ public abstract class Thing
 /// <summary>
 /// A single in-world or in-inventory item instance.
 /// Maps to <c>src/client/item.h</c>.
-/// Task 8.6.
+/// Task 8.6 / T39.
 /// </summary>
+[MoonSharpUserData]
 public sealed class Item : Thing
 {
     public override ThingCategory Category => ThingCategory.Item;
@@ -45,15 +47,95 @@ public sealed class Item : Thing
     /// <summary>Count / sub-type (stack amount, fluid type, etc.).</summary>
     public int Count { get; set; } = 1;
 
+    /// <summary>Tooltip text (custom description set by server).</summary>
+    public string Tooltip { get; set; } = string.Empty;
+
+    /// <summary>Time remaining for timed items (seconds).</summary>
+    public uint DurationTime { get; set; }
+
+    /// <summary>Remaining charges (rune charges, etc.).</summary>
+    public uint Charges { get; set; }
+
+    /// <summary>Item tier (forge system).</summary>
+    public byte Tier { get; set; }
+
+    /// <summary>Server item ID (may differ from client sprite ID).</summary>
+    public int ServerId { get; set; }
+
     /// <summary>Returns a new item with the given ID and count.</summary>
     public static Item Create(int id, int count = 1) => new() { Id = id, Count = count };
 
     // ─── Derived properties from ThingType ────────────────────────────────────
 
-    public bool IsStackable   => ThingType?.IsStackable  ?? false;
-    public bool IsPickupable  => ThingType?.IsPickupable ?? false;
-    public bool IsContainer   => ThingType?.IsContainer  ?? false;
-    public bool IsNotWalkable => ThingType?.IsNotWalkable ?? false;
+    public bool IsStackable      => ThingType?.IsStackable       ?? false;
+    public bool IsPickupable     => ThingType?.IsPickupable      ?? false;
+    public bool IsContainer      => ThingType?.IsContainer       ?? false;
+    public bool IsNotWalkable    => ThingType?.IsNotWalkable     ?? false;
+    public bool IsFluidContainer => ThingType?.IsFluidContainer  ?? false;
+    public bool IsMarketable     => ThingType?.IsMarketable      ?? false;
+
+    /// <summary>Sub-type (fluid/splash type). Equals Count when not stackable.</summary>
+    public int SubType           => Count;
+
+    /// <summary>Raw count-or-sub-type value.</summary>
+    public int CountOrSubType    => Count;
+
+    // ─── Clone ────────────────────────────────────────────────────────────────
+
+    /// <summary>Returns a shallow copy of this item. Lua: <c>item:clone()</c></summary>
+    public Item Clone() => new()
+    {
+        Id           = Id,
+        Count        = Count,
+        Tooltip      = Tooltip,
+        DurationTime = DurationTime,
+        Charges      = Charges,
+        Tier         = Tier,
+        ServerId     = ServerId,
+        ThingType    = ThingType,
+        Position     = Position,
+    };
+
+    // ─── Lua accessor methods (T39) ───────────────────────────────────────────
+
+    /// <summary>Lua: <c>item:getId()</c></summary>
+    public int    getId()               => Id;
+    /// <summary>Lua: <c>item:getCount()</c></summary>
+    public int    getCount()            => IsStackable ? Count : 1;
+    /// <summary>Lua: <c>item:getSubType()</c></summary>
+    public int    getSubType()          => Count;
+    /// <summary>Lua: <c>item:getCountOrSubType()</c></summary>
+    public int    getCountOrSubType()   => Count;
+    /// <summary>Lua: <c>item:getTooltip()</c></summary>
+    public string getTooltip()          => Tooltip;
+    /// <summary>Lua: <c>item:getDurationTime()</c></summary>
+    public uint   getDurationTime()     => DurationTime;
+    /// <summary>Lua: <c>item:getCharges()</c></summary>
+    public uint   getCharges()          => Charges;
+    /// <summary>Lua: <c>item:getTier()</c></summary>
+    public int    getTier()             => Tier;
+    /// <summary>Lua: <c>item:getName()</c> — returns ThingType name if available.</summary>
+    public string getName()             => ThingType?.Name ?? string.Empty;
+    /// <summary>Lua: <c>item:getServerId()</c></summary>
+    public int    getServerId()         => ServerId;
+    /// <summary>Lua: <c>item:isStackable()</c></summary>
+    public bool   isStackable()         => IsStackable;
+    /// <summary>Lua: <c>item:isPickupable()</c></summary>
+    public bool   isPickupable()        => IsPickupable;
+    /// <summary>Lua: <c>item:isContainer()</c></summary>
+    public bool   isContainer()         => IsContainer;
+    /// <summary>Lua: <c>item:isFluidContainer()</c></summary>
+    public bool   isFluidContainer()    => IsFluidContainer;
+    /// <summary>Lua: <c>item:isMarketable()</c></summary>
+    public bool   isMarketable()        => IsMarketable;
+    /// <summary>Lua: <c>item:setCount(n)</c></summary>
+    public void   setCount(int n)       => Count = n;
+    /// <summary>Lua: <c>item:setTooltip(s)</c></summary>
+    public void   setTooltip(string s)  => Tooltip = s ?? string.Empty;
+    /// <summary>Lua: <c>item:setTier(t)</c></summary>
+    public void   setTier(int t)        => Tier = (byte)Math.Clamp(t, 0, 255);
+    /// <summary>Lua: <c>item:clone()</c></summary>
+    public Item   clone()               => Clone();
 }
 
 // ─── ItemType ─────────────────────────────────────────────────────────────────

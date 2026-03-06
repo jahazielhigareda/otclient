@@ -353,6 +353,167 @@ public sealed class LuaGameProxy
     /// <summary>Removes a player from the VIP (friends) list by creature ID.</summary>
     [LuaMethod] public void removeVip(uint id)
         => _game.RemoveVip(id);
+
+    // ─── Container / Inventory accessors (T39) ────────────────────────────────
+
+    /// <summary>
+    /// Returns the open container at wire slot <paramref name="id"/>, or nil.
+    /// Maps to <c>Game::getContainer(id)</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public object? getContainer(int id)
+    {
+        var c = _game.GetContainer(id);
+        return c is not null ? (object)c : null;
+    }
+
+    /// <summary>
+    /// Returns a Lua table mapping container slot ID → Container for all open containers.
+    /// Maps to <c>Game::getContainers()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public MoonSharp.Interpreter.Table getContainers()
+    {
+        // Construct a Lua table; callers iterate by integer keys.
+        var all = _game.GetContainers();
+        var tbl = new MoonSharp.Interpreter.Table(null!);
+        foreach (var kv in all)
+            tbl[kv.Key] = kv.Value;
+        return tbl;
+    }
+
+    /// <summary>
+    /// Returns the item in inventory slot <paramref name="slot"/> (1-based wire value), or nil.
+    /// Maps to <c>Game::getInventoryItem(slot)</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public object? getInventoryItem(int slot)
+    {
+        var item = _game.GetInventoryItem((Game.InventorySlot)slot);
+        return item is not null ? (object)item : null;
+    }
+
+    /// <summary>
+    /// Returns a Lua table mapping slot number → Item for all non-empty inventory slots.
+    /// Maps to <c>Game::getInventory()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public MoonSharp.Interpreter.Table getInventory()
+    {
+        var inv = _game.GetInventory();
+        var tbl = new MoonSharp.Interpreter.Table(null!);
+        for (int i = 1; i < inv.Count; i++)
+            if (inv[i] is { } item)
+                tbl[i] = item;
+        return tbl;
+    }
+
+    // ─── Item action methods (T39) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Uses item at world position (x,y,z) with given ID, stack position and container index.
+    /// Lua: <c>g_game.use(x, y, z, itemId, stackPos, index)</c>.
+    /// Maps to <c>Game::use()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void use(int x, int y, int z, int itemId, int stackPos, int index = 0)
+        => _game.UseItem(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos, index);
+
+    /// <summary>
+    /// Uses item at fromPos with toPos (cross-use).
+    /// Lua: <c>g_game.useWith(fx,fy,fz, itemId, fsp, tx,ty,tz, toItemId, tsp)</c>.
+    /// Maps to <c>Game::useWith()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void useWith(int fx, int fy, int fz, int itemId, int fromStackPos,
+                        int tx, int ty, int tz, int toItemId, int toStackPos)
+        => _game.UseItemWith(
+            new Game.Position((ushort)fx, (ushort)fy, (byte)fz), itemId, fromStackPos,
+            new Game.Position((ushort)tx, (ushort)ty, (byte)tz), toItemId, toStackPos);
+
+    /// <summary>
+    /// Uses item at pos on a creature.
+    /// Lua: <c>g_game.useOnCreature(x,y,z, itemId, stackPos, creatureId)</c>.
+    /// Maps to <c>Game::useOnCreature()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void useOnCreature(int x, int y, int z, int itemId, int stackPos, uint creatureId)
+        => _game.UseOnCreature(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos, creatureId);
+
+    /// <summary>
+    /// Moves item from one world position to another.
+    /// Lua: <c>g_game.move(fx,fy,fz, itemId, stackPos, tx,ty,tz, count)</c>.
+    /// Maps to <c>Game::move()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void move(int fx, int fy, int fz, int itemId, int stackPos,
+                     int tx, int ty, int tz, int count = 1)
+        => _game.MoveItem(
+            new Game.Position((ushort)fx, (ushort)fy, (byte)fz), itemId, stackPos,
+            new Game.Position((ushort)tx, (ushort)ty, (byte)tz), count);
+
+    /// <summary>
+    /// Looks at item at world position.
+    /// Lua: <c>g_game.look(x, y, z, itemId, stackPos)</c>.
+    /// Maps to <c>Game::look()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void look(int x, int y, int z, int itemId, int stackPos)
+        => _game.LookAt(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos);
+
+    /// <summary>
+    /// Looks at a creature by ID.
+    /// Lua: <c>g_game.lookCreature(creatureId)</c>.
+    /// Maps to <c>Game::lookCreature()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void lookCreature(uint creatureId)
+        => _game.LookCreature(creatureId);
+
+    /// <summary>
+    /// Rotates item at world position.
+    /// Lua: <c>g_game.rotate(x, y, z, itemId, stackPos)</c>.
+    /// Maps to <c>Game::rotate()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void rotate(int x, int y, int z, int itemId, int stackPos)
+        => _game.RotateItem(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos);
+
+    /// <summary>
+    /// Closes an open container by its wire slot ID.
+    /// Lua: <c>g_game.close(containerId)</c>.
+    /// Maps to <c>Game::close()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void close(int containerId)
+        => _game.CloseContainer(containerId);
+
+    /// <summary>
+    /// Navigates up to the parent container.
+    /// Lua: <c>g_game.openParent(containerId)</c>.
+    /// Maps to <c>Game::openParent()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void openParent(int containerId)
+        => _game.UpContainer(containerId);
+
+    /// <summary>
+    /// Browses the tile field at world position.
+    /// Lua: <c>g_game.browseField(x, y, z)</c>.
+    /// Maps to <c>Game::browseField()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void browseField(int x, int y, int z)
+        => _game.BrowseField(new Game.Position((ushort)x, (ushort)y, (byte)z));
+
+    /// <summary>
+    /// Seeks to the given page in a paginated container.
+    /// Lua: <c>g_game.seekInContainer(containerId, index)</c>.
+    /// Maps to <c>Game::seekInContainer()</c>. Task T39.
+    /// </summary>
+    [LuaMethod]
+    public void seekInContainer(int containerId, int index)
+        => _game.SeekInContainer(containerId, index);
 }
 
 // ─── g_map ────────────────────────────────────────────────────────────────────

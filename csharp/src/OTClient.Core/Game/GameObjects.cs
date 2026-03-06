@@ -1,5 +1,6 @@
 using System.IO;
 using System.Numerics;
+using MoonSharp.Interpreter;
 using Raylib_cs;
 
 namespace OTClient.Framework.Game;
@@ -535,8 +536,9 @@ public enum InventorySlot : byte
 /// <summary>
 /// An ordered collection of <see cref="Item"/> objects (backpack / container item).
 /// Mirrors <c>src/client/container.h</c>.
-/// Task T08.
+/// Task T08 / T39.
 /// </summary>
+[MoonSharpUserData]
 public sealed class Container
 {
     /// <summary>Wire container ID (0–63).</summary>
@@ -663,6 +665,35 @@ public sealed class Container
 
     /// <summary>Marks the container as closed.</summary>
     public void Close() => IsClosed = true;
+
+    // ─── Lua accessor methods (T39) ───────────────────────────────────────────
+
+    /// <summary>Lua: <c>container:getId()</c></summary>
+    public int                getId()            => Id;
+    /// <summary>Lua: <c>container:getName()</c></summary>
+    public string             getName()          => Name;
+    /// <summary>Lua: <c>container:getCapacity()</c></summary>
+    public int                getCapacity()      => Capacity;
+    /// <summary>Lua: <c>container:getContainerItem()</c></summary>
+    public Item?              getContainerItem() => ContainerItem;
+    /// <summary>Lua: <c>container:hasParent()</c></summary>
+    public bool               hasParent()        => HasParent;
+    /// <summary>Lua: <c>container:isClosed()</c></summary>
+    public bool               isClosed()         => IsClosed;
+    /// <summary>Lua: <c>container:isUnlocked()</c></summary>
+    public bool               isUnlocked()       => IsUnlocked;
+    /// <summary>Lua: <c>container:hasPages()</c></summary>
+    public bool               hasPages()         => HasPages;
+    /// <summary>Lua: <c>container:getSize()</c></summary>
+    public int                getSize()          => Size;
+    /// <summary>Lua: <c>container:getFirstIndex()</c></summary>
+    public int                getFirstIndex()    => FirstIndex;
+    /// <summary>Lua: <c>container:getItemsCount()</c></summary>
+    public int                getItemsCount()    => Count;
+    /// <summary>Lua: <c>container:getItem(slot)</c> — 0-based slot.</summary>
+    public Item?              getItem(int slot)  => GetAt(slot);
+    /// <summary>Lua: <c>container:getItems()</c> — returns all items as a table.</summary>
+    public IReadOnlyList<Item> getItems()        => _contents;
 }
 
 // ─── AttachedEffect ────────────────────────────────────────────────────────────
