@@ -339,65 +339,65 @@ Used for rich-text news panels and potential in-game browser content. Not starte
 
 ## 5. Prioritized task list
 
-| ID | Subsystem | Task | Impact | Priority | Notes |
-|----|-----------|------|--------|----------|-------|
-| T01 | Protocol | Implement `parseMapDescription` and `parseFloorDescription` to populate the `Map` tile grid from server data | High | 1 | Blocks all map rendering and gameplay |
-| T02 | Protocol | Implement `parseTileAddThing`, `parseTileTransformThing`, `parseTileRemoveThing`, `parseUpdateTile` | High | 1 | Required for incremental map updates |
-| T03 | Protocol | Implement `parseCreatureMove`, `parseCreatureData`, `parseCreatureHealth`, `parseCreatureOutfit`, `parseCreatureSpeed` | High | 1 | Required for seeing and interacting with other entities |
-| T04 | Protocol | Implement `parseAddInventoryItem`, `parseRemoveInventoryItem`, `parseOpenContainer`, `parseCloseContainer`, `parseContainerAddItem`, `parseContainerUpdateItem`, `parseContainerRemoveItem` | High | 1 | Required for item and backpack management |
-| T05 | Protocol | Implement `parsePlayerStats`, `parsePlayerSkills`, `parsePlayerState`, `parsePlayerModes` | High | 1 | Required to display player attributes and HUD |
-| T06 | Game manager | Add `Walk`, `Turn`, `Stop`, `AutoWalk` to `Game.cs` + corresponding `SendWalk*`, `SendTurn*`, `SendStop`, `SendAutoWalk` in `ProtocolGameSend.cs` | High | 1 | Core movement loop |
-| T07 | Map | Implement pathfinding (`FindPath` / `FindPathAsync`) in the C# `Map` class | High | 1 | Required for `AutoWalk` and NPC interaction |
-| T08 | Game | Implement `Container` class mirroring `src/client/container.h` | High | 1 | Enables item management and trading |
-| T09 | Protocol | Implement `parseTalk`, `parseChannelList`, `parseOpenChannel`, `parseOpenPrivateChannel`, `parseCloseChannel` | Medium | 2 | Chat system |
-| T10 | Game manager | Add `Talk`, `TalkChannel`, `TalkPrivate`, `RequestChannels`, `JoinChannel`, `LeaveChannel` to `Game.cs` | Medium | 2 | Chat system completion |
-| T11 | Protocol | Implement `parseVipAdd`, `parseVipState`, `parseVipLogout` | Medium | 2 | VIP/friends list |
-| T12 | Game manager | Add `Attack`, `Follow`, `CancelAttack`, `CancelFollow`, `CancelAttackAndFollow` + fight mode methods | High | 2 | Combat system |
-| T13 | Protocol | Implement `parseCancelWalk`, `parsePlayerModes`, `parseCreatureSkull`, `parseCreatureShield`, `parseCreatureMarks` | Medium | 2 | Combat status display |
-| T14 | Creature | Add skull, shield, emblem, speed, light, animation-phase fields to `Creature.cs` | Medium | 2 | Visual completeness |
-| T15 | Game manager | Implement NPC trade: `InspectNpcTrade`, `BuyItem`, `SellItem`, `CloseNpcTrade` + parse handlers | Medium | 2 | Shopping functionality |
-| T16 | Game manager | Implement player-to-player trade: `RequestTrade`, `InspectTrade`, `AcceptTrade`, `RejectTrade` | Medium | 2 | Player economy |
-| T17 | Graphics | Implement full `MapView` draw pipeline: tile, creature, effect, light compositing | High | 2 | Map is not rendered without this |
-| T18 | Minimap | Implement `Minimap` class mirroring `src/client/minimap.h` with `MinimapTile`, `MinimapBlock`, `draw`, OTMM I/O | Medium | 2 | Navigation aid |
-| T19 | Graphics | Implement `AnimatedText` and `StaticText` classes for floating damage/XP and creature labels | Medium | 2 | Visual feedback |
-| T20 | Graphics | Implement `Missile` and `Effect` tile animations | Medium | 2 | Combat visual feedback |
-| T21 | Lua | Expand `g_game` Lua proxy with all gameplay methods from §3.2 | High | 2 | Scripts depend on these bindings |
-| T22 | Lua | Add `g_minimap` and `g_map` Lua proxies with tile/creature accessors | Medium | 2 | Lua scripts drive the UI |
-| T23 | Protocol | Implement `parseQuestLog`, `parseQuestLine`, `parseModalDialog`, `parseEditText`, `parseEditList` | Medium | 2 | Standard client dialogs |
-| T24 | Map | Implement `getSpectators`, `getSightSpectators`, `getSpectatorsInRange` | Medium | 2 | Range-based event delivery |
-| T25 | Map | Implement coverage and sight checks: `isCovered`, `isLookPossible`, `isSightClear` | Medium | 2 | Combat line-of-sight |
-| T26 | Protocol | Implement `parseMarketEnter`, `parseMarketBrowse`, `parseMarketDetail`, send methods | Medium | 3 | Market/economy |
-| T27 | Protocol | Implement `parsePreyData`, `parseForgeResult`, `parseBestiaryRaces`/`Overview`/`MonsterData`, `parseOpenWheelWindow`, `parseImbuementDurations` | Low | 3 | Advanced protocol 13+ features |
-| T28 | Protocol | Implement `parseStore`, `parseStoreOffers`, `parseCoinBalance`, `parseCompleteStorePurchase` | Low | 3 | In-game store |
-| T29 | Sound | Implement protobuf soundbank loading (`loadClientFiles`) for protocol 13+ sound effects | Medium | 3 | Audio completeness |
-| T30 | Graphics | Port `ParticleAffector` and `ParticleType` for modular particle customization | Low | 3 | Visual polish |
-| T31 | UI | Port `UITextEdit` text input widget | Medium | 2 | Chat and item search input |
-| T32 | UI | Port HTML/CSS parser for rich-text news panels | Low | 3 | Cosmetic |
-| T33 | Graphics | Port `AnimatedTexture` and APNG loader | Low | 3 | Animated sprites |
-| T34 | Game | Port paper doll and attached-effect system | Low | 3 | Equipment preview |
-| T35 | Concurrency | Synchronize parse-handler dispatch back to main thread before Lua callbacks | High | 1 | Prevents Lua VM data races |
+| ID | Subsystem | Task | Impact | Priority | Status | Notes |
+|----|-----------|------|--------|----------|--------|-------|
+| T01 | Protocol | Implement `parseMapDescription` and `parseFloorDescription` to populate the `Map` tile grid from server data | High | 1 | ✅ Completed | `ParseMapDescription`, `ParseFloorDescription`, `ParseMapMove*` all implemented in `ProtocolGameParse.cs` |
+| T02 | Protocol | Implement `parseTileAddThing`, `parseTileTransformThing`, `parseTileRemoveThing`, `parseUpdateTile` | High | 1 | ✅ Completed | All four parse handlers implemented in `ProtocolGameParse.cs` |
+| T03 | Protocol | Implement `parseCreatureMove`, `parseCreatureData`, `parseCreatureHealth`, `parseCreatureOutfit`, `parseCreatureSpeed` | High | 1 | ✅ Completed | All five parse handlers implemented in `ProtocolGameParse.cs` |
+| T04 | Protocol | Implement `parseAddInventoryItem`, `parseRemoveInventoryItem`, `parseOpenContainer`, `parseCloseContainer`, `parseContainerAddItem`, `parseContainerUpdateItem`, `parseContainerRemoveItem` | High | 1 | ✅ Completed | All seven inventory/container parse handlers implemented in `ProtocolGameParse.cs` |
+| T05 | Protocol | Implement `parsePlayerStats`, `parsePlayerSkills`, `parsePlayerState`, `parsePlayerModes` | High | 1 | ✅ Completed | All four parse handlers implemented in `ProtocolGameParse.cs` |
+| T06 | Game manager | Add `Walk`, `Turn`, `Stop`, `AutoWalk` to `Game.cs` + corresponding `SendWalk*`, `SendTurn*`, `SendStop`, `SendAutoWalk` in `ProtocolGameSend.cs` | High | 1 | ✅ Completed | All methods implemented; `Game.cs` fires events, `ProtocolGameSend.cs` sends wire packets |
+| T07 | Map | Implement pathfinding (`FindPath` / `FindPathAsync`) in the C# `Map` class | High | 1 | ✅ Completed | Dijkstra/A* hybrid with `PathFindResult` and `PathFindFlags` enums in `MapTile.cs`; `FindPathAsync` wraps in `Task.Run` |
+| T08 | Game | Implement `Container` class mirroring `src/client/container.h` | High | 1 | ✅ Completed | `Container` class with `HasParent`/`IsUnlocked`/`HasPages`/`Size`/`FirstIndex`/`ContainerItem`/`IsClosed` in `GameObjects.cs` |
+| T09 | Protocol | Implement `parseTalk`, `parseChannelList`, `parseOpenChannel`, `parseOpenPrivateChannel`, `parseCloseChannel` | Medium | 2 | ✅ Completed | All five parse handlers implemented in `ProtocolGameParse.cs` |
+| T10 | Game manager | Add `Talk`, `TalkChannel`, `TalkPrivate`, `RequestChannels`, `JoinChannel`, `LeaveChannel` to `Game.cs` | Medium | 2 | ✅ Completed | All methods implemented in `Game.cs`; corresponding `Send*` methods in `ProtocolGameSend.cs` |
+| T11 | Protocol | Implement `parseVipAdd`, `parseVipState`, `parseVipLogout` | Medium | 2 | ✅ Completed | All three parse handlers implemented in `ProtocolGameParse.cs` |
+| T12 | Game manager | Add `Attack`, `Follow`, `CancelAttack`, `CancelFollow`, `CancelAttackAndFollow` + fight mode methods | High | 2 | ✅ Completed | All methods in `Game.cs` + `SendAttack`, `SendFollow`, `SendCancelAttackAndFollow`, `SendChangeFightModes` in `ProtocolGameSend.cs` |
+| T13 | Protocol | Implement `parseCancelWalk`, `parsePlayerModes`, `parseCreatureSkull`, `parseCreatureShield`, `parseCreatureMarks` | Medium | 2 | ✅ Completed | `ParseCancelWalk` (0xB5), `ParseCreatureSkull` (0x90), `ParseCreatureShield` (0x91), `ParseCreatureMarks` (0x93) implemented; `parsePlayerModes` was already covered by T05 |
+| T14 | Creature | Add skull, shield, emblem, speed, light, animation-phase fields to `Creature.cs` | Medium | 2 | 🔶 Partially Completed | `Skull`, `Shield`, `Emblem`, `Speed`/`BaseSpeed`, `LightLevel`/`LightRadius` present. Missing: animation-phase field (`AnimPhase`) |
+| T15 | Game manager | Implement NPC trade: `InspectNpcTrade`, `BuyItem`, `SellItem`, `CloseNpcTrade` + parse handlers | Medium | 2 | ❌ Not Completed | No NPC trade methods or parse handlers implemented |
+| T16 | Game manager | Implement player-to-player trade: `RequestTrade`, `InspectTrade`, `AcceptTrade`, `RejectTrade` | Medium | 2 | ❌ Not Completed | No player-to-player trade methods implemented |
+| T17 | Graphics | Implement full `MapView` draw pipeline: tile, creature, effect, light compositing | High | 2 | 🔶 Partially Completed | `MapView` (camera/coordinate mapping) and `LightView` (ambient + dynamic light model) exist; missing: actual render/draw loop compositing tiles, creatures, effects, and light onto the framebuffer |
+| T18 | Minimap | Implement `Minimap` class mirroring `src/client/minimap.h` with `MinimapTile`, `MinimapBlock`, `draw`, OTMM I/O | Medium | 2 | 🔶 Partially Completed | `Minimap` class exists with `Record`/`GetColor`/`IsKnown`/`UpdateFromMap`; missing: `MinimapBlock`, `draw` method, OTMM load/save I/O |
+| T19 | Graphics | Implement `AnimatedText` and `StaticText` classes for floating damage/XP and creature labels | Medium | 2 | 🔶 Partially Completed | `AnimatedText` and `StaticText` data model classes exist in `Thing.cs` with `Position`/`Text`/`Color`/`Update`; missing: render/draw pipeline |
+| T20 | Graphics | Implement `Missile` and `Effect` tile animations | Medium | 2 | 🔶 Partially Completed | `Effect` and `Missile` classes exist in `Thing.cs` with `Animator` and `Update`; missing: draw pipeline to render sprites on map tiles |
+| T21 | Lua | Expand `g_game` Lua proxy with all gameplay methods from §3.2 | High | 2 | 🔶 Partially Completed | `g_game` proxy exists with state/login methods only (`isOnline`, `getLocalPlayer`, `logout`, `getState`); missing: `walk`, `turn`, `attack`, `follow`, `talk`, `setFightModes`, VIP, channel, and trade methods |
+| T22 | Lua | Add `g_minimap` and `g_map` Lua proxies with tile/creature accessors | Medium | 2 | 🔶 Partially Completed | `g_map` proxy exists with `getTile`/`isTileWalkable`/`getTileCount`/`clean`; missing: `g_minimap` proxy and creature accessors (`getSpectators` etc.) |
+| T23 | Protocol | Implement `parseQuestLog`, `parseQuestLine`, `parseModalDialog`, `parseEditText`, `parseEditList` | Medium | 2 | ❌ Not Completed | None of the five handlers implemented |
+| T24 | Map | Implement `getSpectators`, `getSightSpectators`, `getSpectatorsInRange` | Medium | 2 | ❌ Not Completed | Not implemented in the `Map` class |
+| T25 | Map | Implement coverage and sight checks: `isCovered`, `isLookPossible`, `isSightClear` | Medium | 2 | 🔶 Partially Completed | `isLookPossible` stub (always returns `true`) exists in `LuaMapProxy`; `isCovered` and `isSightClear` not implemented |
+| T26 | Protocol | Implement `parseMarketEnter`, `parseMarketBrowse`, `parseMarketDetail`, send methods | Medium | 3 | ❌ Not Completed | Not implemented |
+| T27 | Protocol | Implement `parsePreyData`, `parseForgeResult`, `parseBestiaryRaces`/`Overview`/`MonsterData`, `parseOpenWheelWindow`, `parseImbuementDurations` | Low | 3 | ❌ Not Completed | Not implemented |
+| T28 | Protocol | Implement `parseStore`, `parseStoreOffers`, `parseCoinBalance`, `parseCompleteStorePurchase` | Low | 3 | ❌ Not Completed | Not implemented |
+| T29 | Sound | Implement protobuf soundbank loading (`loadClientFiles`) for protocol 13+ sound effects | Medium | 3 | 🔶 Partially Completed | `SoundManager`, `SoundSource`, `SoundChannel`, `MusicSource` classes exist; missing: protobuf soundbank loading (`loadClientFiles`) |
+| T30 | Graphics | Port `ParticleAffector` and `ParticleType` for modular particle customization | Low | 3 | 🔶 Partially Completed | `ParticleSystem`, `ParticleEmitter`, `ParticleEffect`, `ParticleManager` exist; missing: `ParticleAffector` and `ParticleType` classes |
+| T31 | UI | Port `UITextEdit` text input widget | Medium | 2 | ❌ Not Completed | Not implemented |
+| T32 | UI | Port HTML/CSS parser for rich-text news panels | Low | 3 | ❌ Not Completed | Not implemented |
+| T33 | Graphics | Port `AnimatedTexture` and APNG loader | Low | 3 | ❌ Not Completed | Not implemented |
+| T34 | Game | Port paper doll and attached-effect system | Low | 3 | 🔶 Partially Completed | `AttachedEffect` and `AttachedEffectManager` exist in `GameObjects.cs`; missing: full paper doll render system |
+| T35 | Concurrency | Synchronize parse-handler dispatch back to main thread before Lua callbacks | High | 1 | ❌ Not Completed | No main-thread dispatch queue in networking layer; parse handlers run on the TCP receive thread |
 
 ---
 
 ## 6. Recommended next steps
 
-1. **Fix parse/send protocol parity for the core game loop (T01–T08, T35).**  
-   Implement `parseMapDescription`, `parseFloorDescription`, `parseUpdateTile`, and the creature-movement parse handlers so that a real game session can populate the `Map` and `Creature` objects. At the same time, add movement send methods (`SendWalk*`, `SendTurn*`) and the corresponding `Game` methods so the player character can be moved. Ensure all parse handlers are dispatched on the main thread before touching shared state or triggering Lua events.
+1. **Add the missing animation-phase field to `Creature.cs` (T14).**  
+   All other creature visual fields (skull, shield, emblem, speed, light) are in place. Adding `AnimPhase` completes T14 and enables correct outfit animation cycling.
 
-2. **Implement the `Container` class and inventory parse handlers (T04, T08).**  
-   The container/inventory system is the backbone of item interaction. Port `src/client/container.h` to C# and wire up `parseOpenContainer`, `parseContainerAddItem`, and related handlers. Add corresponding `Game.Open()`, `Game.Close()`, `Game.UseItem()` methods.
+2. **Build the `MapView` draw pipeline (T17).**  
+   `MapView` (camera/coordinate mapping) and `LightView` (lighting model) are implemented. The remaining work is the actual render loop: iterate visible tiles, draw ground/walls/objects, overlay creatures and effects, then apply the light compositing pass via `DrawPool`. This is the highest-value graphics task.
 
-3. **Build the `MapView` draw pipeline (T17).**  
-   Without rendering, no visual feedback is possible even once the map data is correct. Port the tile draw loop from `src/client/mapview.cpp`, integrating the `DrawPool`, `LightView`, creature overlays, and effect layers. This is the highest-value graphics task.
+3. **Expand `g_game` Lua proxy with gameplay methods (T21).**  
+   All underlying `Game` methods (`Walk`, `Turn`, `Attack`, `Follow`, `TalkSay`, `TalkChannel`, `SetFightModes`, VIP, channel, container) are implemented. The missing piece is wiring them into `LuaGameProxy` in `LuaGameProxies.cs`. Without these bindings the Lua modules cannot function.
 
-4. **Expand Lua game bindings for all implemented gameplay methods (T21, T22).**  
-   The Lua scripting layer drives the entire UI and game logic in OTClient. As soon as `Game.Walk`, `Game.Attack`, `Game.Talk`, and container methods are implemented, expose them to Lua via `LuaGameProxies.cs`. Without these bindings the Lua modules cannot function.
+4. **Complete `g_minimap` and creature accessors for `g_map` (T22).**  
+   Add a `LuaMinimapProxy` registered as `g_minimap`, and add `getSpectators`/`getSightSpectators`/`getSpectatorsInRange` to `LuaMapProxy`. These are prerequisites for many Lua map scripts.
 
-5. **Implement the `Minimap` class (T18).**  
-   Navigation is a fundamental client feature. Port `src/client/minimap.h` with `MinimapTile`, `MinimapBlock`, `draw`, `updateTile`, and at minimum `loadOtmm`/`saveOtmm` for compatibility with Tibia map files.
+5. **Implement NPC and player trade systems (T15, T16).**  
+   Add `InspectNpcTrade`, `BuyItem`, `SellItem`, `CloseNpcTrade` to `Game.cs` plus the corresponding parse handlers for NPC trade windows (T15), then `RequestTrade`, `InspectTrade`, `AcceptTrade`, `RejectTrade` for player-to-player trading (T16).
 
-6. **Add combat and channel systems (T09–T13).**  
-   Implement `Game.Attack`, `Game.Follow`, `SendAttack`, `SendFollow`, `parseTalk`, `parseChannelList`, and the VIP parse handlers. These cover the most commonly used in-game interactions after movement and items.
+6. **Implement spectator queries and sight checks (T24, T25).**  
+   `Map.GetSpectators`, `Map.GetSightSpectators`, `Map.GetSpectatorsInRange` (T24), and `Map.IsCovered`, `Map.IsSightClear` (T25) are needed for combat line-of-sight and range-based event delivery to Lua.
 
 7. **Audit and harden the concurrency model (T35).**  
    Before shipping any multiplayer session, review every parse handler to ensure that all mutations to `Map`, `Creature`, and `Game` state are marshalled to the main (render/update) thread. Introduce a thread-safe dispatch queue in `EventDispatcher` that the async network receive path can post to, matching the C++ pattern where all game-state mutations occur on the main thread.
