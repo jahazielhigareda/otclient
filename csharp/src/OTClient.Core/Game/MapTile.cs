@@ -818,4 +818,57 @@ public sealed class Map
 
         return true;
     }
+
+    // ─── Map-level overlay collections (T17) ─────────────────────────────────
+
+    private readonly List<AnimatedText> _animatedTexts = [];
+    private readonly List<StaticText>   _staticTexts   = [];
+    private readonly List<Missile>      _missiles      = [];
+
+    /// <summary>All live floating damage/XP numbers.</summary>
+    public IReadOnlyList<AnimatedText> AnimatedTexts => _animatedTexts;
+
+    /// <summary>All live creature name / status labels.</summary>
+    public IReadOnlyList<StaticText> StaticTexts => _staticTexts;
+
+    /// <summary>All in-flight missile projectiles.</summary>
+    public IReadOnlyList<Missile> Missiles => _missiles;
+
+    /// <summary>Registers a new animated text on the map.</summary>
+    public void AddAnimatedText(AnimatedText text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        _animatedTexts.Add(text);
+    }
+
+    /// <summary>Registers a new static label on the map.</summary>
+    public void AddStaticText(StaticText text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        _staticTexts.Add(text);
+    }
+
+    /// <summary>Registers a new missile on the map.</summary>
+    public void AddMissile(Missile missile)
+    {
+        ArgumentNullException.ThrowIfNull(missile);
+        _missiles.Add(missile);
+    }
+
+    /// <summary>Removes expired animated texts.</summary>
+    public void PruneAnimatedTexts() => _animatedTexts.RemoveAll(t => t.IsExpired);
+
+    /// <summary>Removes expired static texts.</summary>
+    public void PruneStaticTexts() => _staticTexts.RemoveAll(t => t.IsExpired);
+
+    /// <summary>Removes finished missiles.</summary>
+    public void PruneMissiles() => _missiles.RemoveAll(m => m.IsFinished);
+
+    /// <summary>Clears all overlay collections.</summary>
+    public void ClearOverlays()
+    {
+        _animatedTexts.Clear();
+        _staticTexts.Clear();
+        _missiles.Clear();
+    }
 }
