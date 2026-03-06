@@ -38,19 +38,21 @@ public enum GameServerPacket : byte
     LoginWait        = 0x16,
     SessionEnd       = 0x17,
     Death            = 0x28,
-    InitGame         = 0x64,
-    MoveNorth        = 0x65,
-    MoveEast         = 0x66,
-    MoveSouth        = 0x67,
-    MoveWest         = 0x68,
-    TileAddThing     = 0x6A,   // GameServerCreateOnMap   — parseTileAddThing (T02)
-    TileTransformThing = 0x6B, // GameServerChangeOnMap   — parseTileTransformThing (T02)
-    TileRemoveThing  = 0x6C,   // GameServerDeleteOnMap   — parseTileRemoveThing (T02)
-    MoveCreature     = 0x6D,   // GameServerMoveCreature  — parseCreatureMove (T03)
-    CreatureData     = 0x8B,   // GameServerCreatureData  — parseCreatureData (T03)
-    CreatureHealth   = 0x8C,   // GameServerCreatureHealth — parseCreatureHealth (T03)
-    CreatureOutfit   = 0x8E,   // GameServerCreatureOutfit — parseCreatureOutfit (T03)
-    CreatureSpeed    = 0x8F,   // GameServerCreatureSpeed  — parseCreatureSpeed (T03)
+    FloorDescription = 0x4B,   // GameServerFloorDescription (75) — parseFloorDescription (T01)
+    FullMap          = 0x64,   // GameServerFullMap (100)         — parseMapDescription (T01)
+    MapTopRow        = 0x65,   // GameServerMapTopRow (101)       — map scroll north (T01)
+    MapRightRow      = 0x66,   // GameServerMapRightRow (102)     — map scroll east (T01)
+    MapBottomRow     = 0x67,   // GameServerMapBottomRow (103)    — map scroll south (T01)
+    MapLeftRow       = 0x68,   // GameServerMapLeftRow (104)      — map scroll west (T01)
+    UpdateTile       = 0x69,   // GameServerUpdateTile (105)      — parseUpdateTile (T02)
+    TileAddThing     = 0x6A,   // GameServerCreateOnMap (106)     — parseTileAddThing (T02)
+    TileTransformThing = 0x6B, // GameServerChangeOnMap (107)     — parseTileTransformThing (T02)
+    TileRemoveThing  = 0x6C,   // GameServerDeleteOnMap (108)     — parseTileRemoveThing (T02)
+    MoveCreature     = 0x6D,   // GameServerMoveCreature (109)    — parseCreatureMove (T03)
+    CreatureData     = 0x8B,   // GameServerCreatureData  (139)   — parseCreatureData (T03)
+    CreatureHealth   = 0x8C,   // GameServerCreatureHealth (140)  — parseCreatureHealth (T03)
+    CreatureOutfit   = 0x8E,   // GameServerCreatureOutfit (142)  — parseCreatureOutfit (T03)
+    CreatureSpeed    = 0x8F,   // GameServerCreatureSpeed  (143)  — parseCreatureSpeed (T03)
     PlayerData       = 0xA0,   // parsePlayerStats (T05)
     PlayerSkills     = 0xA1,   // parsePlayerSkills (T05)
     PlayerState      = 0xA2,   // parsePlayerState (T05)
@@ -103,6 +105,14 @@ public sealed partial class ProtocolGame : Protocol
 
     private uint[] _xteaKey = new uint[4];
     private bool   _encryptEnabled;
+
+    // ─── Map state (T01/T02) ─────────────────────────────────────────────────
+
+    private readonly Game.Map _map = new();
+    private bool _mapKnown;
+
+    /// <summary>The game map populated by incoming map-description packets.</summary>
+    public Game.Map Map => _map;
 
     // ─── Player / session state ───────────────────────────────────────────────
 
@@ -210,6 +220,22 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<uint, byte, byte>? CreatureDataByteReceived;
 
+    // ─── Map events (T01/T02) ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised after the server sends a full or partial map description that has
+    /// been applied to <see cref="Map"/>.
+    /// Parameters: (centralPosition)
+    /// </summary>
+    public event Action<Game.Position>? MapDescriptionReceived;
+
+    /// <summary>
+    /// Raised after a single tile has been fully populated from the wire
+    /// description (UpdateTile, TileAddThing, or map-scroll row).
+    /// Parameters: (tilePosition)
+    /// </summary>
+    public event Action<Game.Position>? TileDescriptionSet;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -217,24 +243,33 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public ProtocolGame()
     {
-        RegisterHandler((byte)GameServerPacket.Ping,           ParsePing);
-        RegisterHandler((byte)GameServerPacket.PingBack,       ParsePingBack);
-        RegisterHandler((byte)GameServerPacket.LoginError,     ParseLoginError);
-        RegisterHandler((byte)GameServerPacket.LoginAdvice,    ParseLoginAdvice);
-        RegisterHandler((byte)GameServerPacket.LoginWait,      ParseLoginWait);
-        RegisterHandler((byte)GameServerPacket.Death,          ParseDeath);
-        RegisterHandler((byte)GameServerPacket.InitGame,       ParseInitGame);
-        RegisterHandler((byte)GameServerPacket.TextMessage,    ParseTextMessage);
-        RegisterHandler((byte)GameServerPacket.PlayerSpeech,   ParsePlayerSpeech);
-        RegisterHandler((byte)GameServerPacket.PlayerData,     ParsePlayerStats);
-        RegisterHandler((byte)GameServerPacket.PlayerSkills,   ParsePlayerSkills);
-        RegisterHandler((byte)GameServerPacket.PlayerState,    ParsePlayerState);
-        RegisterHandler((byte)GameServerPacket.PlayerModes,    ParsePlayerModes);
-        RegisterHandler((byte)GameServerPacket.MoveCreature,   ParseCreatureMove);
-        RegisterHandler((byte)GameServerPacket.CreatureData,   ParseCreatureData);
-        RegisterHandler((byte)GameServerPacket.CreatureHealth, ParseCreatureHealth);
-        RegisterHandler((byte)GameServerPacket.CreatureOutfit, ParseCreatureOutfit);
-        RegisterHandler((byte)GameServerPacket.CreatureSpeed,  ParseCreatureSpeed);
+        RegisterHandler((byte)GameServerPacket.Ping,              ParsePing);
+        RegisterHandler((byte)GameServerPacket.PingBack,          ParsePingBack);
+        RegisterHandler((byte)GameServerPacket.LoginError,        ParseLoginError);
+        RegisterHandler((byte)GameServerPacket.LoginAdvice,       ParseLoginAdvice);
+        RegisterHandler((byte)GameServerPacket.LoginWait,         ParseLoginWait);
+        RegisterHandler((byte)GameServerPacket.Death,             ParseDeath);
+        RegisterHandler((byte)GameServerPacket.FullMap,           ParseMapDescription);
+        RegisterHandler((byte)GameServerPacket.FloorDescription,  ParseFloorDescription);
+        RegisterHandler((byte)GameServerPacket.MapTopRow,         ParseMapMoveNorth);
+        RegisterHandler((byte)GameServerPacket.MapRightRow,       ParseMapMoveEast);
+        RegisterHandler((byte)GameServerPacket.MapBottomRow,      ParseMapMoveSouth);
+        RegisterHandler((byte)GameServerPacket.MapLeftRow,        ParseMapMoveWest);
+        RegisterHandler((byte)GameServerPacket.UpdateTile,        ParseUpdateTile);
+        RegisterHandler((byte)GameServerPacket.TileAddThing,      ParseTileAddThing);
+        RegisterHandler((byte)GameServerPacket.TileTransformThing,ParseTileTransformThing);
+        RegisterHandler((byte)GameServerPacket.TileRemoveThing,   ParseTileRemoveThing);
+        RegisterHandler((byte)GameServerPacket.TextMessage,       ParseTextMessage);
+        RegisterHandler((byte)GameServerPacket.PlayerSpeech,      ParsePlayerSpeech);
+        RegisterHandler((byte)GameServerPacket.PlayerData,        ParsePlayerStats);
+        RegisterHandler((byte)GameServerPacket.PlayerSkills,      ParsePlayerSkills);
+        RegisterHandler((byte)GameServerPacket.PlayerState,       ParsePlayerState);
+        RegisterHandler((byte)GameServerPacket.PlayerModes,       ParsePlayerModes);
+        RegisterHandler((byte)GameServerPacket.MoveCreature,      ParseCreatureMove);
+        RegisterHandler((byte)GameServerPacket.CreatureData,      ParseCreatureData);
+        RegisterHandler((byte)GameServerPacket.CreatureHealth,    ParseCreatureHealth);
+        RegisterHandler((byte)GameServerPacket.CreatureOutfit,    ParseCreatureOutfit);
+        RegisterHandler((byte)GameServerPacket.CreatureSpeed,     ParseCreatureSpeed);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

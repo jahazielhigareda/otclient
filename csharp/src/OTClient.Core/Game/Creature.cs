@@ -217,3 +217,21 @@ public sealed class LocalPlayer : Player
     /// </summary>
     public bool IsKnown { get; set; }
 }
+
+// ─── Monster ──────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// A monster or summon creature.
+/// Maps to <c>src/client/monster.h</c>.
+/// Task T01.
+/// </summary>
+public sealed class Monster : Creature { }
+
+// ─── Npc ──────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// A non-player character.
+/// Maps to <c>src/client/npc.h</c>.
+/// Task T01.
+/// </summary>
+public sealed class Npc : Creature { }

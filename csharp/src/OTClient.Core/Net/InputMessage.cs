@@ -77,6 +77,16 @@ public sealed class InputMessage
         return v;
     }
 
+    /// <summary>
+    /// Reads a little-endian uint16 without advancing the read position
+    /// (non-destructive peek).
+    /// </summary>
+    public ushort PeekU16()
+    {
+        Require(2);
+        return (ushort)(_buffer[_pos] | (_buffer[_pos + 1] << 8));
+    }
+
     /// <summary>Reads a little-endian uint32.</summary>
     public uint ReadU32()
     {
