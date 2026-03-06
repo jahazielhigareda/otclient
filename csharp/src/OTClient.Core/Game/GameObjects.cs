@@ -825,3 +825,126 @@ public sealed class GameConfig
     public int MapWidth  { get; set; } = 18;
     public int MapHeight { get; set; } = 14;
 }
+
+// ─── T27: Prey data ───────────────────────────────────────────────────────────
+
+/// <summary>Creature listed inside a Prey slot.</summary>
+public sealed record PreyMonster(string Name);
+
+/// <summary>State of a single Prey slot.</summary>
+public enum PreyState : byte
+{
+    Locked   = 0,
+    Inactive = 1,
+    Active   = 2,
+    Selection         = 3,
+    SelectionChangeMonster = 4,
+    ListSelection     = 5,
+}
+
+/// <summary>Data for one Prey slot as sent by <c>parsePreyData</c>.</summary>
+public sealed class PreyData
+{
+    public byte         Slot          { get; set; }
+    public PreyState    State         { get; set; }
+    public uint         NextFreeReroll{ get; set; }
+    public byte         Wildcards     { get; set; }
+
+    // Active state extra fields
+    public PreyMonster? ActiveMonster { get; set; }
+    public byte         BonusType     { get; set; }
+    public ushort       BonusValue    { get; set; }
+    public byte         BonusGrade    { get; set; }
+    public ushort       TimeLeft      { get; set; }
+
+    // Monster list (selection states)
+    public IReadOnlyList<PreyMonster> Monsters { get; set; } = [];
+}
+
+// ─── T27: Forge result ────────────────────────────────────────────────────────
+
+/// <summary>Result data for one forge action as sent by <c>parseForgeResult</c>.</summary>
+public sealed class ForgeResult
+{
+    public byte   ActionType   { get; set; }
+    public bool   Convergence  { get; set; }
+    public bool   Success      { get; set; }
+    public ushort LeftItemId   { get; set; }
+    public byte   LeftTier     { get; set; }
+    public ushort RightItemId  { get; set; }
+    public byte   RightTier    { get; set; }
+    public byte   Bonus        { get; set; }
+    public byte   CoreCount    { get; set; }
+}
+
+// ─── T27: Bestiary data ───────────────────────────────────────────────────────
+
+/// <summary>One race row in the bestiary race list.</summary>
+public sealed record BestiaryRace(int Race, string ClassName, ushort Count, ushort UnlockedCount);
+
+/// <summary>One monster summary row in a bestiary overview.</summary>
+public sealed record BestiaryMonster(ushort Id, byte CurrentLevel, byte Occurrence, ushort AnimusMasteryBonus);
+
+/// <summary>Loot item entry inside <see cref="BestiaryMonsterData"/>.</summary>
+public sealed record BestiaryLootItem(ushort ItemId, byte Difficulty, byte SpecialEvent, string Name, byte Amount);
+
+/// <summary>Full monster data sheet received from <c>parseBestiaryMonsterData</c>.</summary>
+public sealed class BestiaryMonsterData
+{
+    public ushort  Id             { get; set; }
+    public string  ClassName      { get; set; } = "";
+    public byte    CurrentLevel   { get; set; }
+    public ushort  AnimusMasteryBonus  { get; set; }
+    public ushort  AnimusMasteryPoints { get; set; }
+    public uint    KillCounter    { get; set; }
+    public ushort  ThirdDifficulty{ get; set; }
+    public ushort  SecondUnlock   { get; set; }
+    public ushort  LastProgressKillCount { get; set; }
+    public byte    Difficulty     { get; set; }
+    public byte    Occurrence     { get; set; }
+    public IReadOnlyList<BestiaryLootItem> Loot { get; set; } = [];
+    // Level 2+ fields
+    public ushort  CharmValue     { get; set; }
+    public byte    AttackMode     { get; set; }
+    public uint    MaxHealth      { get; set; }
+    public uint    Experience     { get; set; }
+    public ushort  Speed          { get; set; }
+    public ushort  Armor          { get; set; }
+    // Level 3+ fields
+    public IReadOnlyDictionary<byte, ushort> Combat { get; set; }
+        = new Dictionary<byte, ushort>();
+    public string  Location       { get; set; } = "";
+}
+
+// ─── T27: Imbuement durations ────────────────────────────────────────────────
+
+/// <summary>One filled imbuement slot on an item.</summary>
+public sealed record ImbuementSlot(
+    byte   SlotIndex,
+    string Name,
+    ushort IconId,
+    uint   Duration,
+    byte   State);
+
+/// <summary>One item with its imbuement slots as tracked in the HUD.</summary>
+public sealed class ImbuementTrackerItem
+{
+    public byte   TrackSlot  { get; set; }
+    public Item?  TrackedItem{ get; set; }
+    public byte   TotalSlots { get; set; }
+    public IReadOnlyList<ImbuementSlot> Slots { get; set; } = [];
+}
+
+// ─── T27: Wheel of Destiny ────────────────────────────────────────────────────
+
+/// <summary>Data received from <c>parseOpenWheelWindow</c>.</summary>
+public sealed class WheelData
+{
+    public uint   PlayerId      { get; set; }
+    public bool   CanView       { get; set; }
+    public byte   ChangeState   { get; set; }
+    public byte   VocationId    { get; set; }
+    public ushort Points        { get; set; }
+    public ushort ExtraPoints   { get; set; }
+}
+

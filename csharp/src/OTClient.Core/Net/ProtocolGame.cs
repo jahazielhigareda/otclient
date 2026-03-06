@@ -120,6 +120,19 @@ public enum GameServerPacket : byte
     MarketDetail     = 0xF8,   // GameServerMarketDetail (248)    — parseMarketDetail (T26)
     MarketBrowse     = 0xF9,   // GameServerMarketBrowse (249)    — parseMarketBrowse (T26)
     ModalDialog      = 0xFA,   // GameServerModalDialog (250)     — parseModalDialog (T23)
+
+    // T27 opcodes
+    ImbuementDurations = 0x5D,  // GameServerImbuementDurations (93)   — parseImbuementDurations (T27)
+    OpenWheelWindow    = 0x5F,  // GameServerOpenWheelWindow (95)       — parseOpenWheelWindow (T27)
+    ForgeResult        = 0x8A,  // GameServerForgeResult (138)          — parseForgeResult (T27)
+    BestiaryRaces      = 0xD5,  // GameServerBestiaryRaces (213)        — parseBestiaryRaces (T27)
+    BestiaryOverview   = 0xD6,  // GameServerBestiaryOverview (214)     — parseBestiaryOverview (T27)
+    BestiaryMonsterData= 0xD7,  // GameServerBestiaryMonsterData (215)  — parseBestiaryMonsterData (T27)
+    PreyFreeRerolls    = 0xE6,  // GameServerSendPreyFreeRerolls (230)  — parsePreyFreeRerolls (T27)
+    PreyTimeLeft       = 0xE7,  // GameServerSendPreyTimeLeft (231)     — parsePreyTimeLeft (T27)
+    PreyData           = 0xE8,  // GameServerSendPreyData (232)         — parsePreyData (T27)
+    PreyRerollPrice    = 0xE9,  // GameServerSendPreyRerollPrice (233)  — parsePreyRerollPrice (T27)
+    ImbuementWindow    = 0xEB,  // GameServerSendImbuementWindow (235)  — parseImbuementWindow (T27)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -300,6 +313,38 @@ public sealed partial class ProtocolGame : Protocol
     /// Parameters: (var, offers)
     /// </summary>
     public event Action<ushort, IReadOnlyList<Game.MarketOffer>>? MarketBrowseReceived;
+
+    // ─── T27 events (Prey / Forge / Bestiary / Wheel / Imbuement) ────────────
+
+    /// <summary>Raised when <c>parsePreyData</c> is received. Parameter: populated prey slot data.</summary>
+    public event Action<Game.PreyData>? PreyDataReceived;
+
+    /// <summary>Raised when <c>parsePreyFreeRerolls</c> is received. Parameters: (slot, timeLeft).</summary>
+    public event Action<byte, ushort>? PreyFreeRerollsReceived;
+
+    /// <summary>Raised when <c>parsePreyTimeLeft</c> is received. Parameters: (slot, timeLeft).</summary>
+    public event Action<byte, ushort>? PreyTimeLeftReceived;
+
+    /// <summary>Raised when <c>parsePreyRerollPrice</c> is received. Parameters: (price, wildCardPrice).</summary>
+    public event Action<uint, uint>? PreyRerollPriceReceived;
+
+    /// <summary>Raised when <c>parseForgeResult</c> is received.</summary>
+    public event Action<Game.ForgeResult>? ForgeResultReceived;
+
+    /// <summary>Raised when <c>parseBestiaryRaces</c> is received.</summary>
+    public event Action<IReadOnlyList<Game.BestiaryRace>>? BestiaryRacesReceived;
+
+    /// <summary>Raised when <c>parseBestiaryOverview</c> is received. Parameters: (raceName, monsters, animusMasteryPoints).</summary>
+    public event Action<string, IReadOnlyList<Game.BestiaryMonster>, ushort>? BestiaryOverviewReceived;
+
+    /// <summary>Raised when <c>parseBestiaryMonsterData</c> is received.</summary>
+    public event Action<Game.BestiaryMonsterData>? BestiaryMonsterDataReceived;
+
+    /// <summary>Raised when <c>parseImbuementDurations</c> is received.</summary>
+    public event Action<IReadOnlyList<Game.ImbuementTrackerItem>>? ImbuementDurationsReceived;
+
+    /// <summary>Raised when <c>parseOpenWheelWindow</c> is received.</summary>
+    public event Action<Game.WheelData>? WheelWindowReceived;
 
     /// <summary>
     /// Raised when the server sends updated player stat values.
@@ -623,6 +668,19 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.MarketDetail,      ParseMarketDetail);
         RegisterHandler((byte)GameServerPacket.MarketBrowse,      ParseMarketBrowse);
         RegisterHandler((byte)GameServerPacket.ModalDialog,       ParseModalDialog);
+
+        // T27 handlers
+        RegisterHandler((byte)GameServerPacket.ImbuementDurations, ParseImbuementDurations);
+        RegisterHandler((byte)GameServerPacket.OpenWheelWindow,    ParseOpenWheelWindow);
+        RegisterHandler((byte)GameServerPacket.ForgeResult,        ParseForgeResult);
+        RegisterHandler((byte)GameServerPacket.BestiaryRaces,      ParseBestiaryRaces);
+        RegisterHandler((byte)GameServerPacket.BestiaryOverview,   ParseBestiaryOverview);
+        RegisterHandler((byte)GameServerPacket.BestiaryMonsterData,ParseBestiaryMonsterData);
+        RegisterHandler((byte)GameServerPacket.PreyFreeRerolls,    ParsePreyFreeRerolls);
+        RegisterHandler((byte)GameServerPacket.PreyTimeLeft,       ParsePreyTimeLeft);
+        RegisterHandler((byte)GameServerPacket.PreyData,           ParsePreyData);
+        RegisterHandler((byte)GameServerPacket.PreyRerollPrice,    ParsePreyRerollPrice);
+        RegisterHandler((byte)GameServerPacket.ImbuementWindow,    ParseImbuementWindow);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

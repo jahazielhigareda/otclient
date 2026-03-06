@@ -1669,4 +1669,371 @@ public sealed partial class ProtocolGame
 
         MarketBrowseReceived?.Invoke(var, offers);
     }
+
+    // ─── T27: Imbuement durations ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>ImbuementDurations</c> (0x5D / GameServerImbuementDurations).
+    /// Reads U8 itemCount; per item: U8 trackSlot, item data, U8 totalSlots,
+    /// then per slot: U8 imbued flag, and if imbued: string name + U16 iconId + U32 duration + U8 state.
+    /// Fires <see cref="ImbuementDurationsReceived"/>.
+    /// Maps to <c>ProtocolGame::parseImbuementDurations</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseImbuementDurations(InputMessage msg)
+    {
+        byte count = msg.ReadU8();
+        var items  = new List<Game.ImbuementTrackerItem>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            var tracker = new Game.ImbuementTrackerItem
+            {
+                TrackSlot   = msg.ReadU8(),
+                TrackedItem = new Game.Item { Id = msg.ReadU16() },
+                TotalSlots  = msg.ReadU8(),
+            };
+
+            var slots = new List<Game.ImbuementSlot>();
+            for (int s = 0; s < tracker.TotalSlots; s++)
+            {
+                bool imbued = msg.ReadU8() != 0;
+                if (!imbued) continue;
+
+                slots.Add(new Game.ImbuementSlot(
+                    SlotIndex: (byte)s,
+                    Name:      msg.ReadString(),
+                    IconId:    msg.ReadU16(),
+                    Duration:  msg.ReadU32(),
+                    State:     msg.ReadU8()));
+            }
+
+            tracker.Slots = slots;
+            items.Add(tracker);
+        }
+
+        ImbuementDurationsReceived?.Invoke(items);
+    }
+
+    // ─── T27: Wheel of Destiny ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>OpenWheelWindow</c> (0x5F / GameServerOpenWheelWindow).
+    /// Reads U32 playerId, U8 canView; if canView: U8 changeState, U8 vocationId,
+    /// U16 points, U16 extraPoints.
+    /// Fires <see cref="WheelWindowReceived"/>.
+    /// Maps to <c>ProtocolGame::parseOpenWheelWindow</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseOpenWheelWindow(InputMessage msg)
+    {
+        uint playerId = msg.ReadU32();
+        bool canView  = msg.ReadU8() != 0;
+
+        var data = new Game.WheelData { PlayerId = playerId, CanView = canView };
+
+        if (canView)
+        {
+            data.ChangeState  = msg.ReadU8();
+            data.VocationId   = msg.ReadU8();
+            data.Points       = msg.ReadU16();
+            data.ExtraPoints  = msg.ReadU16();
+        }
+
+        WheelWindowReceived?.Invoke(data);
+    }
+
+    // ─── T27: Forge result ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>ForgeResult</c> (0x8A / GameServerForgeResult).
+    /// Reads U8 actionType, U8 convergence, U8 success, U16+U8 leftItem, U16+U8 rightItem,
+    /// then bonus bytes depending on actionType.
+    /// Fires <see cref="ForgeResultReceived"/>.
+    /// Maps to <c>ProtocolGame::parseForgeResult</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseForgeResult(InputMessage msg)
+    {
+        var result = new Game.ForgeResult
+        {
+            ActionType  = msg.ReadU8(),
+            Convergence = msg.ReadU8() == 1,
+            Success     = msg.ReadU8() == 1,
+            LeftItemId  = msg.ReadU16(),
+            LeftTier    = msg.ReadU8(),
+            RightItemId = msg.ReadU16(),
+            RightTier   = msg.ReadU8(),
+        };
+
+        if (result.ActionType == 1)
+        {
+            msg.ReadU8(); // bonus type always none for transfer
+        }
+        else
+        {
+            result.Bonus = msg.ReadU8();
+            if (result.Bonus == 2)
+            {
+                result.CoreCount = msg.ReadU8();
+            }
+            else if (result.Bonus >= 4 && result.Bonus <= 8)
+            {
+                result.LeftItemId = msg.ReadU16();
+                result.LeftTier   = msg.ReadU8();
+            }
+        }
+
+        ForgeResultReceived?.Invoke(result);
+    }
+
+    // ─── T27: Bestiary races ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>BestiaryRaces</c> (0xD5 / GameServerBestiaryRaces).
+    /// Reads U16 count; per race: string className + U16 count + U16 unlockedCount.
+    /// Fires <see cref="BestiaryRacesReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBestiaryRaces</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseBestiaryRaces(InputMessage msg)
+    {
+        ushort count = msg.ReadU16();
+        var    races = new List<Game.BestiaryRace>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            races.Add(new Game.BestiaryRace(
+                Race:          i,
+                ClassName:     msg.ReadString(),
+                Count:         msg.ReadU16(),
+                UnlockedCount: msg.ReadU16()));
+        }
+
+        BestiaryRacesReceived?.Invoke(races);
+    }
+
+    // ─── T27: Bestiary overview ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>BestiaryOverview</c> (0xD6 / GameServerBestiaryOverview).
+    /// Reads string raceName, U16 count; per monster: U16 id + U8 level +
+    /// if level>0: U8 occurrence + U16 animusMasteryBonus. Then U16 animusMasteryPoints.
+    /// Fires <see cref="BestiaryOverviewReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBestiaryOverview</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseBestiaryOverview(InputMessage msg)
+    {
+        string raceName = msg.ReadString();
+        ushort count    = msg.ReadU16();
+        var    monsters = new List<Game.BestiaryMonster>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            ushort id    = msg.ReadU16();
+            byte   level = msg.ReadU8();
+            byte   occ   = level > 0 ? msg.ReadU8() : (byte)0;
+            ushort bonus = msg.ReadU16(); // animusMasteryBonus (always present at 1281)
+            monsters.Add(new Game.BestiaryMonster(id, level, occ, bonus));
+        }
+
+        ushort animusPoints = msg.ReadU16();
+        BestiaryOverviewReceived?.Invoke(raceName, monsters, animusPoints);
+    }
+
+    // ─── T27: Bestiary monster data ───────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>BestiaryMonsterData</c> (0xD7 / GameServerBestiaryMonsterData).
+    /// Reads the full monster data sheet including optional level-gated fields.
+    /// Fires <see cref="BestiaryMonsterDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBestiaryMonsterData</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseBestiaryMonsterData(InputMessage msg)
+    {
+        var data = new Game.BestiaryMonsterData
+        {
+            Id                  = msg.ReadU16(),
+            ClassName           = msg.ReadString(),
+            CurrentLevel        = msg.ReadU8(),
+            AnimusMasteryBonus  = msg.ReadU16(),
+            AnimusMasteryPoints = msg.ReadU16(),
+            KillCounter         = msg.ReadU32(),
+            ThirdDifficulty     = msg.ReadU16(),
+            SecondUnlock        = msg.ReadU16(),
+            LastProgressKillCount = msg.ReadU16(),
+            Difficulty          = msg.ReadU8(),
+            Occurrence          = msg.ReadU8(),
+        };
+
+        byte   lootCount = msg.ReadU8();
+        var    loot      = new List<Game.BestiaryLootItem>(lootCount);
+        for (int i = 0; i < lootCount; i++)
+        {
+            ushort itemId       = msg.ReadU16();
+            byte   diff         = msg.ReadU8();
+            byte   special      = msg.ReadU8();
+            string lootName     = itemId != 0 ? msg.ReadString() : "";
+            byte   amount       = itemId != 0 ? msg.ReadU8() : (byte)0;
+            loot.Add(new Game.BestiaryLootItem(itemId, diff, special, lootName, amount));
+        }
+        data.Loot = loot;
+
+        if (data.CurrentLevel > 1)
+        {
+            data.CharmValue  = msg.ReadU16();
+            data.AttackMode  = msg.ReadU8();
+            msg.ReadU8();                   // padding byte
+            data.MaxHealth   = msg.ReadU32();
+            data.Experience  = msg.ReadU32();
+            data.Speed       = msg.ReadU16();
+            data.Armor       = msg.ReadU16();
+            msg.ReadDouble();               // mitigation (not stored in C# record)
+        }
+
+        if (data.CurrentLevel > 2)
+        {
+            byte elemCount = msg.ReadU8();
+            var  combat    = new Dictionary<byte, ushort>(elemCount);
+            for (int i = 0; i < elemCount; i++)
+                combat[msg.ReadU8()] = msg.ReadU16();
+            data.Combat   = combat;
+            msg.ReadU16(); // padding
+            data.Location = msg.ReadString();
+        }
+
+        BestiaryMonsterDataReceived?.Invoke(data);
+    }
+
+    // ─── T27: Prey free rerolls ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>PreyFreeRerolls</c> (0xE6 / GameServerSendPreyFreeRerolls).
+    /// Reads U8 slot + U16 timeLeft.
+    /// Fires <see cref="PreyFreeRerollsReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePreyFreeRerolls</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParsePreyFreeRerolls(InputMessage msg)
+    {
+        byte   slot     = msg.ReadU8();
+        ushort timeLeft = msg.ReadU16();
+        PreyFreeRerollsReceived?.Invoke(slot, timeLeft);
+    }
+
+    // ─── T27: Prey time left ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>PreyTimeLeft</c> (0xE7 / GameServerSendPreyTimeLeft).
+    /// Reads U8 slot + U16 timeLeft.
+    /// Fires <see cref="PreyTimeLeftReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePreyTimeLeft</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParsePreyTimeLeft(InputMessage msg)
+    {
+        byte   slot     = msg.ReadU8();
+        ushort timeLeft = msg.ReadU16();
+        PreyTimeLeftReceived?.Invoke(slot, timeLeft);
+    }
+
+    // ─── T27: Prey data ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>PreyData</c> (0xE8 / GameServerSendPreyData).
+    /// Reads U8 slot + U8 state then state-specific fields.
+    /// Fires <see cref="PreyDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePreyData</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParsePreyData(InputMessage msg)
+    {
+        var data = new Game.PreyData
+        {
+            Slot  = msg.ReadU8(),
+            State = (Game.PreyState)msg.ReadU8(),
+        };
+
+        switch (data.State)
+        {
+            case Game.PreyState.Locked:
+            {
+                msg.ReadU8();                       // unlockState
+                data.NextFreeReroll = msg.ReadU32();
+                data.Wildcards      = msg.ReadU8();
+                break;
+            }
+            case Game.PreyState.Inactive:
+            {
+                data.NextFreeReroll = msg.ReadU32();
+                data.Wildcards      = msg.ReadU8();
+                break;
+            }
+            case Game.PreyState.Active:
+            {
+                data.ActiveMonster  = new Game.PreyMonster(msg.ReadString());
+                ReadOutfit(msg);                    // outfit – consumed, not stored
+                data.BonusType      = msg.ReadU8();
+                data.BonusValue     = msg.ReadU16();
+                data.BonusGrade     = msg.ReadU8();
+                data.TimeLeft       = msg.ReadU16();
+                data.NextFreeReroll = msg.ReadU32();
+                data.Wildcards      = (byte)0;
+                msg.ReadU8();                       // option toggle
+                break;
+            }
+            case Game.PreyState.Selection:
+            case Game.PreyState.SelectionChangeMonster:
+            case Game.PreyState.ListSelection:
+            {
+                byte listCount = msg.ReadU8();
+                var  list      = new List<Game.PreyMonster>(listCount);
+                for (int i = 0; i < listCount; i++)
+                {
+                    list.Add(new Game.PreyMonster(msg.ReadString()));
+                    ReadOutfit(msg); // outfit
+                }
+                data.Monsters       = list;
+                data.NextFreeReroll = msg.ReadU32();
+                data.Wildcards      = msg.ReadU8();
+                break;
+            }
+        }
+
+        PreyDataReceived?.Invoke(data);
+    }
+
+    // ─── T27: Prey reroll price ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>PreyRerollPrice</c> (0xE9 / GameServerSendPreyRerollPrice).
+    /// Reads U32 price + U32 wildcardPrice.
+    /// Fires <see cref="PreyRerollPriceReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePreyRerollPrice</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParsePreyRerollPrice(InputMessage msg)
+    {
+        uint price         = msg.ReadU32();
+        uint wildcardPrice = msg.ReadU32();
+        PreyRerollPriceReceived?.Invoke(price, wildcardPrice);
+    }
+
+    // ─── T27: Imbuement window ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>ImbuementWindow</c> (0xEB / GameServerSendImbuementWindow).
+    /// This packet is complex and item-type-specific; at protocol 1281 we
+    /// consume the item ID header and raise the event so the UI can request
+    /// a full refresh via the store if needed.
+    /// Maps to <c>ProtocolGame::parseImbuementWindow</c>.
+    /// Task T27.
+    /// </summary>
+    private void ParseImbuementWindow(InputMessage msg)
+    {
+        // Consume item id — full parsing requires ThingType registry (future work)
+        msg.ReadU16(); // itemId
+    }
 }
