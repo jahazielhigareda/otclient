@@ -667,38 +667,246 @@ public sealed class Container
 
 // ─── AttachedEffect ────────────────────────────────────────────────────────────
 
+/// <summary>Draw-order layer for attached effects (mirrors C++ DrawOrder enum).</summary>
+public enum DrawOrder : byte { First = 0, Second = 1, Third = 2, Fourth = 3 }
+
 /// <summary>
-/// A visual effect attached permanently to a creature or item
-/// (e.g. wings, auras, shader effects).
+/// Per-direction offset/onTop control for attached effects and paper dolls.
+/// Maps to the <c>DirControl</c> inner struct in <c>attachedeffect.h</c>.
+/// </summary>
+public sealed class DirControl
+{
+    public bool  OnTop  { get; set; }
+    public int   OffsetX { get; set; }
+    public int   OffsetY { get; set; }
+}
+
+/// <summary>
+/// Bounce / pulse / fade animation descriptor.
+/// Maps to the <c>Bounce</c> struct in <c>attachedeffect.h</c>.
+/// </summary>
+public sealed class BounceControl
+{
+    public byte   MinHeight { get; set; }
+    public byte   Height    { get; set; }
+    public ushort Speed     { get; set; }
+}
+
+/// <summary>
+/// A visual effect that can be attached to a creature or item at runtime
+/// (e.g. wings, auras, shader overlays).
 /// Maps to <c>src/client/attachedeffect.h</c>.
-/// Task 8.20.
+/// Task T34.
 /// </summary>
 public sealed class AttachedEffect
 {
-    public int      Id       { get; init; }
-    public string   Name     { get; init; } = string.Empty;
-    public Animator Animator { get; } = new(1);
-    public bool     Permanent { get; init; } = true;
+    // ── identity ──────────────────────────────────────────────────────────────
+    public int    Id   { get; init; }
+    public string Name { get; set; } = string.Empty;
+
+    // ── animation ─────────────────────────────────────────────────────────────
+    public Animator Animator  { get; } = new(1);
+    public sbyte    Loop      { get; set; } = -1;   // -1 = infinite
+    public ushort   Duration  { get; set; }          // 0 = no limit
+
+    // ── visual properties ─────────────────────────────────────────────────────
+    /// <summary>Playback speed multiplier × 100 (100 = 1×).</summary>
+    public byte Speed   { get; set; } = 100;
+    /// <summary>Opacity × 100 (100 = fully opaque).</summary>
+    public byte Opacity { get; set; } = 100;
+
+    /// <summary>Override render size (0 = natural size).</summary>
+    public int SizeWidth  { get; set; }
+    public int SizeHeight { get; set; }
+
+    // ── behaviour flags ───────────────────────────────────────────────────────
+    public bool Permanent             { get; set; } = true;
+    public bool HideOwner             { get; set; }
+    public bool Transform             { get; set; }
+    public bool DisableWalkAnimation  { get; set; }
+    public bool FollowOwner           { get; set; }
+    public bool CanDrawOnUI           { get; set; } = true;
+
+    // ── draw order / direction ────────────────────────────────────────────────
+    public DrawOrder  DrawOrder { get; set; } = DrawOrder.Third;
+    public Direction  Direction { get; set; } = Direction.North;
+
+    // ── animation controls ────────────────────────────────────────────────────
+    public BounceControl? Bounce { get; set; }
+    public BounceControl? Pulse  { get; set; }
+    public BounceControl? Fade   { get; set; }
+
+    // ── per-direction offsets (indexed by Direction cast to int) ──────────────
+    private readonly DirControl[] _dirControls = new DirControl[8];
+
+    public AttachedEffect()
+    {
+        for (int i = 0; i < 8; i++)
+            _dirControls[i] = new DirControl();
+    }
+
+    public DirControl GetDirControl(Direction dir) => _dirControls[(int)dir];
+
+    public void SetOnTop(bool onTop)
+    {
+        foreach (var dc in _dirControls) dc.OnTop = onTop;
+    }
+
+    public void SetOffset(int x, int y)
+    {
+        foreach (var dc in _dirControls) { dc.OffsetX = x; dc.OffsetY = y; }
+    }
+
+    public void SetDirOffset(Direction dir, int x, int y, bool onTop = false)
+    {
+        var dc = _dirControls[(int)dir];
+        dc.OnTop = onTop; dc.OffsetX = x; dc.OffsetY = y;
+    }
+
+    /// <summary>Deep-copies this effect (mirrors <c>clone()</c> in C++).</summary>
+    public AttachedEffect Clone()
+    {
+        var c = new AttachedEffect
+        {
+            Id = Id, Name = Name,
+            Loop = Loop, Duration = Duration, Speed = Speed, Opacity = Opacity,
+            SizeWidth = SizeWidth, SizeHeight = SizeHeight,
+            Permanent = Permanent, HideOwner = HideOwner, Transform = Transform,
+            DisableWalkAnimation = DisableWalkAnimation, FollowOwner = FollowOwner,
+            CanDrawOnUI = CanDrawOnUI, DrawOrder = DrawOrder, Direction = Direction,
+            Bounce = Bounce is null ? null : new BounceControl { MinHeight = Bounce.MinHeight, Height = Bounce.Height, Speed = Bounce.Speed },
+            Pulse  = Pulse  is null ? null : new BounceControl { MinHeight = Pulse.MinHeight,  Height = Pulse.Height,  Speed = Pulse.Speed  },
+            Fade   = Fade   is null ? null : new BounceControl { MinHeight = Fade.MinHeight,   Height = Fade.Height,   Speed = Fade.Speed   },
+        };
+        for (int i = 0; i < 8; i++)
+        {
+            c._dirControls[i].OnTop   = _dirControls[i].OnTop;
+            c._dirControls[i].OffsetX = _dirControls[i].OffsetX;
+            c._dirControls[i].OffsetY = _dirControls[i].OffsetY;
+        }
+        return c;
+    }
 }
 
 /// <summary>
 /// Manages all <see cref="AttachedEffect"/> descriptors registered by the client.
-/// Task 8.20.
+/// Maps to <c>src/client/attachedeffectmanager.h</c>.
+/// Task T34.
 /// </summary>
 public sealed class AttachedEffectManager
 {
     private readonly Dictionary<int, AttachedEffect> _effects = [];
 
+    // kept for backwards-compat with existing tests
     public void Register(AttachedEffect effect)
     {
         ArgumentNullException.ThrowIfNull(effect);
         _effects[effect.Id] = effect;
     }
 
+    /// <summary>Register an effect identified by a ThingType id + category string.</summary>
+    public AttachedEffect RegisterByThing(int id, string name, int thingId, string category)
+    {
+        var effect = new AttachedEffect { Id = id, Name = name };
+        _effects[id] = effect;
+        return effect;
+    }
+
+    /// <summary>Register an effect identified by an image path.</summary>
+    public AttachedEffect RegisterByImage(int id, string name, string imagePath, bool smooth = true)
+    {
+        var effect = new AttachedEffect { Id = id, Name = name };
+        _effects[id] = effect;
+        return effect;
+    }
+
     public AttachedEffect? Get(int id)
         => _effects.TryGetValue(id, out var e) ? e : null;
 
+    public void Remove(int id) => _effects.Remove(id);
+    public void Clear()        => _effects.Clear();
+
     public IEnumerable<AttachedEffect> All => _effects.Values;
+    public int Count => _effects.Count;
+}
+
+// ─── AttachableObject ─────────────────────────────────────────────────────────
+
+/// <summary>
+/// Base class for game objects (creatures, tiles, items) that support attached visual effects.
+/// Maps to <c>src/client/attachableobject.h</c>.
+/// Task T34.
+/// </summary>
+public abstract class AttachableObject
+{
+    private readonly List<AttachedEffect> _attachedEffects = [];
+
+    /// <summary>All currently attached effects.</summary>
+    public IReadOnlyList<AttachedEffect> AttachedEffects => _attachedEffects;
+
+    /// <summary>True when at least one effect is attached.</summary>
+    public bool HasAttachedEffects => _attachedEffects.Count > 0;
+
+    /// <summary>Whether the owner sprite is hidden by any effect.</summary>
+    public bool IsOwnerHidden => _attachedEffects.Any(e => e.HideOwner);
+
+    /// <summary>Attach an effect to this object (clones it for independent lifetime).</summary>
+    public void AttachEffect(AttachedEffect effect)
+    {
+        ArgumentNullException.ThrowIfNull(effect);
+        _attachedEffects.Add(effect.Clone());
+        OnAttachEffect(effect);
+    }
+
+    /// <summary>Remove a previously attached effect by its id.</summary>
+    public bool DetachEffectById(int id)
+    {
+        var idx = _attachedEffects.FindIndex(e => e.Id == id);
+        if (idx < 0) return false;
+        var removed = _attachedEffects[idx];
+        _attachedEffects.RemoveAt(idx);
+        OnDetachEffect(removed);
+        return true;
+    }
+
+    /// <summary>Remove all attached effects.</summary>
+    public void ClearAttachedEffects()
+    {
+        foreach (var e in _attachedEffects) OnDetachEffect(e);
+        _attachedEffects.Clear();
+    }
+
+    /// <summary>Remove only temporary (non-permanent) effects.</summary>
+    public void ClearTemporaryAttachedEffects()
+    {
+        for (int i = _attachedEffects.Count - 1; i >= 0; i--)
+        {
+            if (!_attachedEffects[i].Permanent)
+            {
+                OnDetachEffect(_attachedEffects[i]);
+                _attachedEffects.RemoveAt(i);
+            }
+        }
+    }
+
+    /// <summary>Remove only permanent effects.</summary>
+    public void ClearPermanentAttachedEffects()
+    {
+        for (int i = _attachedEffects.Count - 1; i >= 0; i--)
+        {
+            if (_attachedEffects[i].Permanent)
+            {
+                OnDetachEffect(_attachedEffects[i]);
+                _attachedEffects.RemoveAt(i);
+            }
+        }
+    }
+
+    public AttachedEffect? GetAttachedEffectById(int id)
+        => _attachedEffects.FirstOrDefault(e => e.Id == id);
+
+    protected virtual void OnAttachEffect(AttachedEffect effect) { }
+    protected virtual void OnDetachEffect(AttachedEffect effect) { }
 }
 
 // ─── NpcTradeItem ─────────────────────────────────────────────────────────────
