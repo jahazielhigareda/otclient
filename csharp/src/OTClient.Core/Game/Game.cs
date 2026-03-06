@@ -57,12 +57,14 @@ public sealed class Game
 
     // ─── Game world ───────────────────────────────────────────────────────────
 
-    public Map          Map         { get; } = new();
-    public MapView      MapView     { get; } = new();
-    public LightView    LightView   { get; } = new();
-    public Minimap      Minimap     { get; } = new();
-    public LocalPlayer  LocalPlayer { get; } = new();
-    public GameConfig   Config      { get; } = new();
+    public Map                Map         { get; } = new();
+    public MapView            MapView     { get; } = new();
+    public LightView          LightView   { get; } = new();
+    public Minimap            Minimap     { get; } = new();
+    public LocalPlayer        LocalPlayer { get; } = new();
+    public GameConfig         Config      { get; } = new();
+    public ThingTypeManager   Things      { get; } = new();
+    public CreatureDataManager Creatures  { get; } = new();
 
     // ─── Character list ───────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ namespace OTClient.Framework.Lua;
 /// Call <see cref="Register"/> once after <see cref="LuaInterface.Init"/>
 /// and before running any Lua scripts.
 /// </para>
-/// Tasks 6.5–6.9, 6.12.
+/// Tasks 6.5–6.12.
 /// </summary>
 public static class LuaGlobals
 {
@@ -25,13 +25,19 @@ public static class LuaGlobals
     /// <param name="dispatcher">Event dispatcher (becomes <c>g_dispatcher</c>).</param>
     /// <param name="scheduler">Scheduler (becomes <c>g_scheduler</c>).</param>
     /// <param name="http">HTTP client (becomes <c>g_http</c>); may be null.</param>
+    /// <param name="fontManager">Font manager (becomes <c>g_fonts</c>); may be null.</param>
+    /// <param name="game">Game singleton (becomes <c>g_game</c>); may be null.</param>
+    /// <param name="uiManager">UI manager (becomes <c>g_ui</c>); may be null.</param>
     public static void Register(
-        LuaInterface     lua,
-        Logger?          logger     = null,
-        ModuleManager?   modules    = null,
-        EventDispatcher? dispatcher = null,
-        Scheduler?       scheduler  = null,
-        Net.ProtocolHttp? http      = null)
+        LuaInterface           lua,
+        Logger?                logger      = null,
+        ModuleManager?         modules     = null,
+        EventDispatcher?       dispatcher  = null,
+        Scheduler?             scheduler   = null,
+        Net.ProtocolHttp?      http        = null,
+        Graphics.FontManager?  fontManager = null,
+        Game.Game?             game        = null,
+        UI.UIManager?          uiManager   = null)
     {
         ArgumentNullException.ThrowIfNull(lua);
 
@@ -68,6 +74,36 @@ public static class LuaGlobals
         // ── g_http ────────────────────────────────────────────────────────────
         lua.SetGlobal("g_http", http ?? new Net.ProtocolHttp());
 
+        // ── g_graphics (task 6.6) ─────────────────────────────────────────────
+        lua.SetGlobal("g_graphics", new LuaGraphicsProxy());
+
+        // ── g_textures (task 6.6) ─────────────────────────────────────────────
+        lua.SetGlobal("g_textures", new LuaTexturesProxy());
+
+        // ── g_fonts (task 6.6) ────────────────────────────────────────────────
+        lua.SetGlobal("g_fonts", new LuaFontsProxy(fontManager ?? new Graphics.FontManager()));
+
+        // ── g_drawpool (task 6.6) ─────────────────────────────────────────────
+        lua.SetGlobal("g_drawpool", new LuaDrawPoolProxy());
+
+        // ── g_keyboard (task 6.7) ─────────────────────────────────────────────
+        lua.SetGlobal("g_keyboard", new LuaKeyboardProxy());
+
+        // ── g_mouse (task 6.7) ────────────────────────────────────────────────
+        lua.SetGlobal("g_mouse", new LuaMouseProxy());
+
+        // ── g_game, g_map, g_things, g_sprites, g_creatures, g_client (task 6.10)
+        var g = game ?? new Game.Game();
+        lua.SetGlobal("g_game",      new LuaGameProxy(g));
+        lua.SetGlobal("g_map",       new LuaMapProxy(g.Map));
+        lua.SetGlobal("g_things",    new LuaThingsProxy(g.Things));
+        lua.SetGlobal("g_sprites",   new LuaSpritesProxy());
+        lua.SetGlobal("g_creatures", new LuaCreaturesProxy(g.Creatures));
+        lua.SetGlobal("g_client",    new LuaClientProxy());
+
+        // ── g_ui (task 6.11) ──────────────────────────────────────────────────
+        lua.SetGlobal("g_ui", new LuaUiProxy(uiManager ?? new UI.UIManager()));
+
         // ── Coroutine / event helpers (task 6.12) ─────────────────────────────
         RegisterEventHelpers(lua, dispatcher);
     }
@@ -88,6 +124,42 @@ public static class LuaGlobals
         LuaBinder.RegisterType<EventDispatcher>();
         LuaBinder.RegisterType<Sound.SoundManager>();
         LuaBinder.RegisterType<Net.ProtocolHttp>();
+
+        // Task 6.6 — graphics
+        LuaBinder.RegisterType<LuaGraphicsProxy>();
+        LuaBinder.RegisterType<LuaTexturesProxy>();
+        LuaBinder.RegisterType<LuaFontsProxy>();
+        LuaBinder.RegisterType<LuaDrawPoolProxy>();
+
+        // Task 6.7 — input
+        LuaBinder.RegisterType<LuaKeyboardProxy>();
+        LuaBinder.RegisterType<LuaMouseProxy>();
+
+        // Task 6.10 — game globals
+        LuaBinder.RegisterType<LuaGameProxy>();
+        LuaBinder.RegisterType<LuaMapProxy>();
+        LuaBinder.RegisterType<LuaThingsProxy>();
+        LuaBinder.RegisterType<LuaSpritesProxy>();
+        LuaBinder.RegisterType<LuaCreaturesProxy>();
+        LuaBinder.RegisterType<LuaClientProxy>();
+
+        // Task 6.11 — UI
+        LuaBinder.RegisterType<LuaUiProxy>();
+        LuaBinder.RegisterType<UI.UIWidget>();
+        LuaBinder.RegisterType<UI.UIButton>();
+        LuaBinder.RegisterType<UI.UILabel>();
+        LuaBinder.RegisterType<UI.UITextEdit>();
+        LuaBinder.RegisterType<UI.UICheckBox>();
+        LuaBinder.RegisterType<UI.UIScrollBar>();
+        LuaBinder.RegisterType<UI.UIScrollArea>();
+        LuaBinder.RegisterType<UI.UIProgressBar>();
+        LuaBinder.RegisterType<UI.UIWindow>();
+        LuaBinder.RegisterType<UI.UITabBar>();
+        LuaBinder.RegisterType<UI.UIMap>();
+        LuaBinder.RegisterType<UI.UIItem>();
+        LuaBinder.RegisterType<UI.UICreature>();
+        LuaBinder.RegisterType<UI.UIMinimap>();
+        LuaBinder.RegisterType<UI.UISprite>();
     }
 
     // ─── Coroutine / event helpers ────────────────────────────────────────────
