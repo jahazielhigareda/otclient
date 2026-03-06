@@ -843,4 +843,365 @@ public sealed class LuaGameGlobalsTests : IDisposable
         Assert.Equal(3.0, total.Number);
         lua.Dispose();
     }
+
+    // ─── T38: Creature as Lua userdata ────────────────────────────────────────
+
+    [Fact]
+    public void Creature_GetId_ReturnsId()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 42, Name = "Rat" };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(42) return cr:getId()");
+        Assert.Equal(42.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetName_ReturnsName()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 1, Name = "Dragon" };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(1) return cr:getName()");
+        Assert.Equal("Dragon", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetHealthPercent_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 2, Health = 50, MaxHealth = 100 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(2) return cr:getHealthPercent()");
+        Assert.Equal(0.5, result.Number, 5);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_IsDead_TrueWhenHealthZero()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 3, Health = 0, MaxHealth = 100 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(3) return cr:isDead()");
+        Assert.True(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_IsFullHealth_TrueWhenHealthEqualsMax()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 4, Health = 100, MaxHealth = 100 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(4) return cr:isFullHealth()");
+        Assert.True(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetSkullShieldEmblem_ReturnValues()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 5, Skull = 2, Shield = 3, Emblem = 1 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local cr = g_map.getCreatureById(5) " +
+            "return cr:getSkull(), cr:getShield(), cr:getEmblem()");
+        Assert.Equal(2.0, result.Tuple[0].Number);
+        Assert.Equal(3.0, result.Tuple[1].Number);
+        Assert.Equal(1.0, result.Tuple[2].Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetSpeed_ReturnsSpeed()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 6, Speed = 350, BaseSpeed = 300 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local cr = g_map.getCreatureById(6) " +
+            "return cr:getSpeed(), cr:getBaseSpeed()");
+        Assert.Equal(350.0, result.Tuple[0].Number);
+        Assert.Equal(300.0, result.Tuple[1].Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetType_ReturnsType()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 7, Type = 4 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(7) return cr:getType()");
+        Assert.Equal(4.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_IsInvisible_ReturnsFalseByDefault()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 8 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(8) return cr:isInvisible()");
+        Assert.False(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_TextSetAndClear_Works()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 9 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local cr = g_map.getCreatureById(9) " +
+            "cr:setText('hello') " +
+            "local t = cr:getText() " +
+            "cr:clearText() " +
+            "return t, cr:getText()");
+        Assert.Equal("hello", result.Tuple[0].String);
+        Assert.Equal("", result.Tuple[1].String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_Typing_SetAndGet()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 10 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local cr = g_map.getCreatureById(10) " +
+            "cr:setTyping(true) " +
+            "return cr:getTyping()");
+        Assert.True(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetDirection_ReturnsDirection()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 11, Direction = Direction.North };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(11) return cr:getDirection()");
+        Assert.Equal((double)Direction.North, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetManaPercent_ReturnsValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 12, ManaPercent = 75 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(12) return cr:getManaPercent()");
+        Assert.Equal(75.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetMasterId_ReturnsValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var c = new Creature { Id = 13, MasterId = 99 };
+        g.Map.AddCreature(c);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(13) return cr:getMasterId()");
+        Assert.Equal(99.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Map_GetCreatureById_ReturnsNilForUnknown()
+    {
+        var g = new OTClient.Framework.Game.Game();
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_map.getCreatureById(9999)");
+        Assert.Equal(DataType.Nil, result.Type);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_GetLocalPlayer_IsLuaUserdata()
+    {
+        var g = new OTClient.Framework.Game.Game();
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return type(g_game.getLocalPlayer())");
+        Assert.Equal("userdata", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_GetLocalPlayer_GetId_Works()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.LocalPlayer.Id = 55;
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getLocalPlayer():getId()");
+        Assert.Equal(55.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetVocation_ReturnsVocation()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var p = new Player { Id = 20, Vocation = 3 };
+        g.Map.AddCreature(p);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(20) return cr:getVocation()");
+        Assert.Equal(3.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_GetAttackingCreature_ReturnsNilByDefault()
+    {
+        var g = new OTClient.Framework.Game.Game();
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getAttackingCreature()");
+        Assert.Equal(DataType.Nil, result.Type);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Game_GetFollowingCreature_ReturnsNilByDefault()
+    {
+        var g = new OTClient.Framework.Game.Game();
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("return g_game.getFollowingCreature()");
+        Assert.Equal(DataType.Nil, result.Type);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Monster_IsSubtypeOfCreature_HasLuaMethods()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var m = new Monster { Id = 30, Name = "Orc" };
+        g.Map.AddCreature(m);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(30) return cr:getName()");
+        Assert.Equal("Orc", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Npc_IsSubtypeOfCreature_HasLuaMethods()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        var n = new Npc { Id = 31, Name = "Guard" };
+        g.Map.AddCreature(n);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString("local cr = g_map.getCreatureById(31) return cr:getName()");
+        Assert.Equal("Guard", result.String);
+        lua.Dispose();
+    }
 }

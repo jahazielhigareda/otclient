@@ -194,6 +194,30 @@ public sealed class LuaGameProxy
         return lp is null ? null : (object)lp;
     }
 
+    /// <summary>
+    /// Returns the creature currently being attacked, or nil.
+    /// Maps to <c>Game::getAttackingCreature()</c>. Task T38.
+    /// </summary>
+    [LuaMethod]
+    public object? getAttackingCreature()
+    {
+        var id = _game.AttackingCreatureId;
+        if (id == 0) return null;
+        return _game.Map.GetCreature(id);
+    }
+
+    /// <summary>
+    /// Returns the creature currently being followed, or nil.
+    /// Maps to <c>Game::getFollowingCreature()</c>. Task T38.
+    /// </summary>
+    [LuaMethod]
+    public object? getFollowingCreature()
+    {
+        var id = _game.FollowingCreatureId;
+        if (id == 0) return null;
+        return _game.Map.GetCreature(id);
+    }
+
     [LuaMethod] public void enterGame()       { /* stub — protocol sends login */ }
     [LuaMethod] public void logout()          => _game.Logout();
     [LuaMethod] public void forceLogout()     => _game.Logout();
@@ -364,6 +388,14 @@ public sealed class LuaMapProxy
 
     [LuaMethod] public int  getTileCount()  => _map.TileCount;
     [LuaMethod] public void clean()         => _map.Clear();
+
+    /// <summary>
+    /// Returns the creature with the given id, or nil if not found.
+    /// Maps to <c>Map::getCreatureById</c>. Task T38.
+    /// </summary>
+    [LuaMethod]
+    public object? getCreatureById(uint id)
+        => _map.GetCreature(id);
 
     /// <summary>
     /// Returns whether a projectile can travel through the tile at (x, y, z).

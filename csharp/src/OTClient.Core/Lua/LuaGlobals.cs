@@ -155,6 +155,13 @@ public static class LuaGlobals
         // T37 — ThingType as first-class Lua userdata
         LuaBinder.RegisterType<Game.ThingType>();
 
+        // T38 — Creature hierarchy as Lua userdata
+        LuaBinder.RegisterType<Game.Creature>();
+        LuaBinder.RegisterType<Game.Player>();
+        LuaBinder.RegisterType<Game.LocalPlayer>();
+        LuaBinder.RegisterType<Game.Monster>();
+        LuaBinder.RegisterType<Game.Npc>();
+
         // Task 6.11 — UI
         LuaBinder.RegisterType<LuaUiProxy>();
         LuaBinder.RegisterType<UI.UIWidget>();

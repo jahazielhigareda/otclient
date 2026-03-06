@@ -1,3 +1,4 @@
+using MoonSharp.Interpreter;
 using Raylib_cs;
 
 namespace OTClient.Framework.Game;
@@ -8,8 +9,9 @@ namespace OTClient.Framework.Game;
 /// A living entity in the world: has an outfit, walks between tiles,
 /// shows a health bar, and is visible on the minimap.
 /// Maps to <c>src/client/creature.h</c>.
-/// Task 8.8.
+/// Task 8.8 / T38.
 /// </summary>
+[MoonSharpUserData]
 public class Creature : Thing
 {
     public override ThingCategory Category => ThingCategory.Creature;
@@ -71,6 +73,7 @@ public class Creature : Thing
     public int  MaxHealth   { get; set; } = 100;
     public int  Health      { get; set; } = 100;
     public bool IsAlive     => Health > 0;
+    public bool IsFullHealth => Health >= MaxHealth;
     public float HealthPercent => MaxHealth > 0 ? (float)Health / MaxHealth : 0f;
 
     // ─── Skull / party ────────────────────────────────────────────────────────
@@ -79,7 +82,40 @@ public class Creature : Thing
     public byte Shield { get; set; }
     public byte Emblem { get; set; }
 
-    // ─── Speed ────────────────────────────────────────────────────────────────
+    // ─── Creature type / icon ─────────────────────────────────────────────────
+
+    /// <summary>Creature type byte sent by the server (NPC, monster, etc.).</summary>
+    public byte Type { get; set; }
+
+    /// <summary>Icon byte displayed above the creature's head.</summary>
+    public byte Icon { get; set; }
+
+    // ─── Master / summon ──────────────────────────────────────────────────────
+
+    /// <summary>Id of the master creature (0 = no master).</summary>
+    public uint MasterId { get; set; }
+
+    // ─── Visibility ───────────────────────────────────────────────────────────
+
+    /// <summary>Whether the creature is currently invisible (e.g. with an invisibility rune).</summary>
+    public bool IsInvisible { get; set; }
+
+    // ─── Mana (base creature mana percent, 0–100) ─────────────────────────────
+
+    /// <summary>Mana percentage (0–100). Carried here so monsters can show mana bars.</summary>
+    public int ManaPercent { get; set; }
+
+    // ─── Floating text ────────────────────────────────────────────────────────
+
+    /// <summary>Text currently displayed above the creature's head (e.g. speech).</summary>
+    public string Text { get; set; } = string.Empty;
+
+    // ─── Typing indicator ─────────────────────────────────────────────────────
+
+    /// <summary>Whether the creature has the typing indicator shown above its head.</summary>
+    public bool IsTyping { get; set; }
+
+
 
     public int Speed     { get; set; } = 200;
     public int BaseSpeed { get; set; } = 200;
@@ -121,6 +157,38 @@ public class Creature : Thing
     /// <summary>Removes finished effects.</summary>
     public void PruneEffects()
         => _effects.RemoveAll(e => e.IsFinished);
+
+    // ─── Lua accessor methods (camelCase, T38) ────────────────────────────────
+
+    [MoonSharpHidden] private static float ToPercent01(int num, int den)
+        => den > 0 ? (float)num / den : 0f;
+
+    public uint  getId()            => Id;
+    public uint  getMasterId()      => MasterId;
+    public string getName()         => Name;
+    public float getHealthPercent() => HealthPercent;
+    public int   getManaPercent()   => ManaPercent;
+    public int   getSpeed()         => Speed;
+    public int   getBaseSpeed()     => BaseSpeed;
+    public byte  getSkull()         => Skull;
+    public byte  getShield()        => Shield;
+    public byte  getEmblem()        => Emblem;
+    public byte  getType()          => Type;
+    public byte  getIcon()          => Icon;
+    public Outfit getOutfit()       => Outfit;
+    public void  setOutfit(Outfit o) { Outfit = o; }
+    public int   getDirection()     => (int)Direction;
+    public void  setDirection(int d) { Direction = (Direction)d; }
+    public bool  isWalking()        => IsWalking;
+    public bool  isInvisible()      => IsInvisible;
+    public bool  isDead()           => !IsAlive;
+    public bool  isFullHealth()     => IsFullHealth;
+    public string getText()         => Text;
+    public void  setText(string t)  { Text = t ?? string.Empty; }
+    public void  clearText()        { Text = string.Empty; }
+    public bool  getTyping()        => IsTyping;
+    public void  setTyping(bool v)  { IsTyping = v; }
+    public virtual int getVocation() => 0;
 }
 
 // ─── Player ───────────────────────────────────────────────────────────────────
@@ -142,8 +210,9 @@ public enum SkillType : int
 /// <summary>
 /// A player-controlled creature.  Carries stat & skill info.
 /// Maps to <c>src/client/player.h</c>.
-/// Task 8.9.
+/// Task 8.9 / T38.
 /// </summary>
+[MoonSharpUserData]
 public class Player : Creature
 {
     // ─── Level & experience ───────────────────────────────────────────────────
@@ -193,6 +262,10 @@ public class Player : Creature
     // ─── Gold ─────────────────────────────────────────────────────────────────
 
     public long Gold { get; set; }
+
+    // ─── Lua accessor overrides (T38) ─────────────────────────────────────────
+
+    public override int getVocation() => Vocation;
 }
 
 // ─── LocalPlayer ──────────────────────────────────────────────────────────────
@@ -210,8 +283,9 @@ public enum PvpMode : byte { WhiteDove = 0, WhiteHand = 1, YellowHand = 2, RedFi
 /// The character controlled by the logged-in client — extends
 /// <see cref="Player"/> with own-client specific properties.
 /// Maps to <c>src/client/localplayer.h</c>.
-/// Task 8.9.
+/// Task 8.9 / T38.
 /// </summary>
+[MoonSharpUserData]
 public sealed class LocalPlayer : Player
 {
     // ─── Stamina ──────────────────────────────────────────────────────────────

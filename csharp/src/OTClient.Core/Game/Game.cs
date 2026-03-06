@@ -335,6 +335,12 @@ public sealed class Game
     /// <summary>Raised when fight modes change.</summary>
     public event Action<FightMode, ChaseMode, bool, PvpMode>? FightModesChanged;
 
+    /// <summary>Id of the creature currently being attacked (0 = none). Task T38.</summary>
+    public uint AttackingCreatureId { get; set; }
+
+    /// <summary>Id of the creature currently being followed (0 = none). Task T38.</summary>
+    public uint FollowingCreatureId { get; set; }
+
     /// <summary>
     /// Attacks the creature with id <paramref name="creatureId"/>.
     /// Only valid while <see cref="IsOnline"/>.
@@ -345,6 +351,7 @@ public sealed class Game
     public void Attack(uint creatureId)
     {
         if (!IsOnline) return;
+        AttackingCreatureId = creatureId;
         AttackRequested?.Invoke(creatureId);
     }
 
@@ -358,6 +365,7 @@ public sealed class Game
     public void Follow(uint creatureId)
     {
         if (!IsOnline) return;
+        FollowingCreatureId = creatureId;
         FollowRequested?.Invoke(creatureId);
     }
 
@@ -371,6 +379,7 @@ public sealed class Game
     public void CancelAttack()
     {
         if (!IsOnline) return;
+        AttackingCreatureId = 0;
         CancelAttackRequested?.Invoke();
     }
 
@@ -384,6 +393,7 @@ public sealed class Game
     public void CancelFollow()
     {
         if (!IsOnline) return;
+        FollowingCreatureId = 0;
         CancelFollowRequested?.Invoke();
     }
 
@@ -397,6 +407,8 @@ public sealed class Game
     public void CancelAttackAndFollow()
     {
         if (!IsOnline) return;
+        AttackingCreatureId  = 0;
+        FollowingCreatureId  = 0;
         CancelAttackAndFollowRequested?.Invoke();
     }
 
