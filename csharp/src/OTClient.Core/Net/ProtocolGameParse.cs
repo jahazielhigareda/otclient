@@ -979,4 +979,199 @@ public sealed partial class ProtocolGame
 
         InventoryItemChanged?.Invoke(slot, null);
     }
+
+    // ─── Chat / channel handlers (T09) ────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>Talk</c> (0xAA / GameServerTalk).
+    /// Reads the statement GUID, speaker name, optional suffix, speaker level, talk mode,
+    /// optional position or channel ID, and the text, then raises <see cref="TalkReceived"/>.
+    /// Protocol 1281: GameMessageStatements and GameMessageLevel are always present.
+    /// Maps to <c>ProtocolGame::parseTalk</c>.
+    /// Task T09.
+    /// </summary>
+    private void ParseTalk(InputMessage msg)
+    {
+        // Statement GUID (always present at protocol 1281 — GameMessageStatements feature)
+        uint statement = msg.ReadU32();
+
+        string author = msg.ReadString();
+
+        // Suffix byte — only present when statement != 0 at protocol 1281
+        if (statement != 0)
+            msg.ReadU8();
+
+        // Speaker level (always present at protocol 1281 — GameMessageLevel feature)
+        int level = msg.ReadU16();
+
+        var mode = (TalkMode)msg.ReadU8();
+
+        Game.Position? pos = null;
+        ushort channelId = 0;
+
+        switch (mode)
+        {
+            // Modes that include the world-position of the speaker
+            case TalkMode.Say:
+            case TalkMode.Whisper:
+            case TalkMode.Yell:
+            case TalkMode.Spell:
+            case TalkMode.NpcFromStartBlock:
+            case TalkMode.NpcTo:
+            case TalkMode.BarkLow:
+            case TalkMode.BarkLoud:
+            case TalkMode.Potion:
+                pos = ReadPosition(msg);
+                break;
+
+            // Modes that include a channel ID
+            case TalkMode.Channel:
+            case TalkMode.ChannelManagement:
+            case TalkMode.ChannelHighlight:
+            case TalkMode.GamemasterChannel:
+                channelId = msg.ReadU16();
+                break;
+
+            // All other modes carry no extra context bytes
+            default:
+                break;
+        }
+
+        string text = msg.ReadString();
+        TalkReceived?.Invoke(author, level, mode, text, channelId, pos);
+    }
+
+    /// <summary>
+    /// Parses <c>ChannelList</c> (0xAB / GameServerChannels).
+    /// Reads a list of (channelId, channelName) pairs and raises
+    /// <see cref="ChannelListReceived"/>.
+    /// Maps to <c>ProtocolGame::parseChannelList</c>.
+    /// Task T09.
+    /// </summary>
+    private void ParseChannelList(InputMessage msg)
+    {
+        int count = msg.ReadU8();
+        var channels = new List<(ushort Id, string Name)>(count);
+        for (int i = 0; i < count; i++)
+        {
+            ushort id   = msg.ReadU16();
+            string name = msg.ReadString();
+            channels.Add((id, name));
+        }
+        ChannelListReceived?.Invoke(channels);
+    }
+
+    /// <summary>
+    /// Parses <c>OpenChannel</c> (0xAC / GameServerOpenChannel).
+    /// Reads the channel ID and name, then the joined / invited player lists
+    /// (always present at protocol 1281 — GameChannelPlayerList feature), then
+    /// raises <see cref="ChannelOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenChannel</c>.
+    /// Task T09.
+    /// </summary>
+    private void ParseOpenChannel(InputMessage msg)
+    {
+        ushort channelId   = msg.ReadU16();
+        string channelName = msg.ReadString();
+
+        // GameChannelPlayerList — always present at protocol 1281
+        int joinedCount = msg.ReadU16();
+        for (int i = 0; i < joinedCount; i++)
+            msg.ReadString(); // player name
+
+        int invitedCount = msg.ReadU16();
+        for (int i = 0; i < invitedCount; i++)
+            msg.ReadString(); // player name
+
+        ChannelOpened?.Invoke(channelId, channelName);
+    }
+
+    /// <summary>
+    /// Parses <c>OpenPrivateChannel</c> (0xAD / GameServerOpenPrivateChannel).
+    /// Reads the other player's name and raises <see cref="PrivateChannelOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenPrivateChannel</c>.
+    /// Task T09.
+    /// </summary>
+    private void ParseOpenPrivateChannel(InputMessage msg)
+    {
+        string name = msg.ReadString();
+        PrivateChannelOpened?.Invoke(name);
+    }
+
+    /// <summary>
+    /// Parses <c>CloseChannel</c> (0xB3 / GameServerCloseChannel).
+    /// Reads the channel ID and raises <see cref="ChannelClosed"/>.
+    /// Maps to <c>ProtocolGame::parseCloseChannel</c>.
+    /// Task T09.
+    /// </summary>
+    private void ParseCloseChannel(InputMessage msg)
+    {
+        ushort channelId = msg.ReadU16();
+        ChannelClosed?.Invoke(channelId);
+    }
+
+    // ─── VIP handlers (T11) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>VipAdd</c> (0xD2 / GameServerVipAdd).
+    /// Reads a VIP entry and raises <see cref="VipAdded"/>.
+    /// Protocol 1281: GameAdditionalVipInfo and GameVipGroups are always present.
+    /// Maps to <c>ProtocolGame::parseVipAdd</c>.
+    /// Task T11.
+    /// </summary>
+    private void ParseVipAdd(InputMessage msg)
+    {
+        uint   id          = msg.ReadU32();
+        string name        = msg.ReadString();
+
+        // GameAdditionalVipInfo — always present at protocol 1281
+        string description = msg.ReadString();
+        uint   iconId      = msg.ReadU32();
+        bool   notify      = msg.ReadU8() != 0;
+
+        uint status = msg.ReadU8();
+
+        // GameVipGroups — always present at protocol 1281
+        int groupCount = msg.ReadU8();
+        for (int i = 0; i < groupCount; i++)
+            msg.ReadU8(); // group ID
+
+        VipAdded?.Invoke(id, name, status, description, iconId, notify);
+    }
+
+    /// <summary>
+    /// Parses <c>VipState</c> (0xD3 / GameServerVipState).
+    /// Reads the VIP entry ID and new status byte and raises <see cref="VipStateChanged"/>.
+    /// Protocol 1281: GameLoginPending is always present (status is U8).
+    /// Maps to <c>ProtocolGame::parseVipState</c>.
+    /// Task T11.
+    /// </summary>
+    private void ParseVipState(InputMessage msg)
+    {
+        uint id     = msg.ReadU32();
+        uint status = msg.ReadU8(); // GameLoginPending — always present at protocol 1281
+        VipStateChanged?.Invoke(id, status);
+    }
+
+    /// <summary>
+    /// Parses <c>VipLogout</c> (0xD4 / GameServerVipLogout).
+    /// Protocol 1281: GameVipGroups is present, so this packet carries the full
+    /// VIP groups list rather than a single logout.  The group data is consumed
+    /// and discarded; client-side effects (e.g. refreshing the groups UI) are not
+    /// yet implemented.
+    /// Maps to <c>ProtocolGame::parseVipLogout</c>.
+    /// Task T11.
+    /// </summary>
+    private void ParseVipLogout(InputMessage msg)
+    {
+        // GameVipGroups — always present at protocol 1281
+        int groupCount = msg.ReadU8();
+        for (int i = 0; i < groupCount; i++)
+        {
+            msg.ReadU8();     // group ID
+            msg.ReadString(); // group name
+            msg.ReadU8();     // canEditGroup
+        }
+        msg.ReadU8(); // groupsAmountLeft
+    }
 }

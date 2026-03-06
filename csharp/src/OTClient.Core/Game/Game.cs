@@ -195,4 +195,123 @@ public sealed class Game
         if (!IsOnline || path.Count == 0) return;
         AutoWalkRequested?.Invoke(path);
     }
+
+    // ─── Chat (T10) ──────────────────────────────────────────────────────────
+
+    /// <summary>Raised when the player wants to say something in the default chat mode.</summary>
+    public event Action<string>? TalkSayRequested;
+
+    /// <summary>Raised when the player wants to send a message to a channel.</summary>
+    public event Action<ushort, string>? TalkChannelRequested;
+
+    /// <summary>Raised when the player wants to send a private message.</summary>
+    public event Action<string, string>? TalkPrivateRequested;
+
+    /// <summary>Raised when the player requests the list of available channels.</summary>
+    public event Action? ChannelsRequested;
+
+    /// <summary>Raised when the player joins a channel.</summary>
+    public event Action<ushort>? JoinChannelRequested;
+
+    /// <summary>Raised when the player leaves a channel.</summary>
+    public event Action<ushort>? LeaveChannelRequested;
+
+    /// <summary>Raised when the player opens a private channel with another player.</summary>
+    public event Action<string>? OpenPrivateChannelRequested;
+
+    /// <summary>
+    /// Sends a public say message in the default chat mode.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="TalkSayRequested"/>.
+    /// Maps to <c>Game::talk()</c> (mode = MessageSay) in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void TalkSay(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!IsOnline) return;
+        TalkSayRequested?.Invoke(message);
+    }
+
+    /// <summary>
+    /// Sends a message to a channel.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="TalkChannelRequested"/>.
+    /// Maps to <c>Game::talkChannel()</c> in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void TalkChannel(ushort channelId, string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!IsOnline) return;
+        TalkChannelRequested?.Invoke(channelId, message);
+    }
+
+    /// <summary>
+    /// Sends a private message to <paramref name="receiver"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="TalkPrivateRequested"/>.
+    /// Maps to <c>Game::talkPrivate()</c> in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void TalkPrivate(string receiver, string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(receiver);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!IsOnline) return;
+        TalkPrivateRequested?.Invoke(receiver, message);
+    }
+
+    /// <summary>
+    /// Requests the list of available public channels.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="ChannelsRequested"/>.
+    /// Maps to <c>Game::requestChannels()</c> in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void RequestChannels()
+    {
+        if (!IsOnline) return;
+        ChannelsRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Joins a public channel identified by <paramref name="channelId"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="JoinChannelRequested"/>.
+    /// Maps to <c>Game::joinChannel()</c> in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void JoinChannel(ushort channelId)
+    {
+        if (!IsOnline) return;
+        JoinChannelRequested?.Invoke(channelId);
+    }
+
+    /// <summary>
+    /// Leaves a public channel identified by <paramref name="channelId"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="LeaveChannelRequested"/>.
+    /// Maps to <c>Game::leaveChannel()</c> in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void LeaveChannel(ushort channelId)
+    {
+        if (!IsOnline) return;
+        LeaveChannelRequested?.Invoke(channelId);
+    }
+
+    /// <summary>
+    /// Opens a private channel with the player named <paramref name="playerName"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="OpenPrivateChannelRequested"/>.
+    /// Maps to <c>Game::openPrivateChannel()</c> in <c>src/client/game.cpp</c>.
+    /// Task T10.
+    /// </summary>
+    public void OpenPrivateChannel(string playerName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playerName);
+        if (!IsOnline) return;
+        OpenPrivateChannelRequested?.Invoke(playerName);
+    }
 }

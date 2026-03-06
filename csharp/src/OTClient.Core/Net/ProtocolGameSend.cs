@@ -218,4 +218,59 @@ public sealed partial class ProtocolGame
         msg.WriteString(message);
         SendEncrypted(msg, _xteaKey);
     }
+
+    /// <summary>
+    /// Sends a request for the list of available public channels.
+    /// Maps to <c>ProtocolGame::sendRequestChannels</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendRequestChannels()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestChannels);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a join-channel request for the channel identified by
+    /// <paramref name="channelId"/>.
+    /// Maps to <c>ProtocolGame::sendJoinChannel</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendJoinChannel(ushort channelId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.JoinChannel);
+        msg.WriteU16(channelId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a leave-channel request for the channel identified by
+    /// <paramref name="channelId"/>.
+    /// Maps to <c>ProtocolGame::sendLeaveChannel</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendLeaveChannel(ushort channelId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LeaveChannel);
+        msg.WriteU16(channelId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to open a private chat channel with
+    /// <paramref name="receiver"/>.
+    /// Maps to <c>ProtocolGame::sendOpenPrivateChannel</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendOpenPrivateChannel(string receiver)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(receiver);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenPrivateChannel);
+        msg.WriteString(receiver);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

@@ -25,7 +25,11 @@ public enum GameClientPacket : byte
     TurnEast      = 0x70,
     TurnSouth     = 0x71,
     TurnWest      = 0x72,
-    Say           = 0x96,
+    Say           = 0x96,   // ClientTalk (150)
+    RequestChannels    = 0x97,   // ClientRequestChannels (151) — T10
+    JoinChannel        = 0x98,   // ClientJoinChannel (152)    — T10
+    LeaveChannel       = 0x99,   // ClientLeaveChannel (153)   — T10
+    OpenPrivateChannel = 0x9A,   // ClientOpenPrivateChannel (154) — T10
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
@@ -64,8 +68,16 @@ public enum GameServerPacket : byte
     PlayerSkills     = 0xA1,   // parsePlayerSkills (T05)
     PlayerState      = 0xA2,   // parsePlayerState (T05)
     PlayerModes      = 0xA7,   // parsePlayerModes (T05)
+    Talk             = 0xAA,   // GameServerTalk (170)            — parseTalk (T09)
+    ChannelList      = 0xAB,   // GameServerChannels (171)        — parseChannelList (T09)
+    OpenChannel      = 0xAC,   // GameServerOpenChannel (172)     — parseOpenChannel (T09)
+    OpenPrivateChannel = 0xAD, // GameServerOpenPrivateChannel (173) — parseOpenPrivateChannel (T09)
+    CloseChannel     = 0xB3,   // GameServerCloseChannel (179)    — parseCloseChannel (T09)
     TextMessage      = 0xB4,
     PlayerSpeech     = 0x96,
+    VipAdd           = 0xD2,   // GameServerVipAdd (210)          — parseVipAdd (T11)
+    VipState         = 0xD3,   // GameServerVipState (211)        — parseVipState (T11)
+    VipLogout        = 0xD4,   // GameServerVipLogout (212)       — parseVipLogout (T11)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -89,6 +101,40 @@ public enum ChatMode : byte
     Yell    = 0x03,
     Private = 0x04,
     Channel = 0x05,
+}
+
+/// <summary>
+/// Talk message modes received from the server (protocol 1281 wire-byte values).
+/// Maps to <c>Otc::MessageMode</c> enum values that equal the wire byte for
+/// client versions ≥ 1055 (see <c>protocolcodes.cpp buildMessageModesMap</c>).
+/// Position-reading modes: Say/Whisper/Yell/Spell/NpcFromStartBlock/NpcTo/BarkLow/BarkLoud/Potion.
+/// Channel-ID modes: Channel/ChannelManagement/ChannelHighlight/GamemasterChannel.
+/// Task T09.
+/// </summary>
+public enum TalkMode : byte
+{
+    None                  = 0,
+    Say                   = 1,
+    Whisper               = 2,
+    Yell                  = 3,
+    PrivateFrom           = 4,
+    PrivateTo             = 5,
+    ChannelManagement     = 6,
+    Channel               = 7,
+    ChannelHighlight      = 8,
+    Spell                 = 9,
+    NpcFromStartBlock     = 10,
+    NpcFrom               = 11,
+    NpcTo                 = 12,
+    GamemasterBroadcast   = 13,
+    GamemasterChannel     = 14,
+    GamemasterPrivateFrom = 15,
+    GamemasterPrivateTo   = 16,
+    Login                 = 17,
+    Game                  = 19,
+    BarkLow               = 36,
+    BarkLoud              = 37,
+    Potion                = 52,
 }
 
 // ─── ProtocolGame (main state + lifecycle) ────────────────────────────────────
@@ -296,6 +342,60 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<Game.InventorySlot, Game.Item?>? InventoryItemChanged;
 
+    // ─── Chat / channel events (T09) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when any in-game talk message is received from the server.
+    /// Parameters: (author, level, mode, text, channelId — 0 when not a channel message,
+    ///   position — null when not a positional message)
+    /// Maps to <c>ProtocolGame::parseTalk</c>.
+    /// </summary>
+    public event Action<string, int, TalkMode, string, ushort, Game.Position?>? TalkReceived;
+
+    /// <summary>
+    /// Raised when the server sends the list of available channels.
+    /// Parameters: IReadOnlyList of (channelId, channelName) tuples.
+    /// Maps to <c>ProtocolGame::parseChannelList</c>.
+    /// </summary>
+    public event Action<IReadOnlyList<(ushort Id, string Name)>>? ChannelListReceived;
+
+    /// <summary>
+    /// Raised when the server opens a public channel.
+    /// Parameters: (channelId, channelName)
+    /// Maps to <c>ProtocolGame::parseOpenChannel</c>.
+    /// </summary>
+    public event Action<ushort, string>? ChannelOpened;
+
+    /// <summary>
+    /// Raised when the server opens a private channel.
+    /// Parameters: (playerName)
+    /// Maps to <c>ProtocolGame::parseOpenPrivateChannel</c>.
+    /// </summary>
+    public event Action<string>? PrivateChannelOpened;
+
+    /// <summary>
+    /// Raised when the server closes a channel.
+    /// Parameters: (channelId)
+    /// Maps to <c>ProtocolGame::parseCloseChannel</c>.
+    /// </summary>
+    public event Action<ushort>? ChannelClosed;
+
+    // ─── VIP events (T11) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server adds an entry to the VIP (friends) list.
+    /// Parameters: (id, name, status, description, iconId, notifyLogin)
+    /// Maps to <c>ProtocolGame::parseVipAdd</c>.
+    /// </summary>
+    public event Action<uint, string, uint, string, uint, bool>? VipAdded;
+
+    /// <summary>
+    /// Raised when the server updates the online/offline status of a VIP entry.
+    /// Parameters: (id, status — 0=offline, 1=online)
+    /// Maps to <c>ProtocolGame::parseVipState</c>.
+    /// </summary>
+    public event Action<uint, uint>? VipStateChanged;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -337,6 +437,14 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.CreatureHealth,    ParseCreatureHealth);
         RegisterHandler((byte)GameServerPacket.CreatureOutfit,    ParseCreatureOutfit);
         RegisterHandler((byte)GameServerPacket.CreatureSpeed,     ParseCreatureSpeed);
+        RegisterHandler((byte)GameServerPacket.Talk,              ParseTalk);
+        RegisterHandler((byte)GameServerPacket.ChannelList,       ParseChannelList);
+        RegisterHandler((byte)GameServerPacket.OpenChannel,       ParseOpenChannel);
+        RegisterHandler((byte)GameServerPacket.OpenPrivateChannel,ParseOpenPrivateChannel);
+        RegisterHandler((byte)GameServerPacket.CloseChannel,      ParseCloseChannel);
+        RegisterHandler((byte)GameServerPacket.VipAdd,            ParseVipAdd);
+        RegisterHandler((byte)GameServerPacket.VipState,          ParseVipState);
+        RegisterHandler((byte)GameServerPacket.VipLogout,         ParseVipLogout);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

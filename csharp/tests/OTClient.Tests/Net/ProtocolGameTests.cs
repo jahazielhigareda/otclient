@@ -1186,6 +1186,317 @@ public sealed class ProtocolGameTests
         Assert.Equal(10, (byte)OTClient.Framework.Game.InventorySlot.Ammo);
     }
 
+    // ─── T09: Opcode values ───────────────────────────────────────────────────
+
+    [Fact] public void GameServerPacket_Talk_Is0xAA()            => Assert.Equal(0xAA, (byte)GameServerPacket.Talk);
+    [Fact] public void GameServerPacket_ChannelList_Is0xAB()     => Assert.Equal(0xAB, (byte)GameServerPacket.ChannelList);
+    [Fact] public void GameServerPacket_OpenChannel_Is0xAC()     => Assert.Equal(0xAC, (byte)GameServerPacket.OpenChannel);
+    [Fact] public void GameServerPacket_OpenPrivateChannel_Is0xAD() => Assert.Equal(0xAD, (byte)GameServerPacket.OpenPrivateChannel);
+    [Fact] public void GameServerPacket_CloseChannel_Is0xB3()    => Assert.Equal(0xB3, (byte)GameServerPacket.CloseChannel);
+    [Fact] public void GameServerPacket_VipAdd_Is0xD2()          => Assert.Equal(0xD2, (byte)GameServerPacket.VipAdd);
+    [Fact] public void GameServerPacket_VipState_Is0xD3()        => Assert.Equal(0xD3, (byte)GameServerPacket.VipState);
+    [Fact] public void GameServerPacket_VipLogout_Is0xD4()       => Assert.Equal(0xD4, (byte)GameServerPacket.VipLogout);
+
+    // ─── T10: Client opcode values ────────────────────────────────────────────
+
+    [Fact] public void GameClientPacket_RequestChannels_Is0x97() => Assert.Equal(0x97, (byte)GameClientPacket.RequestChannels);
+    [Fact] public void GameClientPacket_JoinChannel_Is0x98()     => Assert.Equal(0x98, (byte)GameClientPacket.JoinChannel);
+    [Fact] public void GameClientPacket_LeaveChannel_Is0x99()    => Assert.Equal(0x99, (byte)GameClientPacket.LeaveChannel);
+    [Fact] public void GameClientPacket_OpenPrivateChannel_Is0x9A() => Assert.Equal(0x9A, (byte)GameClientPacket.OpenPrivateChannel);
+
+    // ─── T09: TalkMode enum values ────────────────────────────────────────────
+
+    [Fact] public void TalkMode_Say_Is1()         => Assert.Equal(1,  (byte)TalkMode.Say);
+    [Fact] public void TalkMode_Channel_Is7()     => Assert.Equal(7,  (byte)TalkMode.Channel);
+    [Fact] public void TalkMode_NpcFrom_Is11()    => Assert.Equal(11, (byte)TalkMode.NpcFrom);
+    [Fact] public void TalkMode_BarkLow_Is36()    => Assert.Equal(36, (byte)TalkMode.BarkLow);
+    [Fact] public void TalkMode_Potion_Is52()     => Assert.Equal(52, (byte)TalkMode.Potion);
+
+    // ─── T09: ParseTalk — positional message ─────────────────────────────────
+
+    [Fact]
+    public void ParseTalk_SayMode_FiresTalkReceivedWithPosition()
+    {
+        using var pg = new ProtocolGame();
+
+        string? gotAuthor = null;
+        int     gotLevel  = -1;
+        TalkMode gotMode  = TalkMode.None;
+        string? gotText   = null;
+        OTClient.Framework.Game.Position? gotPos = null;
+
+        pg.TalkReceived += (author, level, mode, text, _, pos) =>
+        {
+            gotAuthor = author; gotLevel = level; gotMode = mode;
+            gotText   = text;   gotPos   = pos;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Talk);
+        out_.WriteU32(0);          // statement = 0 (no suffix)
+        out_.WriteString("Hero");  // author
+        // no suffix (statement == 0)
+        out_.WriteU16(100);        // level
+        out_.WriteU8((byte)TalkMode.Say);
+        out_.WriteU16(1000);       // position X
+        out_.WriteU16(1000);       // position Y
+        out_.WriteU8(7);           // position Z
+        out_.WriteString("Hello!"); // text
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Hero",      gotAuthor);
+        Assert.Equal(100,         gotLevel);
+        Assert.Equal(TalkMode.Say,gotMode);
+        Assert.Equal("Hello!",    gotText);
+        Assert.NotNull(gotPos);
+        Assert.Equal(1000, gotPos!.Value.X);
+    }
+
+    [Fact]
+    public void ParseTalk_ChannelMode_FiresTalkReceivedWithChannelId()
+    {
+        using var pg = new ProtocolGame();
+
+        ushort gotChannelId = 0;
+        TalkMode gotMode    = TalkMode.None;
+        pg.TalkReceived += (_, _, mode, _, channelId, _) =>
+            { gotMode = mode; gotChannelId = channelId; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Talk);
+        out_.WriteU32(0);               // statement = 0
+        out_.WriteString("Gm");         // author
+        out_.WriteU16(999);             // level
+        out_.WriteU8((byte)TalkMode.Channel);
+        out_.WriteU16(5);               // channelId = 5
+        out_.WriteString("Hi channel"); // text
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(TalkMode.Channel, gotMode);
+        Assert.Equal(5, gotChannelId);
+    }
+
+    [Fact]
+    public void ParseTalk_WithNonZeroStatement_ConsumesExtraSuffixByte()
+    {
+        using var pg = new ProtocolGame();
+
+        string? gotAuthor = null;
+        pg.TalkReceived += (author, _, _, _, _, _) => gotAuthor = author;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Talk);
+        out_.WriteU32(12345);         // statement != 0 → suffix follows
+        out_.WriteString("NpcFred");  // author
+        out_.WriteU8(0);              // suffix byte (consumed and discarded)
+        out_.WriteU16(1);             // level
+        out_.WriteU8((byte)TalkMode.NpcFrom);
+        out_.WriteString("Welcome!"); // text
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("NpcFred", gotAuthor);
+    }
+
+    // ─── T09: ParseChannelList ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseChannelList_FiresChannelListReceivedWithAllEntries()
+    {
+        using var pg = new ProtocolGame();
+
+        IReadOnlyList<(ushort Id, string Name)>? got = null;
+        pg.ChannelListReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ChannelList);
+        out_.WriteU8(2);             // count = 2
+        out_.WriteU16(0);  out_.WriteString("Default");   // channel 0
+        out_.WriteU16(6);  out_.WriteString("Trade");     // channel 6
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal((ushort)0, got[0].Id);
+        Assert.Equal("Default",  got[0].Name);
+        Assert.Equal((ushort)6, got[1].Id);
+        Assert.Equal("Trade",    got[1].Name);
+    }
+
+    // ─── T09: ParseOpenChannel ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseOpenChannel_FiresChannelOpenedWithIdAndName()
+    {
+        using var pg = new ProtocolGame();
+
+        ushort? gotId   = null;
+        string? gotName = null;
+        pg.ChannelOpened += (id, name) => { gotId = id; gotName = name; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenChannel);
+        out_.WriteU16(3);               // channelId = 3
+        out_.WriteString("Help");       // channelName
+        out_.WriteU16(0);               // joined players count
+        out_.WriteU16(0);               // invited players count
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal((ushort)3, gotId);
+        Assert.Equal("Help",    gotName);
+    }
+
+    // ─── T09: ParseOpenPrivateChannel ────────────────────────────────────────
+
+    [Fact]
+    public void ParseOpenPrivateChannel_FiresPrivateChannelOpenedWithName()
+    {
+        using var pg = new ProtocolGame();
+
+        string? gotName = null;
+        pg.PrivateChannelOpened += name => gotName = name;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenPrivateChannel);
+        out_.WriteString("Alice");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Alice", gotName);
+    }
+
+    // ─── T09: ParseCloseChannel ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCloseChannel_FiresChannelClosedWithId()
+    {
+        using var pg = new ProtocolGame();
+
+        ushort? gotId = null;
+        pg.ChannelClosed += id => gotId = id;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CloseChannel);
+        out_.WriteU16(7);   // channelId = 7
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal((ushort)7, gotId);
+    }
+
+    // ─── T11: ParseVipAdd ────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseVipAdd_FiresVipAddedWithAllFields()
+    {
+        using var pg = new ProtocolGame();
+
+        uint?   gotId    = null;
+        string? gotName  = null;
+        uint?   gotStatus = null;
+        bool?   gotNotify = null;
+        pg.VipAdded += (id, name, status, _, _, notify) =>
+            { gotId = id; gotName = name; gotStatus = status; gotNotify = notify; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.VipAdd);
+        out_.WriteU32(42);                 // id
+        out_.WriteString("Bob");           // name
+        out_.WriteString("A good friend"); // description (GameAdditionalVipInfo)
+        out_.WriteU32(1);                  // iconId
+        out_.WriteU8(1);                   // notifyLogin = true
+        out_.WriteU8(1);                   // status = 1 (online)
+        out_.WriteU8(0);                   // vipGroupSize = 0 (GameVipGroups)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(42u,    gotId);
+        Assert.Equal("Bob",  gotName);
+        Assert.Equal(1u,     gotStatus);
+        Assert.True(gotNotify);
+    }
+
+    // ─── T11: ParseVipState ───────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseVipState_FiresVipStateChangedWithIdAndStatus()
+    {
+        using var pg = new ProtocolGame();
+
+        uint? gotId     = null;
+        uint? gotStatus = null;
+        pg.VipStateChanged += (id, status) => { gotId = id; gotStatus = status; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.VipState);
+        out_.WriteU32(99);   // id
+        out_.WriteU8(0);     // status = 0 (offline)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(99u, gotId);
+        Assert.Equal(0u,  gotStatus);
+    }
+
+    // ─── T11: ParseVipLogout (VipGroups) ─────────────────────────────────────
+
+    [Fact]
+    public void ParseVipLogout_ParsesGroupsWithoutThrowing()
+    {
+        using var pg = new ProtocolGame();
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.VipLogout);
+        out_.WriteU8(2);           // 2 groups
+        out_.WriteU8(1);  out_.WriteString("Hunters"); out_.WriteU8(0); // group 1
+        out_.WriteU8(2);  out_.WriteString("Guild");   out_.WriteU8(1); // group 2
+        out_.WriteU8(10); // groupsAmountLeft
+
+        var ex = Record.Exception(() => InvokeHandleRawData(pg, out_.ToArray()));
+        Assert.Null(ex);
+    }
+
+    // ─── T10: SendRequestChannels ─────────────────────────────────────────────
+
+    [Fact]
+    public void SendRequestChannels_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestChannels());
+    }
+
+    [Fact]
+    public void SendJoinChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendJoinChannel(5));
+    }
+
+    [Fact]
+    public void SendLeaveChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendLeaveChannel(5));
+    }
+
+    [Fact]
+    public void SendOpenPrivateChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendOpenPrivateChannel("Alice"));
+    }
+
+    [Fact]
+    public void SendOpenPrivateChannel_EmptyReceiver_Throws()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<ArgumentException>(() => pg.SendOpenPrivateChannel(""));
+    }
+
     // ─── Helper builders ──────────────────────────────────────────────────────
 
     /// <summary>

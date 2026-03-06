@@ -396,4 +396,111 @@ public sealed class GameSingletonTests
         g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
         Assert.Throws<ArgumentNullException>(() => g.AutoWalk(null!));
     }
+
+    // ─── T10: Chat methods ────────────────────────────────────────────────────
+
+    [Fact]
+    public void TalkSay_WhenOnline_FiresTalkSayRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        string? fired = null;
+        g.TalkSayRequested += msg => fired = msg;
+        g.TalkSay("Hello world");
+        Assert.Equal("Hello world", fired);
+    }
+
+    [Fact]
+    public void TalkSay_WhenOffline_DoesNotFire()
+    {
+        var g = MakeGame();
+        bool fired = false;
+        g.TalkSayRequested += _ => fired = true;
+        g.TalkSay("Hello");
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void TalkChannel_WhenOnline_FiresTalkChannelRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        ushort? gotId = null; string? gotMsg = null;
+        g.TalkChannelRequested += (id, msg) => { gotId = id; gotMsg = msg; };
+        g.TalkChannel(5, "Trade chat");
+        Assert.Equal((ushort)5, gotId);
+        Assert.Equal("Trade chat", gotMsg);
+    }
+
+    [Fact]
+    public void TalkPrivate_WhenOnline_FiresTalkPrivateRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        string? gotReceiver = null; string? gotMsg = null;
+        g.TalkPrivateRequested += (recv, msg) => { gotReceiver = recv; gotMsg = msg; };
+        g.TalkPrivate("Alice", "Hey");
+        Assert.Equal("Alice", gotReceiver);
+        Assert.Equal("Hey",   gotMsg);
+    }
+
+    [Fact]
+    public void RequestChannels_WhenOnline_FiresChannelsRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        bool fired = false;
+        g.ChannelsRequested += () => fired = true;
+        g.RequestChannels();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void JoinChannel_WhenOnline_FiresJoinChannelRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        ushort? gotId = null;
+        g.JoinChannelRequested += id => gotId = id;
+        g.JoinChannel(3);
+        Assert.Equal((ushort)3, gotId);
+    }
+
+    [Fact]
+    public void LeaveChannel_WhenOnline_FiresLeaveChannelRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        ushort? gotId = null;
+        g.LeaveChannelRequested += id => gotId = id;
+        g.LeaveChannel(3);
+        Assert.Equal((ushort)3, gotId);
+    }
+
+    [Fact]
+    public void OpenPrivateChannel_WhenOnline_FiresOpenPrivateChannelRequested()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        string? gotName = null;
+        g.OpenPrivateChannelRequested += name => gotName = name;
+        g.OpenPrivateChannel("Bob");
+        Assert.Equal("Bob", gotName);
+    }
+
+    [Fact]
+    public void TalkPrivate_EmptyReceiver_Throws()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        Assert.Throws<ArgumentException>(() => g.TalkPrivate("", "msg"));
+    }
+
+    [Fact]
+    public void TalkPrivate_EmptyMessage_Throws()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        Assert.Throws<ArgumentException>(() => g.TalkPrivate("Alice", ""));
+    }
 }
