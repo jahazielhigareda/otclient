@@ -102,6 +102,13 @@ public static class LuaGlobals
         lua.SetGlobal("g_creatures", new LuaCreaturesProxy(g.Creatures));
         lua.SetGlobal("g_client",    new LuaClientProxy());
 
+        // ── ThingCategory integer constants (T37) ─────────────────────────────
+        // Mirrors the C++ Lua bindings in luafunctions.cpp.
+        lua.SetGlobal("ThingCategoryItem",     (int)Game.ThingCategory.Item);
+        lua.SetGlobal("ThingCategoryCreature", (int)Game.ThingCategory.Creature);
+        lua.SetGlobal("ThingCategoryEffect",   (int)Game.ThingCategory.Effect);
+        lua.SetGlobal("ThingCategoryMissile",  (int)Game.ThingCategory.Missile);
+
         // ── g_ui (task 6.11) ──────────────────────────────────────────────────
         lua.SetGlobal("g_ui", new LuaUiProxy(uiManager ?? new UI.UIManager()));
 
@@ -144,6 +151,9 @@ public static class LuaGlobals
         LuaBinder.RegisterType<LuaSpritesProxy>();
         LuaBinder.RegisterType<LuaCreaturesProxy>();
         LuaBinder.RegisterType<LuaClientProxy>();
+
+        // T37 — ThingType as first-class Lua userdata
+        LuaBinder.RegisterType<Game.ThingType>();
 
         // Task 6.11 — UI
         LuaBinder.RegisterType<LuaUiProxy>();

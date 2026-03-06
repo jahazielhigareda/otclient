@@ -1,3 +1,5 @@
+using MoonSharp.Interpreter;
+
 namespace OTClient.Framework.Game;
 
 // ─── ThingCategory ────────────────────────────────────────────────────────────
@@ -69,14 +71,25 @@ public enum ThingTypeFlag : long
 /// Metadata record for a single item/creature/effect type loaded from the
 /// Tibia .dat file or Protobuf appearances file.
 /// Maps to <c>src/client/thingtype.h</c>.
-/// Task 8.3.
+/// Registered as a MoonSharp UserData so Lua scripts can call Lua-style
+/// accessor methods directly on instances returned by <c>g_things.getThingType</c>.
+/// Task 8.3 / T37.
 /// </summary>
+[MoonSharpUserData]
 public sealed class ThingType
 {
     // ─── Identity ─────────────────────────────────────────────────────────────
 
     public ThingCategory Category { get; init; }
     public int           Id       { get; init; }
+
+    // ─── Display name ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Human-readable name (e.g. market name or creature name).
+    /// Populated when loading .dat / appearances. Defaults to empty string.
+    /// </summary>
+    public string Name { get; init; } = string.Empty;
 
     // ─── Sprite layout ────────────────────────────────────────────────────────
 
@@ -140,6 +153,105 @@ public sealed class ThingType
 
     public int LightLevel  { get; init; } = 0;
     public int LightRadius { get; init; } = 0;
+
+    // ─── Lua accessor methods (T37) ───────────────────────────────────────────
+    // Named in camelCase to match the C++ Lua bindings and Lua module usage.
+
+    /// <summary>Returns the numeric type ID. Lua: <c>thing:getId()</c></summary>
+    public int    getId()            => Id;
+
+    /// <summary>Returns the category as an integer. Lua: <c>thing:getCategory()</c></summary>
+    public int    getCategory()      => (int)Category;
+
+    /// <summary>Returns the display name. Lua: <c>thing:getName()</c></summary>
+    public string getName()          => Name;
+
+    /// <summary>Returns the tile-width in sprites. Lua: <c>thing:getWidth()</c></summary>
+    public int    getWidth()         => Width;
+
+    /// <summary>Returns the tile-height in sprites. Lua: <c>thing:getHeight()</c></summary>
+    public int    getHeight()        => Height;
+
+    /// <summary>Returns the number of blend layers. Lua: <c>thing:getLayers()</c></summary>
+    public int    getLayers()        => Layers;
+
+    /// <summary>Returns the X-direction pattern count. Lua: <c>thing:getPatternX()</c></summary>
+    public int    getPatternX()      => PatternX;
+
+    /// <summary>Returns the Y-direction pattern count. Lua: <c>thing:getPatternY()</c></summary>
+    public int    getPatternY()      => PatternY;
+
+    /// <summary>Returns the Z-floor pattern count. Lua: <c>thing:getPatternZ()</c></summary>
+    public int    getPatternZ()      => PatternZ;
+
+    /// <summary>Returns the animation frame count. Lua: <c>thing:getFrames()</c></summary>
+    public int    getFrames()        => Frames;
+
+    /// <summary>Returns the classification tier (0 = none). Lua: <c>thing:getClassification()</c></summary>
+    public int    getClassification() => Classification;
+
+    /// <summary>Returns the ground-walk speed cost in ms. Lua: <c>thing:getGroundSpeed()</c></summary>
+    public int    getGroundSpeed()   => GroundSpeed;
+
+    /// <summary>Returns the emitted light level. Lua: <c>thing:getLightLevel()</c></summary>
+    public int    getLightLevel()    => LightLevel;
+
+    /// <summary>Returns the emitted light radius in tiles. Lua: <c>thing:getLightRadius()</c></summary>
+    public int    getLightRadius()   => LightRadius;
+
+    /// <summary>Lua: <c>thing:isGround()</c></summary>
+    public bool   isGround()         => IsGround;
+
+    /// <summary>Lua: <c>thing:isGroundBorder()</c></summary>
+    public bool   isGroundBorder()   => (Flags & ThingTypeFlag.GroundBorder) != 0;
+
+    /// <summary>Lua: <c>thing:isOnBottom()</c></summary>
+    public bool   isOnBottom()       => (Flags & ThingTypeFlag.OnBottom) != 0;
+
+    /// <summary>Lua: <c>thing:isOnTop()</c></summary>
+    public bool   isOnTop()          => (Flags & ThingTypeFlag.OnTop) != 0;
+
+    /// <summary>Lua: <c>thing:isContainer()</c></summary>
+    public bool   isContainer()      => IsContainer;
+
+    /// <summary>Lua: <c>thing:isStackable()</c></summary>
+    public bool   isStackable()      => IsStackable;
+
+    /// <summary>Lua: <c>thing:isPickupable()</c></summary>
+    public bool   isPickupable()     => IsPickupable;
+
+    /// <summary>Lua: <c>thing:isNotWalkable()</c></summary>
+    public bool   isNotWalkable()    => IsNotWalkable;
+
+    /// <summary>Lua: <c>thing:isNotPathable()</c></summary>
+    public bool   isNotPathable()    => IsNotPathable;
+
+    /// <summary>Lua: <c>thing:isBlockProjectile()</c></summary>
+    public bool   isBlockProjectile() => IsBlockProjectile;
+
+    /// <summary>Lua: <c>thing:isFullGround()</c></summary>
+    public bool   isFullGround()     => IsFullGround;
+
+    /// <summary>Lua: <c>thing:isOpaque()</c></summary>
+    public bool   isOpaque()         => IsOpaque;
+
+    /// <summary>Lua: <c>thing:isAnimated()</c></summary>
+    public bool   isAnimated()       => IsAnimated;
+
+    /// <summary>Lua: <c>thing:isWrapable()</c></summary>
+    public bool   isWrapable()       => (Flags & ThingTypeFlag.Wrapable) != 0;
+
+    /// <summary>Lua: <c>thing:isUnwrapable()</c></summary>
+    public bool   isUnwrapable()     => (Flags & ThingTypeFlag.Unwrapable) != 0;
+
+    /// <summary>Lua: <c>thing:isMultiUse()</c></summary>
+    public bool   isMultiUse()       => (Flags & ThingTypeFlag.MultiUse) != 0;
+
+    /// <summary>Lua: <c>thing:isRotateable()</c></summary>
+    public bool   isRotateable()     => (Flags & ThingTypeFlag.Rotateable) != 0;
+
+    /// <summary>Returns <c>true</c> when this type emits light. Lua: <c>thing:isLight()</c></summary>
+    public bool   isLight()          => (Flags & ThingTypeFlag.Light) != 0;
 }
 
 // ─── ThingTypeManager ─────────────────────────────────────────────────────────

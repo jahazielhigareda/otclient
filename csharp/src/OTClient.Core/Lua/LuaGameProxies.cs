@@ -446,7 +446,7 @@ public sealed class LuaMapProxy
 
 /// <summary>
 /// Lua proxy for the thing-type manager, exposed as <c>g_things</c>.
-/// Task 6.10.
+/// Task 6.10 / T37.
 /// </summary>
 [LuaBinding("g_things")]
 [MoonSharpUserData]
@@ -460,12 +460,33 @@ public sealed class LuaThingsProxy
         _things = things;
     }
 
+    /// <summary>
+    /// Returns the <see cref="Game.ThingType"/> for the given <paramref name="id"/>
+    /// and integer <paramref name="category"/> (0=Item, 1=Creature, 2=Effect, 3=Missile).
+    /// Returns <c>nil</c> when the type is not registered.
+    /// Lua: <c>g_things.getThingType(id, category)</c>
+    /// </summary>
     [LuaMethod]
     public object? getThingType(int id, int category)
         => _things.Get((Game.ThingCategory)category, id);
 
-    [LuaMethod] public bool isLoaded()                          => true;
-    [LuaMethod] public void loadFromFile(string path)           { /* stub */ }
+    /// <summary>Total number of registered types across all categories.</summary>
+    [LuaMethod] public int  getCount()         => _things.Count;
+
+    /// <summary>Number of registered Item types. Lua: <c>g_things.countItems()</c></summary>
+    [LuaMethod] public int  countItems()        => _things.GetAll(Game.ThingCategory.Item).Count();
+
+    /// <summary>Number of registered Creature types. Lua: <c>g_things.countCreatures()</c></summary>
+    [LuaMethod] public int  countCreatures()    => _things.GetAll(Game.ThingCategory.Creature).Count();
+
+    /// <summary>Number of registered Effect types. Lua: <c>g_things.countEffects()</c></summary>
+    [LuaMethod] public int  countEffects()      => _things.GetAll(Game.ThingCategory.Effect).Count();
+
+    /// <summary>Number of registered Missile types. Lua: <c>g_things.countMissiles()</c></summary>
+    [LuaMethod] public int  countMissiles()     => _things.GetAll(Game.ThingCategory.Missile).Count();
+
+    [LuaMethod] public bool isLoaded()          => true;
+    [LuaMethod] public void loadFromFile(string path) { /* stub */ }
 }
 
 // ─── g_sprites ────────────────────────────────────────────────────────────────

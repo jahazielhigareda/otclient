@@ -563,4 +563,284 @@ public sealed class LuaGameGlobalsTests : IDisposable
         var result = _lua.DoString("return g_minimap.loadOtmm('/no/such/file.otmm')");
         Assert.False(result.Boolean);
     }
+
+    // ─── ThingCategory constants (T37) ───────────────────────────────────────
+
+    [Fact]
+    public void ThingCategoryItem_IsZero()
+    {
+        var result = _lua.DoString("return ThingCategoryItem");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void ThingCategoryCreature_IsOne()
+    {
+        var result = _lua.DoString("return ThingCategoryCreature");
+        Assert.Equal(1.0, result.Number);
+    }
+
+    [Fact]
+    public void ThingCategoryEffect_IsTwo()
+    {
+        var result = _lua.DoString("return ThingCategoryEffect");
+        Assert.Equal(2.0, result.Number);
+    }
+
+    [Fact]
+    public void ThingCategoryMissile_IsThree()
+    {
+        var result = _lua.DoString("return ThingCategoryMissile");
+        Assert.Equal(3.0, result.Number);
+    }
+
+    // ─── g_things enrichment (T37) ───────────────────────────────────────────
+
+    [Fact]
+    public void G_Things_CountItems_EmptyManagerReturnsZero()
+    {
+        var result = _lua.DoString("return g_things.countItems()");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Things_CountCreatures_EmptyManagerReturnsZero()
+    {
+        var result = _lua.DoString("return g_things.countCreatures()");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Things_CountEffects_EmptyManagerReturnsZero()
+    {
+        var result = _lua.DoString("return g_things.countEffects()");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Things_CountMissiles_EmptyManagerReturnsZero()
+    {
+        var result = _lua.DoString("return g_things.countMissiles()");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Things_GetCount_EmptyManagerReturnsZero()
+    {
+        var result = _lua.DoString("return g_things.getCount()");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Things_GetThingType_UnknownTypeReturnsNil()
+    {
+        var result = _lua.DoString("return g_things.getThingType(9999, ThingCategoryItem)");
+        Assert.Equal(DataType.Nil, result.Type);
+    }
+
+    // ─── ThingType Lua userdata (T37) ────────────────────────────────────────
+
+    // Helpers: seed one ThingType into the game's manager, then query via Lua.
+    private ThingType MakeThingType(
+        int id,
+        ThingCategory cat           = ThingCategory.Item,
+        string name                 = "Sword",
+        ThingTypeFlag flags         = ThingTypeFlag.None,
+        int classification          = 0,
+        int groundSpeed             = 150,
+        int lightLevel              = 0,
+        int lightRadius             = 0,
+        int width                   = 1,
+        int height                  = 1,
+        int frames                  = 1)
+        => new()
+        {
+            Id             = id,
+            Category       = cat,
+            Name           = name,
+            Flags          = flags,
+            Classification = classification,
+            GroundSpeed    = groundSpeed,
+            LightLevel     = lightLevel,
+            LightRadius    = lightRadius,
+            Width          = width,
+            Height         = height,
+            Frames         = frames,
+        };
+
+    [Fact]
+    public void ThingType_GetId_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(42, ThingCategory.Item));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(42, ThingCategoryItem) " +
+            "return t ~= nil and t:getId()");
+        Assert.Equal(42.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_GetName_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(1, name: "Dragon"));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(1, ThingCategoryItem) " +
+            "return t:getName()");
+        Assert.Equal("Dragon", result.String);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_GetCategory_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(10, ThingCategory.Creature));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(10, ThingCategoryCreature) " +
+            "return t:getCategory()");
+        Assert.Equal((double)ThingCategory.Creature, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_IsGround_TrueWhenFlagSet()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(3, flags: ThingTypeFlag.Ground));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(3, ThingCategoryItem) " +
+            "return t:isGround()");
+        Assert.True(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_IsStackable_FalseWhenFlagUnset()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(4, flags: ThingTypeFlag.None));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(4, ThingCategoryItem) " +
+            "return t:isStackable()");
+        Assert.False(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_GetClassification_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(5, classification: 3));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(5, ThingCategoryItem) " +
+            "return t:getClassification()");
+        Assert.Equal(3.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_IsAnimated_TrueWhenMultipleFrames()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(6, frames: 4));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(6, ThingCategoryItem) " +
+            "return t:isAnimated()");
+        Assert.True(result.Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_GetGroundSpeed_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(7, groundSpeed: 200));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(7, ThingCategoryItem) " +
+            "return t:getGroundSpeed()");
+        Assert.Equal(200.0, result.Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void ThingType_GetLightLevel_ReturnsCorrectValue()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(8, lightLevel: 5, lightRadius: 3));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var result = lua.DoString(
+            "local t = g_things.getThingType(8, ThingCategoryItem) " +
+            "return t:getLightLevel(), t:getLightRadius()");
+        Assert.Equal(5.0, result.Tuple[0].Number);
+        Assert.Equal(3.0, result.Tuple[1].Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void G_Things_CountItems_ReflectsAddedItems()
+    {
+        var g = new OTClient.Framework.Game.Game();
+        g.Things.Add(MakeThingType(101, ThingCategory.Item));
+        g.Things.Add(MakeThingType(102, ThingCategory.Item));
+        g.Things.Add(MakeThingType(201, ThingCategory.Creature));
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var items     = lua.DoString("return g_things.countItems()");
+        var creatures = lua.DoString("return g_things.countCreatures()");
+        var total     = lua.DoString("return g_things.getCount()");
+
+        Assert.Equal(2.0, items.Number);
+        Assert.Equal(1.0, creatures.Number);
+        Assert.Equal(3.0, total.Number);
+        lua.Dispose();
+    }
 }
