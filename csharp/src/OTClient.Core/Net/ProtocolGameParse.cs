@@ -1474,4 +1474,199 @@ public sealed partial class ProtocolGame
         string text   = msg.ReadString();
         EditListReceived?.Invoke(id, doorId, text);
     }
+
+    // ─── Market (T26) ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads the item tier byte from the stream for the given <paramref name="itemId"/>.
+    /// The tier byte is only present when the item's <c>Classification</c> is &gt; 0
+    /// and we are at protocol 1281 (which we always are in this port).
+    /// Maps to <c>readMarketItemTier</c> in <c>src/client/protocolgameparse.cpp</c>.
+    /// Task T26.
+    /// </summary>
+    private byte ReadMarketItemTier(InputMessage msg, ushort _)
+    {
+        // Classification info requires a ThingTypeManager reference that is not
+        // currently wired into ProtocolGame. Since tier is only present when
+        // Classification > 0, we conservatively return 0 (no tier byte consumed).
+        // In a future pass, wire in ThingTypeManager and check item.Classification > 0.
+        return 0;
+    }
+
+    /// <summary>
+    /// Reads the per-attribute description strings for <c>parseMarketDetail</c>.
+    /// Protocol 1281 always sends up to <c>ITEM_DESC_IMBUEMENTEFFECT</c> (26).
+    /// Each attribute is prefixed by U16: 0x0000 = not present (skip), else read string.
+    /// Maps to <c>readMarketDescriptions</c>.
+    /// Task T26.
+    /// </summary>
+    private static Dictionary<int, string> ReadMarketDescriptions(InputMessage msg)
+    {
+        const int ITEM_DESC_FIRST = 1;   // ITEM_DESC_ARMOR
+        const int ITEM_DESC_LAST  = 26;  // ITEM_DESC_IMBUEMENTEFFECT (at clientVersion 1510, which our port targets)
+        var descriptions = new Dictionary<int, string>();
+        for (int attr = ITEM_DESC_FIRST; attr <= ITEM_DESC_LAST; attr++)
+        {
+            // C++ peeks at next U16: 0x0000 → attribute not present (consume U16, skip);
+            // otherwise the U16 is the string length prefix, so ReadString reads U16 + body.
+            if (msg.PeekU16() != 0)
+                descriptions[attr] = msg.ReadString();  // reads U16 length + body
+            else
+                msg.ReadU16();                           // skip the 0x0000 sentinel
+        }
+        return descriptions;
+    }
+
+    /// <summary>
+    /// Reads the daily price-statistics list for <c>parseMarketDetail</c>.
+    /// Protocol 1281 sends U64 prices.
+    /// Maps to <c>readMarketStatsList</c>.
+    /// Task T26.
+    /// </summary>
+    private static List<Game.MarketStatEntry> ReadMarketStatsList(InputMessage msg, byte action)
+    {
+        const ulong kDaySeconds = 86400;
+        int count = msg.ReadU8();
+        var result = new List<Game.MarketStatEntry>(count);
+        for (int i = 0; i < count; i++)
+        {
+            uint  transactions = msg.ReadU32();
+            ulong totalPrice   = msg.ReadU64();
+            ulong highPrice    = msg.ReadU64();
+            ulong lowPrice     = msg.ReadU64();
+            // day = (time(nullptr) / 1000) * 86400 - i * kDaySeconds, approximated as 0 here
+            // Parenthesise correctly to avoid dividing by 1000 then multiplying by 86400.
+            ulong day = ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 1000) * kDaySeconds
+                        - (ulong)i * kDaySeconds;
+            result.Add(new Game.MarketStatEntry(day, action, transactions, totalPrice, highPrice, lowPrice));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Reads a single market offer from the stream.
+    /// Maps to <c>ProtocolGame::readMarketOffer</c>.
+    /// Task T26.
+    /// </summary>
+    private Game.MarketOffer ReadMarketOffer(InputMessage msg, byte action, ushort var)
+    {
+        const ushort MARKETREQUEST_OWN_HISTORY = 1;
+        const ushort MARKETREQUEST_OWN_OFFERS  = 2;
+
+        uint   timestamp  = msg.ReadU32();
+        ushort counter    = msg.ReadU16();
+        ushort itemId     = 0;
+        byte   itemTier   = 0;
+
+        if (var == MARKETREQUEST_OWN_OFFERS || var == MARKETREQUEST_OWN_HISTORY
+            || var == 0xFFFE || var == 0xFFFF)
+        {
+            // own offers / history: item id embedded in each record
+            itemId   = msg.ReadU16();
+            itemTier = ReadMarketItemTier(msg, itemId);
+        }
+        else
+        {
+            itemId = var;   // browse by item: var carries the item id
+        }
+
+        ushort amount = msg.ReadU16();
+        ulong  price  = msg.ReadU64();   // protocol 1281: always U64
+
+        string playerName = string.Empty;
+        byte   state      = 0; // OFFER_STATE_ACTIVE
+
+        if (var == MARKETREQUEST_OWN_HISTORY || var == 0xFFFF)
+        {
+            state = msg.ReadU8();
+        }
+        else if (var != MARKETREQUEST_OWN_OFFERS && var != 0xFFFE)
+        {
+            playerName = msg.ReadString();
+        }
+
+        return new Game.MarketOffer(timestamp, counter, action, itemId, itemTier,
+                                   amount, price, playerName, state, var);
+    }
+
+    /// <summary>
+    /// Parses <c>MarketEnter</c> (0xF6 / GameServerMarketEnter).
+    /// Reads activeOffers U8, then U16 count of depot items;
+    /// per item: U16 itemId, optional U8 tier, U16 count.
+    /// Fires <see cref="MarketEntered"/>.
+    /// Maps to <c>ProtocolGame::parseMarketEnter</c>.
+    /// Task T26.
+    /// </summary>
+    private void ParseMarketEnter(InputMessage msg)
+    {
+        byte activeOffers = msg.ReadU8();
+        int  itemCount    = msg.ReadU16();
+        var  depotItems   = new List<Game.MarketDepotItem>(itemCount);
+        for (int i = 0; i < itemCount; i++)
+        {
+            ushort itemId = msg.ReadU16();
+            byte   tier   = ReadMarketItemTier(msg, itemId);
+            ushort count  = msg.ReadU16();
+            depotItems.Add(new Game.MarketDepotItem(itemId, tier, count));
+        }
+        MarketEntered?.Invoke(depotItems, activeOffers);
+    }
+
+    /// <summary>
+    /// Parses <c>MarketLeave</c> (0xF7 / GameServerMarketLeave).
+    /// No payload. Fires <see cref="MarketLeft"/>.
+    /// Task T26.
+    /// </summary>
+    private void ParseMarketLeave(InputMessage _) => MarketLeft?.Invoke();
+
+    /// <summary>
+    /// Parses <c>MarketDetail</c> (0xF8 / GameServerMarketDetail).
+    /// Reads U16 itemId, optional U8 tier, description map, buy stats, sell stats.
+    /// Fires <see cref="MarketDetailReceived"/>.
+    /// Maps to <c>ProtocolGame::parseMarketDetail</c>.
+    /// Task T26.
+    /// </summary>
+    private void ParseMarketDetail(InputMessage msg)
+    {
+        ushort itemId       = msg.ReadU16();
+        byte   tier         = ReadMarketItemTier(msg, itemId);
+        var    descriptions = ReadMarketDescriptions(msg);
+        var    buyStats     = ReadMarketStatsList(msg, 0);   // MARKETACTION_BUY
+        var    sellStats    = ReadMarketStatsList(msg, 1);   // MARKETACTION_SELL
+        MarketDetailReceived?.Invoke(itemId, tier, descriptions, buyStats, sellStats);
+    }
+
+    /// <summary>
+    /// Parses <c>MarketBrowse</c> (0xF9 / GameServerMarketBrowse).
+    /// At protocol 1281: reads U8 browseId; if browseId == 3, reads U16 itemId + optional tier.
+    /// Then U32 buyOfferCount + offers, U32 sellOfferCount + offers.
+    /// Fires <see cref="MarketBrowseReceived"/>.
+    /// Maps to <c>ProtocolGame::parseMarketBrowse</c>.
+    /// Task T26.
+    /// </summary>
+    private void ParseMarketBrowse(InputMessage msg)
+    {
+        // Protocol 1281: first byte is the browse-type (1=own history, 2=own offers, 3=item browse)
+        ushort var      = msg.ReadU8();
+        byte   itemTier = 0;
+
+        if (var == 3)
+        {
+            // browse by item: read the actual item id
+            ushort browseItemId = msg.ReadU16();
+            itemTier = ReadMarketItemTier(msg, browseItemId);
+            var      = browseItemId;  // replace var with itemId for readMarketOffer compatibility
+        }
+
+        uint buyCount = msg.ReadU32();
+        var  offers   = new List<Game.MarketOffer>((int)buyCount);
+        for (uint i = 0; i < buyCount; i++)
+            offers.Add(ReadMarketOffer(msg, 0, var));
+
+        uint sellCount = msg.ReadU32();
+        for (uint i = 0; i < sellCount; i++)
+            offers.Add(ReadMarketOffer(msg, 1, var));
+
+        MarketBrowseReceived?.Invoke(var, offers);
+    }
 }

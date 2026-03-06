@@ -297,6 +297,45 @@ public sealed record ModalDialog(
     IReadOnlyList<ModalChoice> Choices,
     bool                       Priority);
 
+// ─── Market records (T26) ─────────────────────────────────────────────────────
+
+/// <summary>
+/// Item in the player's depot as reported by <c>parseMarketEnter</c>.
+/// Maps to the per-item triple in <c>ProtocolGame::parseMarketEnter</c>.
+/// Task T26.
+/// </summary>
+public sealed record MarketDepotItem(ushort ItemId, byte Tier, ushort Count);
+
+/// <summary>
+/// A single buy or sell offer on the market, as decoded by <c>readMarketOffer</c>.
+/// Maps to <c>MarketOffer</c> struct in <c>src/client/protocolgameparse.cpp</c>.
+/// Task T26.
+/// </summary>
+public sealed record MarketOffer(
+    uint   Timestamp,
+    ushort Counter,
+    byte   Action,       // 0 = buy, 1 = sell
+    ushort ItemId,
+    byte   ItemTier,
+    ushort Amount,
+    ulong  Price,
+    string PlayerName,
+    byte   State,        // MarketOfferState
+    ushort Var);         // browse var / request type
+
+/// <summary>
+/// One row in the daily price-statistics list returned by <c>parseMarketDetail</c>.
+/// Maps to the inner vector in <c>readMarketStatsList</c>.
+/// Task T26.
+/// </summary>
+public sealed record MarketStatEntry(
+    ulong Day,
+    byte  Action,
+    uint  Transactions,
+    ulong TotalPrice,
+    ulong HighestPrice,
+    ulong LowestPrice);
+
 // ─── GameConfig ────────────────────────────────────────────────────────────────
 
 /// <summary>

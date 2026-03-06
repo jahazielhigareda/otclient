@@ -346,7 +346,184 @@ public sealed class ProtocolGameTests
         Assert.Throws<InvalidOperationException>(() => pg.SendEditList(2, 3, "list content"));
     }
 
-    // ─── Ping round-trip ─────────────────────────────────────────────────────
+    // ─── Market parse handlers (T26) ─────────────────────────────────────────
+
+    [Fact]
+    public void ParseMarketEnter_InvokesEvent_WithDepotItems()
+    {
+        using var pg = new ProtocolGame();
+
+        IReadOnlyList<OTClient.Framework.Game.MarketDepotItem>? items = null;
+        byte activeOffers = 0;
+        pg.MarketEntered += (depot, offers) =>
+        {
+            items        = depot;
+            activeOffers = offers;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MarketEnter);
+        out_.WriteU8(5);          // activeOffers
+        out_.WriteU16(2);         // 2 depot items
+        // item 1: id=2160, no tier (classification=0), count=3
+        out_.WriteU16(2160);
+        out_.WriteU16(3);
+        // item 2: id=2400, no tier, count=1
+        out_.WriteU16(2400);
+        out_.WriteU16(1);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(items);
+        Assert.Equal(2, items!.Count);
+        Assert.Equal(2160, items[0].ItemId);
+        Assert.Equal(3, items[0].Count);
+        Assert.Equal(2400, items[1].ItemId);
+        Assert.Equal(1, items[1].Count);
+        Assert.Equal(5, activeOffers);
+    }
+
+    [Fact]
+    public void ParseMarketLeave_InvokesEvent()
+    {
+        using var pg = new ProtocolGame();
+        bool left = false;
+        pg.MarketLeft += () => left = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MarketLeave);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+        Assert.True(left);
+    }
+
+    [Fact]
+    public void ParseMarketDetail_InvokesEvent_WithDescriptionsAndStats()
+    {
+        using var pg = new ProtocolGame();
+
+        ushort receivedItemId = 0;
+        IReadOnlyDictionary<int, string>? descs = null;
+        IReadOnlyList<OTClient.Framework.Game.MarketStatEntry>? buyStats = null;
+        pg.MarketDetailReceived += (id, _, d, buy, _) =>
+        {
+            receivedItemId = id;
+            descs          = d;
+            buyStats       = buy;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MarketDetail);
+        out_.WriteU16(2160);   // itemId (no tier, Classification=0)
+
+        // 26 description attributes: only attr 1 (ITEM_DESC_ARMOR) is present
+        // Present: write U16 length + bytes for "12 Armor"
+        const string armorValue = "12 Armor";
+        out_.WriteString(armorValue);      // attr 1 — non-zero length = present
+        for (int a = 2; a <= 26; a++)
+            out_.WriteU16(0);              // not present
+
+        // buy stats: 1 entry
+        out_.WriteU8(1);
+        out_.WriteU32(10);      // transactions
+        out_.WriteU64(5000);    // totalPrice
+        out_.WriteU64(600);     // highestPrice
+        out_.WriteU64(400);     // lowestPrice
+
+        // sell stats: 0 entries
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(2160, receivedItemId);
+        Assert.NotNull(descs);
+        Assert.True(descs!.ContainsKey(1));
+        Assert.Equal(armorValue, descs[1]);
+        Assert.NotNull(buyStats);
+        Assert.Single(buyStats!);
+        Assert.Equal(10u, buyStats[0].Transactions);
+        Assert.Equal(5000u, buyStats[0].TotalPrice);
+    }
+
+    [Fact]
+    public void ParseMarketBrowse_InvokesEvent_WithBuyAndSellOffers()
+    {
+        using var pg = new ProtocolGame();
+
+        IReadOnlyList<OTClient.Framework.Game.MarketOffer>? offers = null;
+        ushort receivedVar = 0;
+        pg.MarketBrowseReceived += (v, o) =>
+        {
+            receivedVar = v;
+            offers      = o;
+        };
+
+        // browseId=3 (item browse), browse item id=2160 (no tier)
+        const ushort itemId = 2160;
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MarketBrowse);
+        out_.WriteU8(3);          // browseId = MARKETREQUEST_ITEM_BROWSE
+        out_.WriteU16(itemId);    // item id
+
+        // 1 buy offer (var = itemId, so playerName is read)
+        out_.WriteU32(1);
+        out_.WriteU32(0xDEAD);   // timestamp
+        out_.WriteU16(1);        // counter
+        // itemId not embedded (var == itemId path, not own-offers)
+        out_.WriteU16(5);        // amount
+        out_.WriteU64(1000);     // price
+        out_.WriteString("Seller"); // playerName
+
+        // 0 sell offers
+        out_.WriteU32(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(itemId, receivedVar);
+        Assert.NotNull(offers);
+        Assert.Single(offers!);
+        Assert.Equal(0, offers![0].Action); // buy
+        Assert.Equal(5, offers[0].Amount);
+        Assert.Equal(1000UL, offers[0].Price);
+        Assert.Equal("Seller", offers[0].PlayerName);
+    }
+
+    // ─── Market send methods (T26) ────────────────────────────────────────────
+
+    [Fact]
+    public void SendMarketLeave_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendMarketLeave());
+    }
+
+    [Fact]
+    public void SendMarketBrowse_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendMarketBrowse(3, 2160, 0));
+    }
+
+    [Fact]
+    public void SendMarketCreateOffer_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendMarketCreateOffer(0, 2160, 0, 1, 1000, 0));
+    }
+
+    [Fact]
+    public void SendMarketCancelOffer_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendMarketCancelOffer(1234, 5));
+    }
+
+    [Fact]
+    public void SendMarketAcceptOffer_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendMarketAcceptOffer(1234, 5, 1));
+    }
 
     [Fact]
     public void ParseDeath_InvokesEvent()

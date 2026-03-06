@@ -117,6 +117,16 @@ public sealed class ThingType
     public bool IsOpaque         { get; init; } = false;
     public bool IsAnimated       => Frames > 1;
 
+    // ─── Classification (T26 market tier) ────────────────────────────────────
+
+    /// <summary>
+    /// Item classification tier level (0 = no classification).
+    /// Used by the market to determine whether item tier should be read.
+    /// Maps to <c>ThingType::getClassification()</c>.
+    /// Task T26.
+    /// </summary>
+    public int Classification    { get; init; } = 0;
+
     // ─── Minimap ──────────────────────────────────────────────────────────────
 
     public Raylib_cs.Color MinimapColor { get; init; } = Raylib_cs.Color.Black;

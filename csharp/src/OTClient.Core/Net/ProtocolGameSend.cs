@@ -561,4 +561,95 @@ public sealed partial class ProtocolGame
         msg.WriteString(text);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── Market (T26) ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a request to leave the market.
+    /// Maps to <c>ProtocolGame::sendMarketLeave</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketLeave()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketLeave);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a market browse request.
+    /// At protocol 1281: writes browseId U8; if browseId == 3 (item browse),
+    /// also writes browseType U16 and optionally the item tier U8.
+    /// Maps to <c>ProtocolGame::sendMarketBrowse</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketBrowse(byte browseId, ushort browseType, byte tier,
+                                 Game.ThingTypeManager? things = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketBrowse);
+        msg.WriteU8(browseId);
+        if (browseType > 0)
+        {
+            msg.WriteU16(browseType);
+            if (browseId == 3)
+            {
+                var tt = things?.Get(Game.ThingCategory.Item, browseType);
+                if (tt?.Classification > 0)
+                    msg.WriteU8(tier);
+            }
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to create a new market offer.
+    /// Maps to <c>ProtocolGame::sendMarketCreateOffer</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketCreateOffer(byte type, ushort itemId, byte itemTier,
+                                      ushort amount, ulong price, byte anonymous,
+                                      Game.ThingTypeManager? things = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketCreate);
+        msg.WriteU8(type);
+        msg.WriteU16(itemId);
+        var tt = things?.Get(Game.ThingCategory.Item, itemId);
+        if (tt?.Classification > 0)
+            msg.WriteU8(itemTier);
+        msg.WriteU16(amount);
+        msg.WriteU64(price);
+        msg.WriteU8(anonymous);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to cancel a market offer.
+    /// Maps to <c>ProtocolGame::sendMarketCancelOffer</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketCancelOffer(uint timestamp, ushort counter)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketCancel);
+        msg.WriteU32(timestamp);
+        msg.WriteU16(counter);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to accept a market offer.
+    /// Maps to <c>ProtocolGame::sendMarketAcceptOffer</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketAcceptOffer(uint timestamp, ushort counter, ushort amount)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketAccept);
+        msg.WriteU32(timestamp);
+        msg.WriteU16(counter);
+        msg.WriteU16(amount);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

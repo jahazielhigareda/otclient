@@ -49,6 +49,11 @@ public enum GameClientPacket : byte
     RequestQuestLog    = 0xF0,   // ClientRequestQuestLog (240)   — T23
     RequestQuestLine   = 0xF1,   // ClientRequestQuestLine (241)  — T23
     AnswerModalDialog  = 0xF9,   // ClientAnswerModalDialog (249) — T23
+    MarketLeave        = 0xF4,   // ClientMarketLeave (244)       — T26
+    MarketBrowse       = 0xF5,   // ClientMarketBrowse (245)      — T26
+    MarketCreate       = 0xF6,   // ClientMarketCreate (246)      — T26
+    MarketCancel       = 0xF7,   // ClientMarketCancel (247)      — T26
+    MarketAccept       = 0xF8,   // ClientMarketAccept (248)      — T26
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
@@ -110,6 +115,10 @@ public enum GameServerPacket : byte
     CancelWalk       = 0xB5,   // GameServerCancelWalk (181)      — parseCancelWalk (T13)
     QuestLog         = 0xF0,   // GameServerQuestLog (240)        — parseQuestLog (T23)
     QuestLine        = 0xF1,   // GameServerQuestLine (241)       — parseQuestLine (T23)
+    MarketEnter      = 0xF6,   // GameServerMarketEnter (246)     — parseMarketEnter (T26)
+    MarketLeave      = 0xF7,   // GameServerMarketLeave (247)     — parseMarketLeave (T26)
+    MarketDetail     = 0xF8,   // GameServerMarketDetail (248)    — parseMarketDetail (T26)
+    MarketBrowse     = 0xF9,   // GameServerMarketBrowse (249)    — parseMarketBrowse (T26)
     ModalDialog      = 0xFA,   // GameServerModalDialog (250)     — parseModalDialog (T23)
 }
 
@@ -267,6 +276,30 @@ public sealed partial class ProtocolGame : Protocol
 
     /// <summary>Raised when the server opens a modal dialog (opcode 0xFA, T23).</summary>
     public event Action<Game.ModalDialog>? ModalDialogReceived;
+
+    // ─── Market events (T26) ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when <c>parseMarketEnter</c> is received.
+    /// Parameters: (depotItems, activeOffers)
+    /// Maps to <c>onMarketEnter</c> Lua callback.
+    /// </summary>
+    public event Action<IReadOnlyList<Game.MarketDepotItem>, byte>? MarketEntered;
+
+    /// <summary>Raised when the server sends <c>MarketLeave</c>.</summary>
+    public event Action? MarketLeft;
+
+    /// <summary>
+    /// Raised when <c>parseMarketDetail</c> is received.
+    /// Parameters: (itemId, itemTier, descriptions{attr→value}, purchaseStats, saleStats)
+    /// </summary>
+    public event Action<ushort, byte, IReadOnlyDictionary<int, string>, IReadOnlyList<Game.MarketStatEntry>, IReadOnlyList<Game.MarketStatEntry>>? MarketDetailReceived;
+
+    /// <summary>
+    /// Raised when <c>parseMarketBrowse</c> is received.
+    /// Parameters: (var, offers)
+    /// </summary>
+    public event Action<ushort, IReadOnlyList<Game.MarketOffer>>? MarketBrowseReceived;
 
     /// <summary>
     /// Raised when the server sends updated player stat values.
@@ -585,6 +618,10 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.EditList,          ParseEditList);
         RegisterHandler((byte)GameServerPacket.QuestLog,          ParseQuestLog);
         RegisterHandler((byte)GameServerPacket.QuestLine,         ParseQuestLine);
+        RegisterHandler((byte)GameServerPacket.MarketEnter,       ParseMarketEnter);
+        RegisterHandler((byte)GameServerPacket.MarketLeave,       ParseMarketLeave);
+        RegisterHandler((byte)GameServerPacket.MarketDetail,      ParseMarketDetail);
+        RegisterHandler((byte)GameServerPacket.MarketBrowse,      ParseMarketBrowse);
         RegisterHandler((byte)GameServerPacket.ModalDialog,       ParseModalDialog);
     }
 
