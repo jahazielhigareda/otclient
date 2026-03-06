@@ -168,26 +168,182 @@ public sealed class ProtocolGameTests
     }
 
     [Fact]
-    public void ParsePlayerSpeech_InvokesEvent_WithAuthorModeContent()
+    public void ParseEditText_InvokesEvent_WithCorrectFields()
     {
         using var pg = new ProtocolGame();
 
-        string?   author  = null;
-        ChatMode  mode    = default;
-        string?   content = null;
-        pg.SpeechReceived += (a, m, c) => { author = a; mode = m; content = c; };
+        uint    rcvId        = 0;
+        int     rcvItemId    = 0;
+        ushort  rcvMaxLength = 0;
+        string? rcvText      = null;
+        string? rcvWriter    = null;
+        pg.EditTextReceived += (id, itemId, maxLen, text, writer, _) =>
+        {
+            rcvId = id; rcvItemId = itemId; rcvMaxLength = maxLen;
+            rcvText = text; rcvWriter = writer;
+        };
 
         var out_ = new OutputMessage();
-        out_.WriteU8((byte)GameServerPacket.PlayerSpeech);
-        out_.WriteString("PlayerX");
-        out_.WriteU8((byte)ChatMode.Say);
-        out_.WriteString("Hello world");
+        out_.WriteU8((byte)GameServerPacket.EditText);
+        out_.WriteU32(42);           // id
+        out_.WriteU16(2400);         // itemId (item U16 at 1281)
+        out_.WriteU16(255);          // maxLength
+        out_.WriteString("Hello!");  // text
+        out_.WriteString("Alice");   // writer
+        out_.WriteU8(0);             // suffix byte (always present at 1281)
 
         InvokeHandleRawData(pg, out_.ToArray());
 
-        Assert.Equal("PlayerX", author);
-        Assert.Equal(ChatMode.Say, mode);
-        Assert.Equal("Hello world", content);
+        Assert.Equal(42u, rcvId);
+        Assert.Equal(2400, rcvItemId);
+        Assert.Equal((ushort)255, rcvMaxLength);
+        Assert.Equal("Hello!", rcvText);
+        Assert.Equal("Alice", rcvWriter);
+    }
+
+    [Fact]
+    public void ParseEditList_InvokesEvent_WithDoorIdAndText()
+    {
+        using var pg = new ProtocolGame();
+
+        uint    rcvId     = 0;
+        byte    rcvDoorId = 0;
+        string? rcvText   = null;
+        pg.EditListReceived += (id, doorId, text) => { rcvId = id; rcvDoorId = doorId; rcvText = text; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.EditList);
+        out_.WriteU8(3);              // doorId
+        out_.WriteU32(77);            // id
+        out_.WriteString("List text");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(77u, rcvId);
+        Assert.Equal((byte)3, rcvDoorId);
+        Assert.Equal("List text", rcvText);
+    }
+
+    [Fact]
+    public void ParseQuestLog_InvokesEvent_WithQuestEntries()
+    {
+        using var pg = new ProtocolGame();
+
+        IReadOnlyList<OTClient.Framework.Game.QuestEntry>? received = null;
+        pg.QuestLogReceived += entries => received = entries;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.QuestLog);
+        out_.WriteU16(2);            // count
+        out_.WriteU16(100); out_.WriteString("Dragon Quest"); out_.WriteU8(0);  // id, name, completed=false
+        out_.WriteU16(101); out_.WriteString("Orc Slayer");   out_.WriteU8(1);  // id, name, completed=true
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(received);
+        Assert.Equal(2, received!.Count);
+        Assert.Equal((ushort)100, received[0].Id);
+        Assert.Equal("Dragon Quest", received[0].Name);
+        Assert.False(received[0].Completed);
+        Assert.Equal((ushort)101, received[1].Id);
+        Assert.True(received[1].Completed);
+    }
+
+    [Fact]
+    public void ParseQuestLine_InvokesEvent_WithMissions()
+    {
+        using var pg = new ProtocolGame();
+
+        ushort rcvQuestId = 0;
+        IReadOnlyList<OTClient.Framework.Game.QuestMission>? received = null;
+        pg.QuestLineReceived += (qid, missions) => { rcvQuestId = qid; received = missions; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.QuestLine);
+        out_.WriteU16(100);          // questId
+        out_.WriteU8(1);             // missionCount
+        out_.WriteU16(5);            // missionId (≥1200, always present at 1281)
+        out_.WriteString("Mission Name");
+        out_.WriteString("Mission Description");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal((ushort)100, rcvQuestId);
+        Assert.NotNull(received);
+        Assert.Single(received!);
+        Assert.Equal("Mission Name", received[0].Name);
+        Assert.Equal("Mission Description", received[0].Description);
+        Assert.Equal((ushort)5, received[0].MissionId);
+    }
+
+    [Fact]
+    public void ParseModalDialog_InvokesEvent_WithDialogData()
+    {
+        using var pg = new ProtocolGame();
+
+        OTClient.Framework.Game.ModalDialog? received = null;
+        pg.ModalDialogReceived += dlg => received = dlg;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ModalDialog);
+        out_.WriteU32(999);           // windowId
+        out_.WriteString("Confirm");  // title
+        out_.WriteString("Are you sure?"); // message
+        out_.WriteU8(2);              // buttonsCount
+        out_.WriteString("Yes"); out_.WriteU8(1);
+        out_.WriteString("No");  out_.WriteU8(0);
+        out_.WriteU8(0);              // choicesCount
+        out_.WriteU8(0);              // escapeButton (version > 970: escape first)
+        out_.WriteU8(1);              // enterButton
+        out_.WriteU8(1);              // priority
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(received);
+        Assert.Equal(999u, received!.WindowId);
+        Assert.Equal("Confirm", received.Title);
+        Assert.Equal("Are you sure?", received.Message);
+        Assert.Equal(2, received.Buttons.Count);
+        Assert.Equal((byte)1, received.EnterButton);
+        Assert.Equal((byte)0, received.EscapeButton);
+        Assert.True(received.Priority);
+    }
+
+    // ─── Send method round-trips (T23) ────────────────────────────────────────
+
+    [Fact]
+    public void SendRequestQuestLog_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestQuestLog());
+    }
+
+    [Fact]
+    public void SendRequestQuestLine_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestQuestLine(42));
+    }
+
+    [Fact]
+    public void SendAnswerModalDialog_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendAnswerModalDialog(999, 1, 0));
+    }
+
+    [Fact]
+    public void SendEditText_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendEditText(1, "my text"));
+    }
+
+    [Fact]
+    public void SendEditList_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendEditList(2, 3, "list content"));
     }
 
     // ─── Ping round-trip ─────────────────────────────────────────────────────

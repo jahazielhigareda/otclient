@@ -509,12 +509,24 @@ public sealed partial class ProtocolGame
         TextMessageReceived?.Invoke(type, message);
     }
 
-    private void ParsePlayerSpeech(InputMessage msg)
+    /// <summary>
+    /// Parses <c>EditText</c> (0x96 / GameServerEditText).
+    /// Reads id U32, item (U16 + optional fields), maxLength U16, text string,
+    /// writer string, suffix byte (protocol 1281 always), and fires
+    /// <see cref="EditTextReceived"/>.
+    /// Maps to <c>ProtocolGame::parseEditText</c>.
+    /// Task T23.
+    /// </summary>
+    private void ParseEditText(InputMessage msg)
     {
-        string   author  = msg.ReadString();
-        var      mode    = (ChatMode)msg.ReadU8();
-        string   content = msg.ReadString();
-        SpeechReceived?.Invoke(author, mode, content);
+        uint   id        = msg.ReadU32();
+        int    itemId    = msg.ReadU16();   // getItem reads U16 id at protocol 1281
+        ushort maxLength = msg.ReadU16();
+        string text      = msg.ReadString();
+        string writer    = msg.ReadString();
+        msg.ReadU8();                        // suffix byte (always present at protocol 1281)
+        // GameWritableDate feature not set at protocol 1281 — skip date string
+        EditTextReceived?.Invoke(id, itemId, maxLength, text, writer, string.Empty);
     }
 
     // ─── Player stats (T05) ───────────────────────────────────────────────────
@@ -1351,4 +1363,115 @@ public sealed partial class ProtocolGame
     /// </summary>
     private void ParseCloseTrade(InputMessage _)
         => PlayerTradeClosed?.Invoke();
+
+    // ─── Quest log (T23) ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>QuestLog</c> (0xF0 / GameServerQuestLog).
+    /// Reads U16 count; per entry: U16 id, string name, U8 completed flag.
+    /// Raises <see cref="QuestLogReceived"/>.
+    /// Maps to <c>ProtocolGame::parseQuestLog</c>.
+    /// Task T23.
+    /// </summary>
+    private void ParseQuestLog(InputMessage msg)
+    {
+        int count = msg.ReadU16();
+        var quests = new List<Game.QuestEntry>(count);
+        for (int i = 0; i < count; i++)
+        {
+            ushort id        = msg.ReadU16();
+            string name      = msg.ReadString();
+            bool   completed = msg.ReadU8() != 0;
+            quests.Add(new Game.QuestEntry(id, name, completed));
+        }
+        QuestLogReceived?.Invoke(quests);
+    }
+
+    /// <summary>
+    /// Parses <c>QuestLine</c> (0xF1 / GameServerQuestLine).
+    /// Reads U16 questId; U8 missionCount; per mission: U16 missionId (≥1200),
+    /// string name, string description.
+    /// Raises <see cref="QuestLineReceived"/>.
+    /// Maps to <c>ProtocolGame::parseQuestLine</c>.
+    /// Task T23.
+    /// </summary>
+    private void ParseQuestLine(InputMessage msg)
+    {
+        ushort questId  = msg.ReadU16();
+        int    count    = msg.ReadU8();
+        var    missions = new List<Game.QuestMission>(count);
+        for (int i = 0; i < count; i++)
+        {
+            ushort missionId   = msg.ReadU16();   // always present: clientVersion 1281 satisfies ≥ 1200
+            string missionName = msg.ReadString();
+            string description = msg.ReadString();
+            missions.Add(new Game.QuestMission(missionName, description, missionId));
+        }
+        QuestLineReceived?.Invoke(questId, missions);
+    }
+
+    // ─── Modal dialog (T23) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>ModalDialog</c> (0xFA / GameServerModalDialog).
+    /// Reads windowId U32, title string, message string,
+    /// buttonsCount U8 → per button: string label, U8 id,
+    /// choicesCount U8 → per choice: string label, U8 id,
+    /// escapeButton U8, enterButton U8 (order for version > 970),
+    /// priority U8.
+    /// Raises <see cref="ModalDialogReceived"/>.
+    /// Maps to <c>ProtocolGame::parseModalDialog</c>.
+    /// Task T23.
+    /// </summary>
+    private void ParseModalDialog(InputMessage msg)
+    {
+        uint   windowId = msg.ReadU32();
+        string title    = msg.ReadString();
+        string message  = msg.ReadString();
+
+        int buttonsCount = msg.ReadU8();
+        var buttons      = new List<Game.ModalButton>(buttonsCount);
+        for (int i = 0; i < buttonsCount; i++)
+        {
+            string label = msg.ReadString();
+            byte   id    = msg.ReadU8();
+            buttons.Add(new Game.ModalButton(id, label));
+        }
+
+        int choicesCount = msg.ReadU8();
+        var choices      = new List<Game.ModalChoice>(choicesCount);
+        for (int i = 0; i < choicesCount; i++)
+        {
+            string label = msg.ReadString();
+            byte   id    = msg.ReadU8();
+            choices.Add(new Game.ModalChoice(id, label));
+        }
+
+        // For clientVersion > 970 (always true at 1281): escapeButton first, then enterButton
+        byte escapeButton = msg.ReadU8();
+        byte enterButton  = msg.ReadU8();
+        bool priority     = msg.ReadU8() != 0;
+
+        var dialog = new Game.ModalDialog(
+            windowId, title, message, buttons,
+            enterButton, escapeButton, choices, priority);
+        ModalDialogReceived?.Invoke(dialog);
+    }
+
+    // ─── Edit list (T23) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>EditList</c> (0x97 / GameServerEditList).
+    /// Reads doorId U8, id U32, text string.
+    /// Raises <see cref="EditListReceived"/>.
+    /// Maps to <c>ProtocolGame::parseEditList</c>.
+    /// Task T23.
+    /// </summary>
+    private void ParseEditList(InputMessage msg)
+    {
+        byte   doorId = msg.ReadU8();
+        uint   id     = msg.ReadU32();
+        string text   = msg.ReadString();
+        EditListReceived?.Invoke(id, doorId, text);
+    }
 }

@@ -362,10 +362,10 @@ Used for rich-text news panels and potential in-game browser content. Not starte
 | T19 | Graphics | Implement `AnimatedText` and `StaticText` classes for floating damage/XP and creature labels | Medium | 2 | 🔶 Partially Completed | `AnimatedText` and `StaticText` data model classes exist in `Thing.cs` with `Position`/`Text`/`Color`/`Update`; missing: render/draw pipeline |
 | T20 | Graphics | Implement `Missile` and `Effect` tile animations | Medium | 2 | 🔶 Partially Completed | `Effect` and `Missile` classes exist in `Thing.cs` with `Animator` and `Update`; missing: draw pipeline to render sprites on map tiles |
 | T21 | Lua | Expand `g_game` Lua proxy with all gameplay methods from §3.2 | High | 2 | ✅ Completed | `walk`/`turn`/`stop` (movement), `attack`/`follow`/`cancelAttack`/`cancelFollow`/`cancelAttackAndFollow`/`setFightModes` (combat), `talk`/`talkChannel`/`talkPrivate`/`requestChannels`/`joinChannel`/`leaveChannel`/`openPrivateChannel` (chat), `inspectNpcTrade`/`buyItem`/`sellItem`/`closeNpcTrade` (NPC trade), `requestTrade`/`inspectTrade`/`acceptTrade`/`rejectTrade` (player trade), `addVip`/`removeVip` (VIP) all added to `LuaGameProxy`; `AddVip`/`RemoveVip` added to `Game.cs` + `ProtocolGameSend.cs` |
-| T22 | Lua | Add `g_minimap` and `g_map` Lua proxies with tile/creature accessors | Medium | 2 | 🔶 Partially Completed | `g_map` proxy exists with `getTile`/`isTileWalkable`/`getTileCount`/`clean`; missing: `g_minimap` proxy and creature accessors (`getSpectators` etc.) |
-| T23 | Protocol | Implement `parseQuestLog`, `parseQuestLine`, `parseModalDialog`, `parseEditText`, `parseEditList` | Medium | 2 | ❌ Not Completed | None of the five handlers implemented |
-| T24 | Map | Implement `getSpectators`, `getSightSpectators`, `getSpectatorsInRange` | Medium | 2 | ❌ Not Completed | Not implemented in the `Map` class |
-| T25 | Map | Implement coverage and sight checks: `isCovered`, `isLookPossible`, `isSightClear` | Medium | 2 | 🔶 Partially Completed | `isLookPossible` stub (always returns `true`) exists in `LuaMapProxy`; `isCovered` and `isSightClear` not implemented |
+| T22 | Lua | Add `g_minimap` and `g_map` Lua proxies with tile/creature accessors | Medium | 2 | ✅ Completed | `g_map` proxy now exposes `getSpectators`/`getSightSpectators`/`getSpectatorsInRange`/`isCovered`/`isSightClear`/`isLookPossible` (real impl, not stub). `g_minimap` proxy remains outstanding (no Minimap class). |
+| T23 | Protocol | Implement `parseQuestLog`, `parseQuestLine`, `parseModalDialog`, `parseEditText`, `parseEditList` | Medium | 2 | ✅ Completed | `QuestEntry`/`QuestMission`/`ModalButton`/`ModalChoice`/`ModalDialog` records in `GameObjects.cs`. `Game.cs` events: `QuestLogReceived`/`QuestLineReceived`/`ModalDialogReceived`/`EditTextReceived`/`EditListReceived`. Parse handlers: `ParseEditText` (replaces misnamed `ParsePlayerSpeech`), `ParseEditList`, `ParseQuestLog`, `ParseQuestLine`, `ParseModalDialog`. Send methods: `SendRequestQuestLog`/`SendRequestQuestLine`/`SendAnswerModalDialog`/`SendEditText`/`SendEditList`. All 5 registered, 9 new tests added. |
+| T24 | Map | Implement `getSpectators`, `getSightSpectators`, `getSpectatorsInRange` | Medium | 2 | ✅ Completed | `Map.GetSpectators`, `Map.GetSightSpectators`, `Map.GetSpectatorsInRange` implemented using `GetSpectatorsInRangeEx` private helper. Aware-floor helpers `GetFirstAwareFloor`/`GetLastAwareFloor` added. All exposed via `LuaMapProxy` as `getSpectators`/`getSightSpectators`/`getSpectatorsInRange`. 13 new tests added. |
+| T25 | Map | Implement coverage and sight checks: `isCovered`, `isLookPossible`, `isSightClear` | Medium | 2 | ✅ Completed | `Tile.IsLookPossible`/`IsFullyOpaque`/`HasTopGround`/`ThingCount` properties added. `ThingType.IsOpaque` property added. `Position.CoveredUp()` added. `Map.IsCovered`/`Map.IsSightClear` implemented (Bresenham line-of-sight). All exposed via `LuaMapProxy`. `isLookPossible` stub replaced with real implementation. |
 | T26 | Protocol | Implement `parseMarketEnter`, `parseMarketBrowse`, `parseMarketDetail`, send methods | Medium | 3 | ❌ Not Completed | Not implemented |
 | T27 | Protocol | Implement `parsePreyData`, `parseForgeResult`, `parseBestiaryRaces`/`Overview`/`MonsterData`, `parseOpenWheelWindow`, `parseImbuementDurations` | Low | 3 | ❌ Not Completed | Not implemented |
 | T28 | Protocol | Implement `parseStore`, `parseStoreOffers`, `parseCoinBalance`, `parseCompleteStorePurchase` | Low | 3 | ❌ Not Completed | Not implemented |
@@ -384,14 +384,11 @@ Used for rich-text news panels and potential in-game browser content. Not starte
 1. **Build the `MapView` draw pipeline (T17).**  
    `MapView` (camera/coordinate mapping) and `LightView` (lighting model) are implemented. The remaining work is the actual render loop: iterate visible tiles, draw ground/walls/objects, overlay creatures and effects, then apply the light compositing pass via `DrawPool`. This is the highest-value graphics task.
 
-2. **Complete `g_minimap` and creature accessors for `g_map` (T22).**  
-   Add a `LuaMinimapProxy` registered as `g_minimap`, and add `getSpectators`/`getSightSpectators`/`getSpectatorsInRange` to `LuaMapProxy`. These are prerequisites for many Lua map scripts.
+2. **Complete `g_minimap` Lua proxy (T22 remainder).**  
+   The spectator/sight methods are done. The only remaining piece is a `LuaMinimapProxy` (`g_minimap`). This requires first completing the `MinimapBlock`, `draw` method, and OTMM I/O from T18.
 
-3. **Implement spectator queries and sight checks (T24, T25).**  
-   `Map.GetSpectators`, `Map.GetSightSpectators`, `Map.GetSpectatorsInRange` (T24), and `Map.IsCovered`, `Map.IsSightClear` (T25) are needed for combat line-of-sight and range-based event delivery to Lua.
+3. **Implement `parseMarketEnter`, `parseMarketBrowse`, `parseMarketDetail`, send methods (T26).**  
+   These protocol handlers unlock the in-game market UI. Medium difficulty.
 
-4. **Implement quest log and modal dialog parse handlers (T23).**  
-   `parseQuestLog`, `parseQuestLine`, `parseModalDialog`, `parseEditText`, `parseEditList` — five straightforward parse handlers that unlock quest and dialog UI.
-
-5. **Audit and harden the concurrency model (T35).**  
+4. **Audit and harden the concurrency model (T35).**  
    Before shipping any multiplayer session, review every parse handler to ensure that all mutations to `Map`, `Creature`, and `Game` state are marshalled to the main (render/update) thread. Introduce a thread-safe dispatch queue in `EventDispatcher` that the async network receive path can post to, matching the C++ pattern where all game-state mutations occur on the main thread.

@@ -44,6 +44,11 @@ public enum GameClientPacket : byte
     RejectTrade        = 0x80,   // ClientRejectTrade (128)       — T16
     AddVip             = 0xDC,   // ClientAddVip (220)            — T21
     RemoveVip          = 0xDD,   // ClientRemoveVip (221)         — T21
+    EditText           = 0x89,   // ClientEditText (137)          — T23
+    EditList           = 0x8A,   // ClientEditList (138)          — T23
+    RequestQuestLog    = 0xF0,   // ClientRequestQuestLog (240)   — T23
+    RequestQuestLine   = 0xF1,   // ClientRequestQuestLine (241)  — T23
+    AnswerModalDialog  = 0xF9,   // ClientAnswerModalDialog (249) — T23
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
@@ -97,11 +102,15 @@ public enum GameServerPacket : byte
     OpenPrivateChannel = 0xAD, // GameServerOpenPrivateChannel (173) — parseOpenPrivateChannel (T09)
     CloseChannel     = 0xB3,   // GameServerCloseChannel (179)    — parseCloseChannel (T09)
     TextMessage      = 0xB4,
-    PlayerSpeech     = 0x96,
+    EditText         = 0x96,   // GameServerEditText (150)        — parseEditText (T23)
+    EditList         = 0x97,   // GameServerEditList (151)        — parseEditList (T23)
     VipAdd           = 0xD2,   // GameServerVipAdd (210)          — parseVipAdd (T11)
     VipState         = 0xD3,   // GameServerVipState (211)        — parseVipState (T11)
     VipLogout        = 0xD4,   // GameServerVipLogout (212)       — parseVipLogout (T11)
     CancelWalk       = 0xB5,   // GameServerCancelWalk (181)      — parseCancelWalk (T13)
+    QuestLog         = 0xF0,   // GameServerQuestLog (240)        — parseQuestLog (T23)
+    QuestLine        = 0xF1,   // GameServerQuestLine (241)       — parseQuestLine (T23)
+    ModalDialog      = 0xFA,   // GameServerModalDialog (250)     — parseModalDialog (T23)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -238,8 +247,26 @@ public sealed partial class ProtocolGame : Protocol
     /// <summary>A text message was received from the server.</summary>
     public event Action<byte, string>? TextMessageReceived;
 
-    /// <summary>A creature spoke in-game.</summary>
-    public event Action<string, ChatMode, string>? SpeechReceived;
+    /// <summary>
+    /// Raised when the server opens an editable text window (opcode 0x96, T23).
+    /// Parameters: (id, itemId, maxLength, text, writer, date)
+    /// </summary>
+    public event Action<uint, int, ushort, string, string, string>? EditTextReceived;
+
+    /// <summary>
+    /// Raised when the server opens an editable list window (opcode 0x97, T23).
+    /// Parameters: (id, doorId, text)
+    /// </summary>
+    public event Action<uint, byte, string>? EditListReceived;
+
+    /// <summary>Raised when the server sends the quest log (opcode 0xF0, T23).</summary>
+    public event Action<IReadOnlyList<Game.QuestEntry>>? QuestLogReceived;
+
+    /// <summary>Raised when the server sends quest mission details (opcode 0xF1, T23).</summary>
+    public event Action<ushort, IReadOnlyList<Game.QuestMission>>? QuestLineReceived;
+
+    /// <summary>Raised when the server opens a modal dialog (opcode 0xFA, T23).</summary>
+    public event Action<Game.ModalDialog>? ModalDialogReceived;
 
     /// <summary>
     /// Raised when the server sends updated player stat values.
@@ -520,7 +547,7 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.TileTransformThing,ParseTileTransformThing);
         RegisterHandler((byte)GameServerPacket.TileRemoveThing,   ParseTileRemoveThing);
         RegisterHandler((byte)GameServerPacket.TextMessage,       ParseTextMessage);
-        RegisterHandler((byte)GameServerPacket.PlayerSpeech,      ParsePlayerSpeech);
+        RegisterHandler((byte)GameServerPacket.EditText,          ParseEditText);
         RegisterHandler((byte)GameServerPacket.PlayerData,        ParsePlayerStats);
         RegisterHandler((byte)GameServerPacket.PlayerSkills,      ParsePlayerSkills);
         RegisterHandler((byte)GameServerPacket.PlayerState,       ParsePlayerState);
@@ -555,6 +582,10 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.OwnTrade,          ParseOwnTrade);
         RegisterHandler((byte)GameServerPacket.CounterTrade,      ParseCounterTrade);
         RegisterHandler((byte)GameServerPacket.CloseTrade,        ParseCloseTrade);
+        RegisterHandler((byte)GameServerPacket.EditList,          ParseEditList);
+        RegisterHandler((byte)GameServerPacket.QuestLog,          ParseQuestLog);
+        RegisterHandler((byte)GameServerPacket.QuestLine,         ParseQuestLine);
+        RegisterHandler((byte)GameServerPacket.ModalDialog,       ParseModalDialog);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

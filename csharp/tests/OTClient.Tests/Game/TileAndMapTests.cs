@@ -434,4 +434,157 @@ public sealed class TileAndMapTests
         Assert.Equal(PathFindResult.Ok, result);
         Assert.Equal(2, dirs.Count);
     }
+
+    // ─── T25: Tile sight properties ───────────────────────────────────────────
+
+    [Fact]
+    public void Tile_IsLookPossible_TrueWhenNoBlockProjectileItems()
+    {
+        var tile = new Tile(new Position(1, 1, 7));
+        tile.SetGround(MakeItem(ThingTypeFlag.Ground));
+        Assert.True(tile.IsLookPossible);
+    }
+
+    [Fact]
+    public void Tile_IsLookPossible_FalseWhenItemBlocksProjectile()
+    {
+        var tile = new Tile(new Position(1, 1, 7));
+        tile.SetGround(MakeItem(ThingTypeFlag.Ground));
+        tile.AddItem(new Item
+        {
+            Id        = 2,
+            ThingType = new ThingType { Id = 2, Flags = ThingTypeFlag.BlockProjectile },
+        });
+        Assert.False(tile.IsLookPossible);
+    }
+
+    [Fact]
+    public void Tile_IsFullyOpaque_TrueForFullGround()
+    {
+        var tile = new Tile(new Position(1, 1, 7));
+        tile.SetGround(MakeItem(ThingTypeFlag.Ground | ThingTypeFlag.FullGround));
+        Assert.True(tile.IsFullyOpaque);
+    }
+
+    [Fact]
+    public void Tile_ThingCount_CountsAllThings()
+    {
+        var tile = new Tile(new Position(1, 1, 7));
+        Assert.Equal(0, tile.ThingCount);
+        tile.SetGround(MakeItem(ThingTypeFlag.Ground));
+        Assert.Equal(1, tile.ThingCount);
+    }
+
+    // ─── T24: GetSpectators ───────────────────────────────────────────────────
+
+    [Fact]
+    public void GetSpectators_ReturnsCreaturesInRange()
+    {
+        var map = new Map();
+        var center = new Position(100, 100, 7);
+        var near   = new Position(101, 100, 7);
+        var far    = new Position(200, 200, 7);
+
+        var c1 = new Player { Id = 1, Position = near };
+        var c2 = new Player { Id = 2, Position = far  };
+        map.AddCreature(c1);
+        map.AddCreature(c2);
+
+        var spectators = map.GetSpectators(center);
+        Assert.Contains(c1, spectators);
+        Assert.DoesNotContain(c2, spectators);
+    }
+
+    [Fact]
+    public void GetSpectatorsInRange_SymmetricRange()
+    {
+        var map    = new Map();
+        var center = new Position(50, 50, 7);
+        var p1     = new Player { Id = 1, Position = new Position(52, 50, 7) };
+        var p2     = new Player { Id = 2, Position = new Position(60, 50, 7) };
+        map.AddCreature(p1);
+        map.AddCreature(p2);
+
+        var result = map.GetSpectatorsInRange(center, false, 3, 3);
+        Assert.Contains(p1, result);
+        Assert.DoesNotContain(p2, result);
+    }
+
+    // ─── T25: IsSightClear and IsCovered ─────────────────────────────────────
+
+    [Fact]
+    public void IsSightClear_SamePosition_ReturnsTrue()
+    {
+        var map = new Map();
+        var pos = new Position(10, 10, 7);
+        Assert.True(map.IsSightClear(pos, pos));
+    }
+
+    [Fact]
+    public void IsSightClear_OpenLine_ReturnsTrue()
+    {
+        var map  = new Map();
+        var from = new Position(10, 10, 7);
+        var to   = new Position(13, 10, 7);
+        // No tiles with BlockProjectile — clear
+        Assert.True(map.IsSightClear(from, to));
+    }
+
+    [Fact]
+    public void IsSightClear_BlockedByProjectileTile_ReturnsFalse()
+    {
+        var map  = new Map();
+        var from = new Position(10, 10, 7);
+        var to   = new Position(14, 10, 7);
+
+        // Place a blocking item at (12, 10, 7) on the line
+        var blocker = map.GetOrCreate(new Position(12, 10, 7));
+        blocker.SetGround(MakeItem(ThingTypeFlag.Ground));
+        blocker.AddItem(new Item
+        {
+            Id        = 99,
+            ThingType = new ThingType { Id = 99, Flags = ThingTypeFlag.BlockProjectile },
+        });
+
+        Assert.False(map.IsSightClear(from, to));
+    }
+
+    [Fact]
+    public void IsCovered_NoOpaqueTilesAbove_ReturnsFalse()
+    {
+        var map = new Map();
+        var pos = new Position(10, 10, 10);
+        Assert.False(map.IsCovered(pos));
+    }
+
+    [Fact]
+    public void IsCovered_FullGroundTileAbove_ReturnsTrue()
+    {
+        var map = new Map();
+        var pos = new Position(10, 10, 10);
+
+        // CoveredUp from (10,10,10) → (11,11,9); place FullGround tile there
+        var covered = pos.CoveredUp();
+        var above   = map.GetOrCreate(covered);
+        above.SetGround(MakeItem(ThingTypeFlag.Ground | ThingTypeFlag.FullGround));
+
+        Assert.True(map.IsCovered(pos));
+    }
+
+    // ─── T25: Position.CoveredUp ─────────────────────────────────────────────
+
+    [Fact]
+    public void Position_CoveredUp_MovesXYUp()
+    {
+        var pos     = new Position(10, 10, 5);
+        var covered = pos.CoveredUp();
+        Assert.Equal(new Position(11, 11, 4), covered);
+    }
+
+    [Fact]
+    public void Position_CoveredUp_ClampedAtBoundary()
+    {
+        var pos = new Position(0, 0, 0); // can't go up from floor 0
+        Assert.Equal(pos, pos.CoveredUp());
+    }
 }

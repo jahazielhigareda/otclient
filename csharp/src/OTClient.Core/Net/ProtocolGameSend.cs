@@ -484,4 +484,81 @@ public sealed partial class ProtocolGame
         msg.WriteU32(id);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── Quest log (T23) ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the quest log from the server.
+    /// Maps to <c>ProtocolGame::sendRequestQuestLog</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendRequestQuestLog()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestQuestLog);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the mission details for a specific quest.
+    /// Maps to <c>ProtocolGame::sendRequestQuestLine</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendRequestQuestLine(ushort questId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestQuestLine);
+        msg.WriteU16(questId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Modal dialog (T23) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends the player's answer to a modal dialog.
+    /// Maps to <c>ProtocolGame::sendAnswerModalDialog</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendAnswerModalDialog(uint dialogId, byte buttonId, byte choiceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AnswerModalDialog);
+        msg.WriteU32(dialogId);
+        msg.WriteU8(buttonId);
+        msg.WriteU8(choiceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Edit text / edit list (T23) ──────────────────────────────────────────
+
+    /// <summary>
+    /// Submits the player's text for an editable window.
+    /// Maps to <c>ProtocolGame::sendEditText</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendEditText(uint id, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditText);
+        msg.WriteU32(id);
+        msg.WriteString(text);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Submits the player's text for an editable list window.
+    /// Maps to <c>ProtocolGame::sendEditList</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendEditList(uint id, byte doorId, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditList);
+        msg.WriteU8(doorId);
+        msg.WriteU32(id);
+        msg.WriteString(text);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

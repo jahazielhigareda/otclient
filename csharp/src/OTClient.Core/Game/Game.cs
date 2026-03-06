@@ -579,4 +579,133 @@ public sealed class Game
         if (!IsOnline) return;
         RemoveVipRequested?.Invoke(id);
     }
+
+    // ─── Quest log (T23) ──────────────────────────────────────────────────────
+
+    /// <summary>Raised when the server sends a quest log list.</summary>
+    public event Action<IReadOnlyList<QuestEntry>>? QuestLogReceived;
+
+    /// <summary>Raised when the server sends quest mission details.</summary>
+    public event Action<ushort, IReadOnlyList<QuestMission>>? QuestLineReceived;
+
+    /// <summary>Raised to request the quest log from the server.</summary>
+    public event Action? RequestQuestLogRequested;
+
+    /// <summary>Raised to request a specific quest line from the server.</summary>
+    public event Action<ushort>? RequestQuestLineRequested;
+
+    /// <summary>
+    /// Fires <see cref="QuestLogReceived"/> when a <c>parseQuestLog</c> packet
+    /// is decoded. Maps to <c>Game::processQuestLog()</c>. Task T23.
+    /// </summary>
+    public void ProcessQuestLog(IReadOnlyList<QuestEntry> entries)
+        => QuestLogReceived?.Invoke(entries);
+
+    /// <summary>
+    /// Fires <see cref="QuestLineReceived"/> when a <c>parseQuestLine</c> packet
+    /// is decoded. Maps to <c>Game::processQuestLine()</c>. Task T23.
+    /// </summary>
+    public void ProcessQuestLine(ushort questId, IReadOnlyList<QuestMission> missions)
+        => QuestLineReceived?.Invoke(questId, missions);
+
+    /// <summary>
+    /// Requests the quest log from the server.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="RequestQuestLogRequested"/>. Task T23.
+    /// </summary>
+    public void RequestQuestLog()
+    {
+        if (!IsOnline) return;
+        RequestQuestLogRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Requests the mission details for a specific quest.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="RequestQuestLineRequested"/>. Task T23.
+    /// </summary>
+    public void RequestQuestLine(ushort questId)
+    {
+        if (!IsOnline) return;
+        RequestQuestLineRequested?.Invoke(questId);
+    }
+
+    // ─── Modal dialog (T23) ───────────────────────────────────────────────────
+
+    /// <summary>Raised when the server opens a modal dialog.</summary>
+    public event Action<ModalDialog>? ModalDialogReceived;
+
+    /// <summary>Raised to answer a modal dialog.</summary>
+    public event Action<uint, byte, byte>? AnswerModalDialogRequested;   // windowId, buttonId, choiceId
+
+    /// <summary>
+    /// Fires <see cref="ModalDialogReceived"/> when a <c>parseModalDialog</c>
+    /// packet is decoded. Maps to <c>Game::processModalDialog()</c>. Task T23.
+    /// </summary>
+    public void ProcessModalDialog(ModalDialog dialog)
+        => ModalDialogReceived?.Invoke(dialog);
+
+    /// <summary>
+    /// Sends the player's answer to a modal dialog.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="AnswerModalDialogRequested"/>. Task T23.
+    /// </summary>
+    public void AnswerModalDialog(uint windowId, byte buttonId, byte choiceId)
+    {
+        if (!IsOnline) return;
+        AnswerModalDialogRequested?.Invoke(windowId, buttonId, choiceId);
+    }
+
+    // ─── Edit text / edit list (T23) ──────────────────────────────────────────
+
+    /// <summary>Raised when the server opens an editable text window.</summary>
+    public event Action<uint, int, ushort, string, string, string>? EditTextReceived;
+    // (id, itemId, maxLength, text, writer, date)
+
+    /// <summary>Raised when the server opens an editable list window.</summary>
+    public event Action<uint, byte, string>? EditListReceived;
+    // (id, doorId, text)
+
+    /// <summary>Raised to submit changes to an editable text window.</summary>
+    public event Action<uint, string>? EditTextSentRequested;   // id, text
+
+    /// <summary>Raised to submit changes to an editable list window.</summary>
+    public event Action<uint, byte, string>? EditListSentRequested;   // id, doorId, text
+
+    /// <summary>
+    /// Fires <see cref="EditTextReceived"/> when a <c>parseEditText</c> packet
+    /// is decoded. Maps to <c>Game::processEditText()</c>. Task T23.
+    /// </summary>
+    public void ProcessEditText(uint id, int itemId, ushort maxLength,
+        string text, string writer, string date)
+        => EditTextReceived?.Invoke(id, itemId, maxLength, text, writer, date);
+
+    /// <summary>
+    /// Fires <see cref="EditListReceived"/> when a <c>parseEditList</c> packet
+    /// is decoded. Maps to <c>Game::processEditList()</c>. Task T23.
+    /// </summary>
+    public void ProcessEditList(uint id, byte doorId, string text)
+        => EditListReceived?.Invoke(id, doorId, text);
+
+    /// <summary>
+    /// Sends the player's edit of a text window to the server.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="EditTextSentRequested"/>. Task T23.
+    /// </summary>
+    public void EditTextSend(uint id, string text)
+    {
+        if (!IsOnline) return;
+        EditTextSentRequested?.Invoke(id, text);
+    }
+
+    /// <summary>
+    /// Sends the player's edit of a list window to the server.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="EditListSentRequested"/>. Task T23.
+    /// </summary>
+    public void EditListSend(uint id, byte doorId, string text)
+    {
+        if (!IsOnline) return;
+        EditListSentRequested?.Invoke(id, doorId, text);
+    }
 }

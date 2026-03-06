@@ -257,6 +257,46 @@ public sealed record NpcTradeItem(
     uint   BuyPrice,
     uint   SellPrice);
 
+// ─── Quest records (T23) ──────────────────────────────────────────────────────
+
+/// <summary>
+/// One entry in the quest log as received from the server.
+/// Maps to the per-quest tuple in <c>ProtocolGame::parseQuestLog</c>.
+/// Task T23.
+/// </summary>
+public sealed record QuestEntry(ushort Id, string Name, bool Completed);
+
+/// <summary>
+/// A single mission within a quest, as received from the server.
+/// Maps to the per-mission tuple in <c>ProtocolGame::parseQuestLine</c>.
+/// Task T23.
+/// </summary>
+public sealed record QuestMission(string Name, string Description, ushort MissionId);
+
+// ─── Modal dialog records (T23) ───────────────────────────────────────────────
+
+/// <summary>A button inside a modal dialog window.</summary>
+public sealed record ModalButton(byte Id, string Label);
+
+/// <summary>A selectable choice inside a modal dialog window.</summary>
+public sealed record ModalChoice(byte Id, string Label);
+
+/// <summary>
+/// A modal dialog window pushed by the server.
+/// Maps to <c>ProtocolGame::parseModalDialog</c> /
+/// <c>Game::processModalDialog</c>.
+/// Task T23.
+/// </summary>
+public sealed record ModalDialog(
+    uint                       WindowId,
+    string                     Title,
+    string                     Message,
+    IReadOnlyList<ModalButton> Buttons,
+    byte                       EnterButton,
+    byte                       EscapeButton,
+    IReadOnlyList<ModalChoice> Choices,
+    bool                       Priority);
+
 // ─── GameConfig ────────────────────────────────────────────────────────────────
 
 /// <summary>

@@ -363,7 +363,82 @@ public sealed class LuaMapProxy
 
     [LuaMethod] public int  getTileCount()  => _map.TileCount;
     [LuaMethod] public void clean()         => _map.Clear();
-    [LuaMethod] public bool isLookPossible(int x, int y, int z) => true;
+
+    /// <summary>
+    /// Returns whether a projectile can travel through the tile at (x, y, z).
+    /// Maps to <c>Map::isSightClear(from, to)</c>. Task T25.
+    /// </summary>
+    [LuaMethod] public bool isLookPossible(int x, int y, int z)
+    {
+        var tile = _map.Get(new Game.Position((ushort)x, (ushort)y, (byte)z));
+        return tile?.IsLookPossible ?? true;
+    }
+
+    /// <summary>
+    /// Returns all creatures in the full aware range around (x, y, z).
+    /// If <paramref name="multiFloor"/> is true, spans all aware floors.
+    /// Maps to <c>Map::getSpectators</c>. Task T24.
+    /// </summary>
+    [LuaMethod]
+    public MoonSharp.Interpreter.Table getSpectators(int x, int y, int z, bool multiFloor = false)
+    {
+        var creatures = _map.GetSpectators(
+            new Game.Position((ushort)x, (ushort)y, (byte)z), multiFloor);
+        return ToTable(creatures);
+    }
+
+    /// <summary>
+    /// Returns all creatures in the sight-spectator range (aware − 1 tile margin).
+    /// Maps to <c>Map::getSightSpectators</c>. Task T24.
+    /// </summary>
+    [LuaMethod]
+    public MoonSharp.Interpreter.Table getSightSpectators(int x, int y, int z, bool multiFloor = false)
+    {
+        var creatures = _map.GetSightSpectators(
+            new Game.Position((ushort)x, (ushort)y, (byte)z), multiFloor);
+        return ToTable(creatures);
+    }
+
+    /// <summary>
+    /// Returns all creatures within the symmetric (xRange, yRange) box.
+    /// Maps to <c>Map::getSpectatorsInRange</c>. Task T24.
+    /// </summary>
+    [LuaMethod]
+    public MoonSharp.Interpreter.Table getSpectatorsInRange(
+        int x, int y, int z, bool multiFloor, int xRange, int yRange)
+    {
+        var creatures = _map.GetSpectatorsInRange(
+            new Game.Position((ushort)x, (ushort)y, (byte)z),
+            multiFloor, xRange, yRange);
+        return ToTable(creatures);
+    }
+
+    /// <summary>
+    /// Returns whether the tile at (x, y, z) is visually covered by a higher floor.
+    /// Maps to <c>Map::isCovered</c>. Task T25.
+    /// </summary>
+    [LuaMethod] public bool isCovered(int x, int y, int z, int firstFloor = 0)
+        => _map.IsCovered(new Game.Position((ushort)x, (ushort)y, (byte)z), firstFloor);
+
+    /// <summary>
+    /// Returns whether there is an unobstructed line of sight between two positions.
+    /// Maps to <c>Map::isSightClear</c>. Task T25.
+    /// </summary>
+    [LuaMethod]
+    public bool isSightClear(int fromX, int fromY, int fromZ, int toX, int toY, int toZ)
+        => _map.IsSightClear(
+            new Game.Position((ushort)fromX, (ushort)fromY, (byte)fromZ),
+            new Game.Position((ushort)toX,   (ushort)toY,   (byte)toZ));
+
+    private MoonSharp.Interpreter.Table ToTable(IReadOnlyList<Game.Creature> creatures)
+    {
+        // Build a Lua array table from the creature list.
+        // Each entry is exposed as the Creature object itself.
+        var table = new MoonSharp.Interpreter.Table(null);
+        for (int i = 0; i < creatures.Count; i++)
+            table[i + 1] = creatures[i];
+        return table;
+    }
 }
 
 // ─── g_things ─────────────────────────────────────────────────────────────────

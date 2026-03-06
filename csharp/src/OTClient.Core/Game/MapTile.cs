@@ -222,6 +222,47 @@ public sealed class Tile
         => _items.Concat<Thing>(new[] { _ground! }.Where(x => x is not null))
                  .Max(t => t.ThingType?.LightLevel ?? 0);
 
+    // ─── Sight / coverage (T25) ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns <c>true</c> when no item on this tile blocks projectiles
+    /// (i.e. the tile allows line-of-sight through it).
+    /// Maps to <c>Tile::isLookPossible()</c> in <c>src/client/tile.h</c>.
+    /// Task T25.
+    /// </summary>
+    public bool IsLookPossible
+        => (_ground?.ThingType?.IsBlockProjectile != true)
+        && !_items.Any(i => i.ThingType?.IsBlockProjectile == true);
+
+    /// <summary>
+    /// Returns <c>true</c> when the tile is fully opaque (blocks top-down view).
+    /// A tile is fully opaque when its ground is a full-ground tile or any thing
+    /// on it has the opaque flag set.
+    /// Maps to <c>Tile::isFullyOpaque()</c> in <c>src/client/tile.cpp</c>.
+    /// Task T25.
+    /// </summary>
+    public bool IsFullyOpaque
+        => (_ground?.ThingType?.IsFullGround == true)
+        || (_ground?.ThingType?.IsOpaque == true)
+        || _items.Any(i => i.ThingType?.IsOpaque == true);
+
+    /// <summary>
+    /// Returns <c>true</c> when the ground is a "top-ground" tile (covers the
+    /// floor below when viewed from above).
+    /// Maps to <c>Tile::hasTopGround()</c> in <c>src/client/tile.cpp</c>.
+    /// Task T25.
+    /// </summary>
+    public bool HasTopGround
+        => _ground?.ThingType?.IsGround == true && _ground.ThingType.IsFullGround;
+
+    /// <summary>
+    /// Total number of things on this tile (ground + items + creatures + effects).
+    /// Used by <see cref="Map.IsSightClear"/> to detect tiles blocking cross-floor LoS.
+    /// Maps to <c>Tile::getThingCount()</c>. Task T25.
+    /// </summary>
+    public int ThingCount
+        => (_ground is not null ? 1 : 0) + _items.Count + _creatures.Count + _effects.Count;
+
     // ─── Empty ────────────────────────────────────────────────────────────────
 
     public bool IsEmpty
@@ -605,5 +646,176 @@ public sealed class Map
         public float       TotalCost { get; set; } = 0f;
         public SearchNode? Prev      { get; set; }
         public Direction   Dir       { get; set; }
+    }
+
+    // ─── Aware floor helpers (T24) ────────────────────────────────────────────
+
+    private const int MapSeaFloor              = 7;
+    private const int MapMaxZ                  = 15;
+    private const int MapAwareUndergroundRange = 2;
+
+    private int GetFirstAwareFloor(int z)
+        => z <= MapSeaFloor ? 0 : z - MapAwareUndergroundRange;
+
+    private int GetLastAwareFloor(int z)
+        => z <= MapSeaFloor ? MapSeaFloor
+                            : Math.Min(z + MapAwareUndergroundRange, MapMaxZ);
+
+    // ─── Spectator queries (T24) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all known creatures within [minXRange,maxXRange] × [minYRange,maxYRange]
+    /// around <paramref name="center"/>, optionally spanning multiple floors.
+    /// Maps to <c>Map::getSpectatorsInRangeEx</c>.
+    /// Task T24.
+    /// </summary>
+    private List<Creature> GetSpectatorsInRangeEx(
+        Position center, bool multiFloor,
+        int minXRange, int maxXRange,
+        int minYRange, int maxYRange)
+    {
+        int startZ = multiFloor ? GetFirstAwareFloor(center.Z) : center.Z;
+        int endZ   = multiFloor ? GetLastAwareFloor(center.Z)  : center.Z;
+
+        int startY = center.Y - minYRange;
+        int endY   = center.Y + maxYRange;
+        int startX = center.X - minXRange;
+        int endX   = center.X + maxXRange;
+
+        var result  = new List<Creature>();
+        var seenIds = new HashSet<uint>();
+
+        for (int z = startZ; z <= endZ; z++)
+        for (int y = startY; y <= endY; y++)
+        for (int x = startX; x <= endX; x++)
+        {
+            var tile = Get(new Position(x, y, z));
+            if (tile is null) continue;
+            foreach (var c in tile.Creatures)
+            {
+                if (seenIds.Add(c.Id))
+                    result.Add(c);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Returns all known creatures in the full aware range around
+    /// <paramref name="center"/>.
+    /// Maps to <c>Map::getSpectators</c>.
+    /// Task T24.
+    /// </summary>
+    public IReadOnlyList<Creature> GetSpectators(Position center, bool multiFloor = false)
+        => GetSpectatorsInRangeEx(center, multiFloor,
+                AwareRange.Left,   AwareRange.Right,
+                AwareRange.Top,    AwareRange.Bottom);
+
+    /// <summary>
+    /// Returns known creatures visible within the sight-spectator range.
+    /// The ranges are asymmetric (<c>Left−1, Right−2, Top−1, Bottom−2</c>),
+    /// matching the asymmetric viewport shape and the exact values used by the
+    /// C++ <c>Map::getSightSpectators</c> implementation.
+    /// Task T24.
+    /// </summary>
+    public IReadOnlyList<Creature> GetSightSpectators(Position center, bool multiFloor = false)
+        => GetSpectatorsInRangeEx(center, multiFloor,
+                // Asymmetric margin mirrors C++ Map::getSightSpectators:
+                // left−1, right−2, top−1, bottom−2 (viewport is 18×14, not square).
+                AwareRange.Left   - 1, AwareRange.Right  - 2,
+                AwareRange.Top    - 1, AwareRange.Bottom - 2);
+
+    /// <summary>
+    /// Returns all known creatures within a symmetric
+    /// <paramref name="xRange"/> × <paramref name="yRange"/> range.
+    /// Maps to <c>Map::getSpectatorsInRange</c>.
+    /// Task T24.
+    /// </summary>
+    public IReadOnlyList<Creature> GetSpectatorsInRange(
+        Position center, bool multiFloor, int xRange, int yRange)
+        => GetSpectatorsInRangeEx(center, multiFloor, xRange, xRange, yRange, yRange);
+
+    // ─── Sight / coverage checks (T25) ────────────────────────────────────────
+
+    /// <summary>
+    /// Returns <c>true</c> when the tile at <paramref name="pos"/> is visually
+    /// covered by an opaque tile on a higher floor.
+    /// Maps to <c>Map::isCovered</c> in <c>src/client/map.cpp</c>.
+    /// Task T25.
+    /// </summary>
+    public bool IsCovered(Position pos, int firstFloor = 0)
+    {
+        var tilePos = pos;
+        while (true)
+        {
+            var covered = tilePos.CoveredUp();
+            if (covered == tilePos || covered.Z < firstFloor) break;
+            tilePos = covered;
+
+            var above = Get(tilePos);
+            if (above is not null && above.IsFullyOpaque)
+                return true;
+
+            var diag = Get(tilePos.Offset(1, 1));
+            if (diag is not null && diag.HasTopGround)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the line of sight between <paramref name="fromPos"/>
+    /// and <paramref name="toPos"/> is unobstructed.
+    /// Uses the same Bresenham-style algorithm as <c>Map::isSightClear</c> in
+    /// <c>src/client/map.cpp</c>.
+    /// Task T25.
+    /// </summary>
+    public bool IsSightClear(Position fromPos, Position toPos)
+    {
+        if (fromPos == toPos) return true;
+
+        // Walk on the shallower-z end first (lower z = higher floor)
+        var start       = fromPos.Z > toPos.Z ? toPos   : fromPos;
+        var destination = fromPos.Z > toPos.Z ? fromPos : toPos;
+
+        int mx = start.X < destination.X ? 1 : start.X == destination.X ? 0 : -1;
+        int my = start.Y < destination.Y ? 1 : start.Y == destination.Y ? 0 : -1;
+
+        long A = destination.Y - start.Y;
+        long B = start.X - destination.X;
+        long C = -(A * destination.X + B * destination.Y);
+
+        // Walk the XY path on the same floor
+        var cur = start;
+        while (cur.X != destination.X || cur.Y != destination.Y)
+        {
+            long moveHor   = Math.Abs(A * (cur.X + mx) + B * cur.Y         + C);
+            long moveVer   = Math.Abs(A * cur.X         + B * (cur.Y + my) + C);
+            long moveCross = Math.Abs(A * (cur.X + mx)  + B * (cur.Y + my) + C);
+
+            int nx = cur.X, ny = cur.Y;
+
+            if (cur.Y != destination.Y && (cur.X == destination.X || moveHor > moveVer || moveHor > moveCross))
+                ny += my;
+
+            if (cur.X != destination.X && (cur.Y == destination.Y || moveVer > moveHor || moveVer > moveCross))
+                nx += mx;
+
+            cur = new Position(nx, ny, cur.Z);
+            var tile = Get(cur);
+            if (tile is not null && !tile.IsLookPossible)
+                return false;
+        }
+
+        // Walk floor levels (z axis)
+        while (cur.Z != destination.Z)
+        {
+            var tile = Get(cur);
+            if (tile is not null && tile.ThingCount > 0)
+                return false;
+            cur = cur with { Z = cur.Z + 1 };
+        }
+
+        return true;
     }
 }
