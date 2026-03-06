@@ -74,6 +74,57 @@ public sealed class CreatureTests
         Assert.Equal(1f, c.WalkProgress);
     }
 
+    // ─── AnimPhase ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnimPhase_Default_IsZero()
+    {
+        var c = new Creature();
+        Assert.Equal(0, c.AnimPhase);
+    }
+
+    [Fact]
+    public void Walk_AdvancesAnimPhaseToOne()
+    {
+        var c = new Creature { Position = new Position(5, 5, 7) };
+        c.Walk(new Position(5, 6, 7), 500);
+        Assert.Equal(1, c.AnimPhase);
+    }
+
+    [Fact]
+    public void Walk_SecondContinuousStep_AdvancesAnimPhaseToTwo()
+    {
+        // In continuous walking the new Walk() is called before Update() finishes
+        // the previous step, so AnimPhase accumulates without a reset.
+        var c = new Creature { Position = new Position(5, 5, 7) };
+        c.Walk(new Position(5, 6, 7), 500);   // AnimPhase: 0→1
+        // Don't call Update() to completion — simulate continuous walking
+        c.Walk(new Position(5, 7, 7), 500);   // AnimPhase: 1→2
+        Assert.Equal(2, c.AnimPhase);
+    }
+
+    [Fact]
+    public void Walk_CyclesAnimPhaseAfterMax()
+    {
+        // In continuous walking (no Update-to-completion in between), phase cycles.
+        var c = new Creature { Position = new Position(5, 5, 7), AnimPhaseCount = 3 };
+        // Phase: 0→1→2→3→1 (wraps back to 1 after reaching AnimPhaseCount)
+        c.Walk(new Position(5, 6, 7), 500);   // AnimPhase: 0→1
+        c.Walk(new Position(5, 7, 7), 500);   // AnimPhase: 1→2
+        c.Walk(new Position(5, 8, 7), 500);   // AnimPhase: 2→3
+        c.Walk(new Position(5, 9, 7), 500);   // AnimPhase: 3→1 (wraps)
+        Assert.Equal(1, c.AnimPhase);
+    }
+
+    [Fact]
+    public void Update_ResetsAnimPhaseToZeroOnWalkCompletion()
+    {
+        var c = new Creature { Position = new Position(5, 5, 7) };
+        c.Walk(new Position(5, 6, 7), 500);
+        c.Update(600);
+        Assert.Equal(0, c.AnimPhase);
+    }
+
     [Fact]
     public void AddEffect_AppearsInEffects()
     {

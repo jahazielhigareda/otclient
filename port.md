@@ -354,7 +354,7 @@ Used for rich-text news panels and potential in-game browser content. Not starte
 | T11 | Protocol | Implement `parseVipAdd`, `parseVipState`, `parseVipLogout` | Medium | 2 | ✅ Completed | All three parse handlers implemented in `ProtocolGameParse.cs` |
 | T12 | Game manager | Add `Attack`, `Follow`, `CancelAttack`, `CancelFollow`, `CancelAttackAndFollow` + fight mode methods | High | 2 | ✅ Completed | All methods in `Game.cs` + `SendAttack`, `SendFollow`, `SendCancelAttackAndFollow`, `SendChangeFightModes` in `ProtocolGameSend.cs` |
 | T13 | Protocol | Implement `parseCancelWalk`, `parsePlayerModes`, `parseCreatureSkull`, `parseCreatureShield`, `parseCreatureMarks` | Medium | 2 | ✅ Completed | `ParseCancelWalk` (0xB5), `ParseCreatureSkull` (0x90), `ParseCreatureShield` (0x91), `ParseCreatureMarks` (0x93) implemented; `parsePlayerModes` was already covered by T05 |
-| T14 | Creature | Add skull, shield, emblem, speed, light, animation-phase fields to `Creature.cs` | Medium | 2 | 🔶 Partially Completed | `Skull`, `Shield`, `Emblem`, `Speed`/`BaseSpeed`, `LightLevel`/`LightRadius` present. Missing: animation-phase field (`AnimPhase`) |
+| T14 | Creature | Add skull, shield, emblem, speed, light, animation-phase fields to `Creature.cs` | Medium | 2 | ✅ Completed | `Skull`, `Shield`, `Emblem`, `Speed`/`BaseSpeed`, `LightLevel`/`LightRadius`, `AnimPhase`/`AnimPhaseCount` all present; `AnimPhase` cycles 1..`AnimPhaseCount` during walking and resets to 0 on idle |
 | T15 | Game manager | Implement NPC trade: `InspectNpcTrade`, `BuyItem`, `SellItem`, `CloseNpcTrade` + parse handlers | Medium | 2 | ❌ Not Completed | No NPC trade methods or parse handlers implemented |
 | T16 | Game manager | Implement player-to-player trade: `RequestTrade`, `InspectTrade`, `AcceptTrade`, `RejectTrade` | Medium | 2 | ❌ Not Completed | No player-to-player trade methods implemented |
 | T17 | Graphics | Implement full `MapView` draw pipeline: tile, creature, effect, light compositing | High | 2 | 🔶 Partially Completed | `MapView` (camera/coordinate mapping) and `LightView` (ambient + dynamic light model) exist; missing: actual render/draw loop compositing tiles, creatures, effects, and light onto the framebuffer |
@@ -381,23 +381,20 @@ Used for rich-text news panels and potential in-game browser content. Not starte
 
 ## 6. Recommended next steps
 
-1. **Add the missing animation-phase field to `Creature.cs` (T14).**  
-   All other creature visual fields (skull, shield, emblem, speed, light) are in place. Adding `AnimPhase` completes T14 and enables correct outfit animation cycling.
-
-2. **Build the `MapView` draw pipeline (T17).**  
+1. **Build the `MapView` draw pipeline (T17).**  
    `MapView` (camera/coordinate mapping) and `LightView` (lighting model) are implemented. The remaining work is the actual render loop: iterate visible tiles, draw ground/walls/objects, overlay creatures and effects, then apply the light compositing pass via `DrawPool`. This is the highest-value graphics task.
 
-3. **Expand `g_game` Lua proxy with gameplay methods (T21).**  
+2. **Expand `g_game` Lua proxy with gameplay methods (T21).**  
    All underlying `Game` methods (`Walk`, `Turn`, `Attack`, `Follow`, `TalkSay`, `TalkChannel`, `SetFightModes`, VIP, channel, container) are implemented. The missing piece is wiring them into `LuaGameProxy` in `LuaGameProxies.cs`. Without these bindings the Lua modules cannot function.
 
-4. **Complete `g_minimap` and creature accessors for `g_map` (T22).**  
+3. **Complete `g_minimap` and creature accessors for `g_map` (T22).**  
    Add a `LuaMinimapProxy` registered as `g_minimap`, and add `getSpectators`/`getSightSpectators`/`getSpectatorsInRange` to `LuaMapProxy`. These are prerequisites for many Lua map scripts.
 
-5. **Implement NPC and player trade systems (T15, T16).**  
+4. **Implement NPC and player trade systems (T15, T16).**  
    Add `InspectNpcTrade`, `BuyItem`, `SellItem`, `CloseNpcTrade` to `Game.cs` plus the corresponding parse handlers for NPC trade windows (T15), then `RequestTrade`, `InspectTrade`, `AcceptTrade`, `RejectTrade` for player-to-player trading (T16).
 
-6. **Implement spectator queries and sight checks (T24, T25).**  
+5. **Implement spectator queries and sight checks (T24, T25).**  
    `Map.GetSpectators`, `Map.GetSightSpectators`, `Map.GetSpectatorsInRange` (T24), and `Map.IsCovered`, `Map.IsSightClear` (T25) are needed for combat line-of-sight and range-based event delivery to Lua.
 
-7. **Audit and harden the concurrency model (T35).**  
+6. **Audit and harden the concurrency model (T35).**  
    Before shipping any multiplayer session, review every parse handler to ensure that all mutations to `Map`, `Creature`, and `Game` state are marshalled to the main (render/update) thread. Introduce a thread-safe dispatch queue in `EventDispatcher` that the async network receive path can post to, matching the C++ pattern where all game-state mutations occur on the main thread.

@@ -45,6 +45,12 @@ public class Creature : Thing
         _walkElapsedMs   = 0f;
         IsWalking    = true;
         WalkProgress = 0f;
+
+        // Advance the walk animation phase (1..AnimPhaseCount, cycling).
+        // Mirrors the C++ pattern: if (m_walkAnimationPhase == footAnimPhases)
+        //   m_walkAnimationPhase = 1; else ++m_walkAnimationPhase;
+        int count = Math.Max(1, AnimPhaseCount);
+        AnimPhase = (byte)(AnimPhase >= count ? 1 : AnimPhase + 1);
     }
 
     public virtual void Update(float deltaMs)
@@ -56,6 +62,7 @@ public class Creature : Thing
         {
             IsWalking = false;
             WalkProgress = 1f;
+            AnimPhase    = 0;   // idle — mirrors m_walkAnimationPhase = 0 in C++
         }
     }
 
@@ -81,6 +88,24 @@ public class Creature : Thing
 
     public int LightLevel  { get; set; }
     public int LightRadius { get; set; }
+
+    // ─── Animation phase ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Total number of walking animation frames for this creature type.
+    /// The renderer uses this to cycle <see cref="AnimPhase"/> over the correct
+    /// sprite sequence.  Matches <c>footAnimPhases</c> in <c>creature.cpp</c>.
+    /// Default is 4, which covers most Tibia creature types.
+    /// </summary>
+    public int AnimPhaseCount { get; set; } = 4;
+
+    /// <summary>
+    /// Current walk animation frame.
+    /// <c>0</c> = idle (not walking); <c>1..AnimPhaseCount</c> = walking frames.
+    /// Advanced once per <see cref="Walk"/> call, reset to 0 when the walk
+    /// completes.  Maps to <c>m_walkAnimationPhase</c> in <c>creature.h</c>.
+    /// </summary>
+    public byte AnimPhase { get; internal set; }
 
     // ─── Effects ──────────────────────────────────────────────────────────────
 
