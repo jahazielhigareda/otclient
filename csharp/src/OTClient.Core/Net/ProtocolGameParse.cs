@@ -2036,4 +2036,201 @@ public sealed partial class ProtocolGame
         // Consume item id — full parsing requires ThingType registry (future work)
         msg.ReadU16(); // itemId
     }
+
+    // ─── T28: CoinBalance ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CoinBalance</c> (0xDF / GameServerCoinBalance).
+    /// Wire: U8 update; if update≠0: U32 coins + U32 transferableCoins + U32 auctionCoins (≥1281).
+    /// Fires <see cref="CoinBalanceReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCoinBalance</c>.
+    /// Task T28.
+    /// </summary>
+    private void ParseCoinBalance(InputMessage msg)
+    {
+        bool update = msg.ReadU8() != 0;
+        var balance = new Game.CoinBalance { IsUpdated = update };
+        if (update)
+        {
+            balance.Coins             = msg.ReadU32();
+            balance.TransferableCoins = msg.ReadU32();
+            balance.AuctionCoins      = msg.ReadU32(); // protocol ≥ 1281
+        }
+        CoinBalanceReceived?.Invoke(balance);
+    }
+
+    // ─── T28: StoreError ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>StoreError</c> (0xE0 / GameServerStoreError).
+    /// Wire: U8 errorType + string message.
+    /// Fires <see cref="StoreErrorReceived"/>.
+    /// Maps to <c>ProtocolGame::parseStoreError</c>.
+    /// Task T28.
+    /// </summary>
+    private void ParseStoreError(InputMessage msg)
+    {
+        byte   errorType = msg.ReadU8();
+        string message   = msg.ReadString();
+        StoreErrorReceived?.Invoke(errorType, message);
+    }
+
+    // ─── T28: CoinBalanceUpdating ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CoinBalanceUpdating</c> (0xF2 / GameServerCoinBalanceUpdating).
+    /// At protocol 1281 (<1291): reads a single U8 isUpdating byte and discards it.
+    /// Maps to <c>ProtocolGame::parseCoinBalanceUpdating</c>.
+    /// Task T28.
+    /// </summary>
+    private static void ParseCoinBalanceUpdating(InputMessage msg)
+    {
+        msg.ReadU8(); // isUpdating byte (consumed, not acted on at 1281)
+    }
+
+    // ─── T28: Store (category list) ──────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>Store</c> (0xFB / GameServerStore).
+    /// At protocol 1281 (between 1100 and 1291):
+    ///   U16 categoryCount, per-category: string name + string description (<1291)
+    ///   + U8 state (GameIngameStoreHighlights enabled for 1281)
+    ///   + U8 iconCount + icons + string parent.
+    /// Fires <see cref="StoreCategoriesReceived"/>.
+    /// Maps to <c>ProtocolGame::parseStore</c>.
+    /// Task T28.
+    /// </summary>
+    private void ParseStore(InputMessage msg)
+    {
+        ushort count      = msg.ReadU16();
+        var    categories = new List<Game.StoreCategory>(count);
+        for (int i = 0; i < count; i++)
+        {
+            var cat = new Game.StoreCategory();
+            cat.Name        = msg.ReadString();
+            cat.Description = msg.ReadString();           // present for protocol < 1291
+            cat.State       = msg.ReadU8();               // GameIngameStoreHighlights enabled at 1281
+
+            byte iconCount = msg.ReadU8();
+            for (int j = 0; j < iconCount; j++)
+                cat.Icons.Add(msg.ReadString());
+
+            cat.Parent = msg.ReadString();
+            categories.Add(cat);
+        }
+        // protocol >= 1332 would add 2 extra bytes here, but 1281 < 1332 so nothing extra
+        StoreCategoriesReceived?.Invoke(categories);
+    }
+
+    // ─── T28: StoreOffers ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>StoreOffers</c> (0xFC / GameServerStoreOffers).
+    /// At protocol 1281 (<1291 branch):
+    ///   string categoryName, U16 offersCount, per-offer:
+    ///     U32 id, string name, string description, U32 price,
+    ///     U8 highlightState (if STATE_SALE(==2) & feature: U32 validUntil + U32 basePrice),
+    ///     U8 disabled (if disabled: string reason),
+    ///     U8 iconCount + icons,
+    ///     U16 subOffersCount, per-sub: string name, string desc, U8 subIconsCount + icons, string serviceType.
+    /// Fires <see cref="StoreOffersReceived"/>.
+    /// Maps to <c>ProtocolGame::parseStoreOffers</c>.
+    /// Task T28.
+    /// </summary>
+    private void ParseStoreOffers(InputMessage msg)
+    {
+        string categoryName = msg.ReadString();
+        ushort offerCount   = msg.ReadU16();
+        var    offers       = new List<Game.StoreOffer>(offerCount);
+
+        for (int i = 0; i < offerCount; i++)
+        {
+            var offer = new Game.StoreOffer();
+            offer.Id          = msg.ReadU32();
+            offer.Name        = msg.ReadString();
+            offer.Description = msg.ReadString();
+            offer.Price       = msg.ReadU32();
+
+            byte highlightState = msg.ReadU8();
+            if (highlightState == 2)            // STATE_SALE
+            {
+                offer.State         = 2;
+                offer.SaleValidUntil = msg.ReadU32();
+                offer.BasePrice      = msg.ReadU32();
+            }
+            else
+            {
+                offer.State = highlightState;
+            }
+
+            bool disabled = msg.ReadU8() != 0;
+            offer.Disabled = disabled;
+            if (disabled)
+                offer.DisabledReason = msg.ReadString();
+
+            byte iconCount = msg.ReadU8();
+            for (int j = 0; j < iconCount; j++)
+                offer.Icon = msg.ReadString(); // last icon wins, as in C++
+
+            ushort subCount = msg.ReadU16();
+            for (int j = 0; j < subCount; j++)
+            {
+                var sub = new Game.StoreSubOffer();
+                sub.Name        = msg.ReadString();
+                sub.Description = msg.ReadString();
+                byte subIconCount = msg.ReadU8();
+                for (int k = 0; k < subIconCount; k++)
+                    sub.Icons.Add(msg.ReadString());
+                sub.ServiceType = msg.ReadString();
+                offer.SubOffers.Add(sub);
+            }
+            offers.Add(offer);
+        }
+        StoreOffersReceived?.Invoke(categoryName, offers);
+    }
+
+    // ─── T28: StoreTransactionHistory ────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>StoreTransactionHistory</c> (0xFD / GameServerStoreTransactionHistory).
+    /// At protocol 1281 (between 1097 and 1291):
+    ///   U32 currentPage + U32 pageCount, U8 entryCount, per-entry:
+    ///     U32 time, U8 productType, U32 coinChange, string productName.
+    /// Maps to <c>ProtocolGame::parseStoreTransactionHistory</c>.
+    /// Task T28.
+    /// </summary>
+    private static void ParseStoreTransactionHistory(InputMessage msg)
+    {
+        msg.ReadU32(); // currentPage
+        msg.ReadU32(); // pageCount
+
+        byte entries = msg.ReadU8();
+        for (int i = 0; i < entries; i++)
+        {
+            msg.ReadU32(); // time
+            msg.ReadU8();  // productType / mode
+            msg.ReadU32(); // coinChange / amount
+            msg.ReadString(); // productName
+        }
+    }
+
+    // ─── T28: CompleteStorePurchase ───────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>StoreCompletePurchase</c> (0xFE / GameServerStoreCompletePurchase).
+    /// At protocol 1281 (<1291 branch):
+    ///   U8 (unused), string message, U32 remainingCoins, U32 transferableCoins.
+    /// Fires <see cref="StorePurchaseCompleted"/>.
+    /// Maps to <c>ProtocolGame::parseCompleteStorePurchase</c>.
+    /// Task T28.
+    /// </summary>
+    private void ParseCompleteStorePurchase(InputMessage msg)
+    {
+        msg.ReadU8(); // unused
+        var result = new Game.StorePurchaseResult();
+        result.Message           = msg.ReadString();
+        result.RemainingCoins    = msg.ReadU32();
+        result.TransferableCoins = msg.ReadU32();
+        StorePurchaseCompleted?.Invoke(result);
+    }
 }

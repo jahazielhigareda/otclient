@@ -948,3 +948,57 @@ public sealed class WheelData
     public ushort ExtraPoints   { get; set; }
 }
 
+// ─── T28: In-game Store data ──────────────────────────────────────────────────
+
+/// <summary>One sub-offer nested inside a <see cref="StoreOffer"/>.</summary>
+public sealed class StoreSubOffer
+{
+    public string            Name        { get; set; } = string.Empty;
+    public string            Description { get; set; } = string.Empty;
+    public List<string>      Icons       { get; set; } = [];
+    public string            ServiceType { get; set; } = string.Empty;
+}
+
+/// <summary>One product offer in the in-game store.</summary>
+public sealed class StoreOffer
+{
+    public uint              Id                { get; set; }
+    public string            Name              { get; set; } = string.Empty;
+    public string            Description       { get; set; } = string.Empty;
+    public uint              Price             { get; set; }
+    public byte              State             { get; set; }    // 0=Normal, 1=New, 2=Sale
+    public bool              Disabled          { get; set; }
+    public string            DisabledReason    { get; set; } = string.Empty;
+    public string            Icon              { get; set; } = string.Empty;
+    public uint              SaleValidUntil    { get; set; }
+    public uint              BasePrice         { get; set; }
+    public List<StoreSubOffer> SubOffers       { get; set; } = [];
+}
+
+/// <summary>One top-level category as sent by <c>parseStore</c>.</summary>
+public sealed class StoreCategory
+{
+    public string            Name          { get; set; } = string.Empty;
+    public string            Description   { get; set; } = string.Empty;
+    public byte              State         { get; set; }
+    public List<string>      Icons         { get; set; } = [];
+    public string            Parent        { get; set; } = string.Empty;
+}
+
+/// <summary>Coin balance data sent by <c>parseCoinBalance</c>.</summary>
+public sealed class CoinBalance
+{
+    public bool   IsUpdated          { get; set; }
+    public uint   Coins              { get; set; }
+    public uint   TransferableCoins  { get; set; }
+    public uint   AuctionCoins       { get; set; }
+}
+
+/// <summary>Result of a completed store purchase from <c>parseCompleteStorePurchase</c>.</summary>
+public sealed class StorePurchaseResult
+{
+    public string Message           { get; set; } = string.Empty;
+    public uint   RemainingCoins    { get; set; }
+    public uint   TransferableCoins { get; set; }
+}
+

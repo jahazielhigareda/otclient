@@ -133,6 +133,15 @@ public enum GameServerPacket : byte
     PreyData           = 0xE8,  // GameServerSendPreyData (232)         — parsePreyData (T27)
     PreyRerollPrice    = 0xE9,  // GameServerSendPreyRerollPrice (233)  — parsePreyRerollPrice (T27)
     ImbuementWindow    = 0xEB,  // GameServerSendImbuementWindow (235)  — parseImbuementWindow (T27)
+
+    // T28 opcodes
+    CoinBalance              = 0xDF,  // GameServerCoinBalance (223)             — parseCoinBalance (T28)
+    StoreError               = 0xE0,  // GameServerStoreError (224)              — parseStoreError (T28)
+    CoinBalanceUpdating      = 0xF2,  // GameServerCoinBalanceUpdating (242)     — parseCoinBalanceUpdating (T28)
+    Store                    = 0xFB,  // GameServerStore (251)                   — parseStore (T28)
+    StoreOffers              = 0xFC,  // GameServerStoreOffers (252)             — parseStoreOffers (T28)
+    StoreTransactionHistory  = 0xFD,  // GameServerStoreTransactionHistory (253) — parseStoreTransactionHistory (T28)
+    StoreCompletePurchase    = 0xFE,  // GameServerStoreCompletePurchase (254)   — parseCompleteStorePurchase (T28)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -345,6 +354,23 @@ public sealed partial class ProtocolGame : Protocol
 
     /// <summary>Raised when <c>parseOpenWheelWindow</c> is received.</summary>
     public event Action<Game.WheelData>? WheelWindowReceived;
+
+    // ─── T28 events ───────────────────────────────────────────────────────────
+
+    /// <summary>Raised when <c>parseCoinBalance</c> is received.</summary>
+    public event Action<Game.CoinBalance>? CoinBalanceReceived;
+
+    /// <summary>Raised when <c>parseStore</c> category list is received.</summary>
+    public event Action<IReadOnlyList<Game.StoreCategory>>? StoreCategoriesReceived;
+
+    /// <summary>Raised when <c>parseStoreOffers</c> is received. Parameters: (categoryName, offers).</summary>
+    public event Action<string, IReadOnlyList<Game.StoreOffer>>? StoreOffersReceived;
+
+    /// <summary>Raised when <c>parseCompleteStorePurchase</c> is received.</summary>
+    public event Action<Game.StorePurchaseResult>? StorePurchaseCompleted;
+
+    /// <summary>Raised when a store error packet is received. Parameters: (errorType, message).</summary>
+    public event Action<byte, string>? StoreErrorReceived;
 
     /// <summary>
     /// Raised when the server sends updated player stat values.
@@ -681,6 +707,15 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.PreyData,           ParsePreyData);
         RegisterHandler((byte)GameServerPacket.PreyRerollPrice,    ParsePreyRerollPrice);
         RegisterHandler((byte)GameServerPacket.ImbuementWindow,    ParseImbuementWindow);
+
+        // T28 handlers
+        RegisterHandler((byte)GameServerPacket.CoinBalance,             ParseCoinBalance);
+        RegisterHandler((byte)GameServerPacket.StoreError,              ParseStoreError);
+        RegisterHandler((byte)GameServerPacket.CoinBalanceUpdating,     ParseCoinBalanceUpdating);
+        RegisterHandler((byte)GameServerPacket.Store,                   ParseStore);
+        RegisterHandler((byte)GameServerPacket.StoreOffers,             ParseStoreOffers);
+        RegisterHandler((byte)GameServerPacket.StoreTransactionHistory, ParseStoreTransactionHistory);
+        RegisterHandler((byte)GameServerPacket.StoreCompletePurchase,   ParseCompleteStorePurchase);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────
