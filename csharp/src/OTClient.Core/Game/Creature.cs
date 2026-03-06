@@ -74,7 +74,8 @@ public class Creature : Thing
 
     // ─── Speed ────────────────────────────────────────────────────────────────
 
-    public int Speed { get; set; } = 200;
+    public int Speed     { get; set; } = 200;
+    public int BaseSpeed { get; set; } = 200;
 
     // ─── Light emission ───────────────────────────────────────────────────────
 

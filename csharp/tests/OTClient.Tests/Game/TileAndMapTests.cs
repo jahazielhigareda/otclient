@@ -188,4 +188,47 @@ public sealed class TileAndMapTests
         var tiles = map.GetViewport(10, 10, 7, 2, 2).ToList();
         Assert.Equal(2, tiles.Count);
     }
+
+    // ─── Map.MoveCreature (T03) ───────────────────────────────────────────────
+
+    [Fact]
+    public void MoveCreature_UpdatesCreaturePositionAndTiles()
+    {
+        var map  = new Map();
+        var from = new Position(10, 10, 7);
+        var to   = new Position(11, 10, 7);
+        var c    = new Creature { Id = 1, Position = from };
+        map.AddCreature(c);
+
+        bool moved = map.MoveCreature(1, to);
+
+        Assert.True(moved);
+        Assert.Equal(to, c.Position);
+        Assert.DoesNotContain(c, map.Get(from)?.Creatures ?? []);
+        Assert.Contains(c,  map.Get(to)!.Creatures);
+    }
+
+    [Fact]
+    public void MoveCreature_ReturnsFalse_WhenCreatureNotKnown()
+    {
+        var map = new Map();
+        Assert.False(map.MoveCreature(999, new Position(0, 0, 7)));
+    }
+
+    // ─── Creature.BaseSpeed (T03) ─────────────────────────────────────────────
+
+    [Fact]
+    public void Creature_BaseSpeed_DefaultsToSpeed()
+    {
+        var c = new Creature();
+        Assert.Equal(c.Speed, c.BaseSpeed);
+    }
+
+    [Fact]
+    public void Creature_BaseSpeed_CanBeSetIndependently()
+    {
+        var c = new Creature { Speed = 300, BaseSpeed = 220 };
+        Assert.Equal(300, c.Speed);
+        Assert.Equal(220, c.BaseSpeed);
+    }
 }

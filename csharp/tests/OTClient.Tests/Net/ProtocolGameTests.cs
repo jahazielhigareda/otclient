@@ -455,6 +455,245 @@ public sealed class ProtocolGameTests
         Assert.Equal(0xA7, (byte)GameServerPacket.PlayerModes);
     }
 
+    // ─── T03: New GameServerPacket creature opcodes ────────────────────────────
+
+    [Fact]
+    public void GameServerPacket_MoveCreature_Is0x6D()
+    {
+        // Regression: previously MoveCreature was wrongly 0x6C (TileRemoveThing).
+        Assert.Equal(0x6D, (byte)GameServerPacket.MoveCreature);
+    }
+
+    [Fact]
+    public void GameServerPacket_CreatureData_Is0x8B()
+    {
+        Assert.Equal(0x8B, (byte)GameServerPacket.CreatureData);
+    }
+
+    [Fact]
+    public void GameServerPacket_CreatureHealth_Is0x8C()
+    {
+        Assert.Equal(0x8C, (byte)GameServerPacket.CreatureHealth);
+    }
+
+    [Fact]
+    public void GameServerPacket_CreatureOutfit_Is0x8E()
+    {
+        Assert.Equal(0x8E, (byte)GameServerPacket.CreatureOutfit);
+    }
+
+    [Fact]
+    public void GameServerPacket_CreatureSpeed_Is0x8F()
+    {
+        Assert.Equal(0x8F, (byte)GameServerPacket.CreatureSpeed);
+    }
+
+    // ─── T03: ParseCreatureHealth ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureHealth_InvokesEvent_WithIdAndPercent()
+    {
+        using var pg = new ProtocolGame();
+
+        uint receivedId   = 0;
+        byte receivedPct  = 0;
+        pg.CreatureHealthUpdated += (id, pct) => { receivedId = id; receivedPct = pct; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureHealth);
+        out_.WriteU32(12345);   // creature ID
+        out_.WriteU8(75);       // health percent
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(12345u, receivedId);
+        Assert.Equal(75,     receivedPct);
+    }
+
+    // ─── T03: ParseCreatureSpeed ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureSpeed_InvokesEvent_WithIdBaseAndSpeed()
+    {
+        using var pg = new ProtocolGame();
+
+        uint receivedId  = 0;
+        int  receivedBase = 0, receivedSpeed = 0;
+        pg.CreatureSpeedUpdated += (id, b, s) => { receivedId = id; receivedBase = b; receivedSpeed = s; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureSpeed);
+        out_.WriteU32(99u);     // creature ID
+        out_.WriteU16(220);     // base speed
+        out_.WriteU16(300);     // speed
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(99u,  receivedId);
+        Assert.Equal(220,  receivedBase);
+        Assert.Equal(300,  receivedSpeed);
+    }
+
+    // ─── T03: ParseCreatureOutfit ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureOutfit_InvokesEvent_WithOutfitFields()
+    {
+        using var pg = new ProtocolGame();
+
+        uint             receivedId     = 0;
+        OTClient.Framework.Game.Outfit receivedOutfit = OTClient.Framework.Game.Outfit.Default;
+        bool outfitReceived = false;
+        pg.CreatureOutfitUpdated += (id, o) => { receivedId = id; receivedOutfit = o; outfitReceived = true; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureOutfit);
+        out_.WriteU32(777u);    // creature ID
+        // Outfit: lookType U16
+        out_.WriteU16(128);     // lookType (nonzero → creature outfit)
+        out_.WriteU8(10);       // head
+        out_.WriteU8(20);       // body
+        out_.WriteU8(30);       // legs
+        out_.WriteU8(40);       // feet
+        out_.WriteU8(0);        // addons
+        out_.WriteU16(0);       // mount ID (0 = no mount, no extra colour bytes)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(777u,  receivedId);
+        Assert.True(outfitReceived);
+        Assert.Equal(128,   receivedOutfit!.Id);
+        Assert.Equal(10,    receivedOutfit.Head);
+        Assert.Equal(20,    receivedOutfit.Body);
+        Assert.Equal(30,    receivedOutfit.Legs);
+        Assert.Equal(40,    receivedOutfit.Feet);
+    }
+
+    // ─── T03: ParseCreatureMove (ID-based) ───────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureMove_IdBased_InvokesCreatureMovedById()
+    {
+        using var pg = new ProtocolGame();
+
+        uint                              receivedId  = 0;
+        OTClient.Framework.Game.Position? receivedPos = null;
+        pg.CreatureMovedById += (id, pos) => { receivedId = id; receivedPos = pos; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MoveCreature);
+        out_.WriteU16(0xFFFF);  // signals "id-based" form
+        out_.WriteU32(42u);     // creature ID
+        // destination position
+        out_.WriteU16(11);
+        out_.WriteU16(10);
+        out_.WriteU8(7);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(42u, receivedId);
+        Assert.Equal(new OTClient.Framework.Game.Position(11, 10, 7), receivedPos);
+    }
+
+    // ─── T03: ParseCreatureMove (tile-based) ─────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureMove_TileBased_InvokesCreatureTileMoved()
+    {
+        using var pg = new ProtocolGame();
+
+        OTClient.Framework.Game.Position? fromPos = null;
+        int  stackPos    = -1;
+        OTClient.Framework.Game.Position? toPos   = null;
+        pg.CreatureTileMoved += (f, s, t) => { fromPos = f; stackPos = s; toPos = t; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MoveCreature);
+        out_.WriteU16(10);      // x (not 0xFFFF → position-based)
+        out_.WriteU16(10);      // y
+        out_.WriteU8(7);        // z
+        out_.WriteU8(2);        // stackpos
+        // destination
+        out_.WriteU16(11);
+        out_.WriteU16(10);
+        out_.WriteU8(7);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(new OTClient.Framework.Game.Position(10, 10, 7), fromPos);
+        Assert.Equal(2, stackPos);
+        Assert.Equal(new OTClient.Framework.Game.Position(11, 10, 7), toPos);
+    }
+
+    // ─── T03: ParseCreatureData (types 11–14) ────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureData_Type13_FiresDataByteReceivedEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        uint receivedId   = 0;
+        byte receivedType = 0;
+        byte receivedVal  = 0;
+        pg.CreatureDataByteReceived += (id, t, v) => { receivedId = id; receivedType = t; receivedVal = v; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureData);
+        out_.WriteU32(55u);     // creature ID
+        out_.WriteU8(13);       // type 13 = vocation
+        out_.WriteU8(3);        // vocation ID (sorcerer = 3)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(55u, receivedId);
+        Assert.Equal(13,  receivedType);
+        Assert.Equal(3,   receivedVal);
+    }
+
+    [Fact]
+    public void ParseCreatureData_Type11_FiresDataByteReceivedEvent()
+    {
+        using var pg = new ProtocolGame();
+
+        byte receivedType = 0;
+        byte receivedVal  = 0;
+        pg.CreatureDataByteReceived += (_, t, v) => { receivedType = t; receivedVal = v; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureData);
+        out_.WriteU32(1u);
+        out_.WriteU8(11);       // type 11 = mana percent
+        out_.WriteU8(80);       // 80% mana
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(11, receivedType);
+        Assert.Equal(80, receivedVal);
+    }
+
+    [Fact]
+    public void ParseCreatureData_Type14_ConsumesBytesWithoutFiring()
+    {
+        using var pg = new ProtocolGame();
+
+        bool fired = false;
+        pg.CreatureDataByteReceived += (_, _, _) => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureData);
+        out_.WriteU32(1u);       // creature ID
+        out_.WriteU8(14);        // type 14 = icons
+        out_.WriteU8(1);         // 1 icon entry
+        out_.WriteU8(5);         // icon type
+        out_.WriteU8(0);         // icon category
+        out_.WriteU16(10);       // icon count
+
+        // Should parse cleanly without throwing, and not fire vocation event
+        var ex = Record.Exception(() => InvokeHandleRawData(pg, out_.ToArray()));
+        Assert.Null(ex);
+        Assert.False(fired);
+    }
+
     // ─── Helper to invoke the protected HandleRawData method ──────────────────
 
     private static void InvokeHandleRawData(ProtocolGame pg, byte[] data)

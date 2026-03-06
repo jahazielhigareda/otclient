@@ -31,27 +31,32 @@ public enum GameClientPacket : byte
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
 public enum GameServerPacket : byte
 {
-    Ping          = 0x1C,
-    PingBack      = 0x1D,
-    LoginError    = 0x14,
-    LoginAdvice   = 0x15,
-    LoginWait     = 0x16,
-    SessionEnd    = 0x17,
-    Death         = 0x28,
-    InitGame      = 0x64,
-    MoveNorth     = 0x65,
-    MoveEast      = 0x66,
-    MoveSouth     = 0x67,
-    MoveWest      = 0x68,
-    AddCreature   = 0x6A,
-    RemoveCreature= 0x6B,
-    MoveCreature  = 0x6C,
-    PlayerData    = 0xA0,   // parsePlayerStats
-    PlayerSkills  = 0xA1,   // parsePlayerSkills
-    PlayerState   = 0xA2,   // parsePlayerState
-    PlayerModes   = 0xA7,   // parsePlayerModes
-    TextMessage   = 0xB4,
-    PlayerSpeech  = 0x96,
+    Ping             = 0x1C,
+    PingBack         = 0x1D,
+    LoginError       = 0x14,
+    LoginAdvice      = 0x15,
+    LoginWait        = 0x16,
+    SessionEnd       = 0x17,
+    Death            = 0x28,
+    InitGame         = 0x64,
+    MoveNorth        = 0x65,
+    MoveEast         = 0x66,
+    MoveSouth        = 0x67,
+    MoveWest         = 0x68,
+    TileAddThing     = 0x6A,   // GameServerCreateOnMap   — parseTileAddThing (T02)
+    TileTransformThing = 0x6B, // GameServerChangeOnMap   — parseTileTransformThing (T02)
+    TileRemoveThing  = 0x6C,   // GameServerDeleteOnMap   — parseTileRemoveThing (T02)
+    MoveCreature     = 0x6D,   // GameServerMoveCreature  — parseCreatureMove (T03)
+    CreatureData     = 0x8B,   // GameServerCreatureData  — parseCreatureData (T03)
+    CreatureHealth   = 0x8C,   // GameServerCreatureHealth — parseCreatureHealth (T03)
+    CreatureOutfit   = 0x8E,   // GameServerCreatureOutfit — parseCreatureOutfit (T03)
+    CreatureSpeed    = 0x8F,   // GameServerCreatureSpeed  — parseCreatureSpeed (T03)
+    PlayerData       = 0xA0,   // parsePlayerStats (T05)
+    PlayerSkills     = 0xA1,   // parsePlayerSkills (T05)
+    PlayerState      = 0xA2,   // parsePlayerState (T05)
+    PlayerModes      = 0xA7,   // parsePlayerModes (T05)
+    TextMessage      = 0xB4,
+    PlayerSpeech     = 0x96,
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -159,6 +164,52 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<Game.FightMode, Game.ChaseMode, bool, Game.PvpMode>? PlayerModesUpdated;
 
+    // ─── Creature events (T03) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when a creature moves via the tile-position form of
+    /// <c>MoveCreature</c> (wire x != 0xFFFF).
+    /// Parameters: (fromPos, stackPos, toPos)
+    /// </summary>
+    public event Action<Game.Position, int, Game.Position>? CreatureTileMoved;
+
+    /// <summary>
+    /// Raised when a creature moves via the creature-ID form of
+    /// <c>MoveCreature</c> (wire x == 0xFFFF).
+    /// Parameters: (creatureId, toPos)
+    /// </summary>
+    public event Action<uint, Game.Position>? CreatureMovedById;
+
+    /// <summary>
+    /// Raised when the server sends a creature health-percent update.
+    /// Parameters: (creatureId, healthPercent 0–100)
+    /// </summary>
+    public event Action<uint, byte>? CreatureHealthUpdated;
+
+    /// <summary>
+    /// Raised when the server sends a creature outfit update.
+    /// Parameters: (creatureId, outfit)
+    /// </summary>
+    public event Action<uint, Game.Outfit>? CreatureOutfitUpdated;
+
+    /// <summary>
+    /// Raised when the server sends a creature speed update.
+    /// Parameters: (creatureId, baseSpeed, speed)
+    /// </summary>
+    public event Action<uint, int, int>? CreatureSpeedUpdated;
+
+    /// <summary>
+    /// Raised when the server sends a <c>CreatureData</c> packet whose payload is
+    /// a single byte (types 11, 12, 13).
+    /// <list type="bullet">
+    ///   <item><description>Type 11 — mana percent (0–100)</description></item>
+    ///   <item><description>Type 12 — show-status byte</description></item>
+    ///   <item><description>Type 13 — player vocation ID</description></item>
+    /// </list>
+    /// Parameters: (creatureId, type 11/12/13, byteValue)
+    /// </summary>
+    public event Action<uint, byte, byte>? CreatureDataByteReceived;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -179,6 +230,11 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.PlayerSkills,   ParsePlayerSkills);
         RegisterHandler((byte)GameServerPacket.PlayerState,    ParsePlayerState);
         RegisterHandler((byte)GameServerPacket.PlayerModes,    ParsePlayerModes);
+        RegisterHandler((byte)GameServerPacket.MoveCreature,   ParseCreatureMove);
+        RegisterHandler((byte)GameServerPacket.CreatureData,   ParseCreatureData);
+        RegisterHandler((byte)GameServerPacket.CreatureHealth, ParseCreatureHealth);
+        RegisterHandler((byte)GameServerPacket.CreatureOutfit, ParseCreatureOutfit);
+        RegisterHandler((byte)GameServerPacket.CreatureSpeed,  ParseCreatureSpeed);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

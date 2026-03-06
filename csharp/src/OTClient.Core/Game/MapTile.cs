@@ -175,6 +175,19 @@ public sealed class Map
     public Creature? GetCreature(uint id)
         => _knownCreatures.TryGetValue(id, out var c) ? c : null;
 
+    /// <summary>
+    /// Moves a known creature to <paramref name="newPos"/>, updating the tile
+    /// it occupies on both the old and new tile.
+    /// </summary>
+    public bool MoveCreature(uint id, Position newPos)
+    {
+        if (!_knownCreatures.TryGetValue(id, out var creature)) return false;
+        Get(creature.Position)?.RemoveCreature(creature);
+        creature.Position = newPos;
+        GetOrCreate(newPos).AddCreature(creature);
+        return true;
+    }
+
     public IReadOnlyDictionary<uint, Creature> KnownCreatures => _knownCreatures;
 
     // ─── Visibility helpers ───────────────────────────────────────────────────
