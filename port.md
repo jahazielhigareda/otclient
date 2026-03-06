@@ -375,7 +375,7 @@ Used for rich-text news panels and potential in-game browser content. Not starte
 | T32 | UI | Port HTML/CSS parser for rich-text news panels | Low | 3 | ❌ Not Completed | Not implemented |
 | T33 | Graphics | Port `AnimatedTexture` and APNG loader | Low | 3 | ❌ Not Completed | Not implemented |
 | T34 | Game | Port paper doll and attached-effect system | Low | 3 | 🔶 Partially Completed | `AttachedEffect` and `AttachedEffectManager` exist in `GameObjects.cs`; missing: full paper doll render system |
-| T35 | Concurrency | Synchronize parse-handler dispatch back to main thread before Lua callbacks | High | 1 | ❌ Not Completed | No main-thread dispatch queue in networking layer; parse handlers run on the TCP receive thread |
+| T35 | Concurrency | Synchronize parse-handler dispatch back to main thread before Lua callbacks | High | 1 | ✅ Completed | `Protocol.SetDispatcher(EventDispatcher?)` added. When wired, `HandleRawData` enqueues the entire `ParseMessage` call on the `EventDispatcher` instead of running it on the TCP receive thread. `Poll()` on the main-thread game loop drains the queue. Backwards-compatible: no dispatcher = immediate (unit-test mode). 3 new tests. |
 
 ---
 

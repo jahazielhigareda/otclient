@@ -525,10 +525,42 @@ public sealed class ProtocolGameTests
         Assert.Throws<InvalidOperationException>(() => pg.SendMarketAcceptOffer(1234, 5, 1));
     }
 
+    // ─── Main-thread dispatcher (T35) ─────────────────────────────────────────
+
     [Fact]
-    public void ParseDeath_InvokesEvent()
+    public void WithDispatcher_ParseIsDeferredUntilPoll()
     {
         using var pg = new ProtocolGame();
+        var dispatcher = new OTClient.Framework.Core.EventDispatcher();
+        pg.SetDispatcher(dispatcher);
+
+        bool died = false;
+        pg.PlayerDied += () => died = true;
+
+        // Build a Death packet
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Death);
+
+        // Invoke HandleRawData — with a dispatcher wired this should ENQUEUE,
+        // NOT run the handler yet.
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        // Handler has NOT run yet (still on the "network thread" side)
+        Assert.False(died, "Handler must not run before Poll()");
+        Assert.Equal(1, dispatcher.PendingCount);
+
+        // Now drain the dispatcher (simulates the main-thread game loop tick)
+        dispatcher.Poll();
+
+        Assert.True(died, "Handler must run after Poll()");
+        Assert.Equal(0, dispatcher.PendingCount);
+    }
+
+    [Fact]
+    public void WithoutDispatcher_ParseIsImmediate()
+    {
+        using var pg = new ProtocolGame();
+        // No SetDispatcher call — default behaviour
 
         bool died = false;
         pg.PlayerDied += () => died = true;
@@ -538,7 +570,62 @@ public sealed class ProtocolGameTests
 
         InvokeHandleRawData(pg, out_.ToArray());
 
+        // Must have fired synchronously (no dispatcher)
         Assert.True(died);
+    }
+
+    [Fact]
+    public void WithDispatcher_MultiplePackets_AllDeferredUntilPoll()
+    {
+        using var pg = new ProtocolGame();
+        var dispatcher = new OTClient.Framework.Core.EventDispatcher();
+        pg.SetDispatcher(dispatcher);
+
+        // Collect death events
+        int deathCount = 0;
+        pg.PlayerDied += () => deathCount++;
+
+        // Two Death packets sent before any Poll
+        var out1 = new OutputMessage();
+        out1.WriteU8((byte)GameServerPacket.Death);
+        InvokeHandleRawData(pg, out1.ToArray());
+
+        var out2 = new OutputMessage();
+        out2.WriteU8((byte)GameServerPacket.Death);
+        InvokeHandleRawData(pg, out2.ToArray());
+
+        // Two events queued, handler has not fired
+        Assert.Equal(0, deathCount);
+        Assert.Equal(2, dispatcher.PendingCount);
+
+        dispatcher.Poll();
+
+        Assert.Equal(2, deathCount);
+        Assert.Equal(0, dispatcher.PendingCount);
+    }
+
+    [Fact]
+    public void SetDispatcher_ToNull_RestoresImmediateMode()
+    {
+        using var pg = new ProtocolGame();
+        var dispatcher = new OTClient.Framework.Core.EventDispatcher();
+
+        // Wire dispatcher
+        pg.SetDispatcher(dispatcher);
+
+        // Then remove it
+        pg.SetDispatcher(null);
+
+        bool died = false;
+        pg.PlayerDied += () => died = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Death);
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        // Should fire immediately (dispatcher has been removed)
+        Assert.True(died);
+        Assert.Equal(0, dispatcher.PendingCount);
     }
 
     // ─── OutputMessage packet building ────────────────────────────────────────
