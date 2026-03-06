@@ -5,6 +5,7 @@ global using System.Numerics;
 global using System.Threading;
 global using System.Threading.Tasks;
 global using OTClient.Framework.Core;
+global using OTClient.Framework.Game;
 global using OTClient.Framework.Graphics;
 global using OTClient.Framework.Input;
 global using OTClient.Framework.Lua;
