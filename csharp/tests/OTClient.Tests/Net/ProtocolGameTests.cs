@@ -49,6 +49,19 @@ public sealed class ProtocolGameTests
     }
 
     [Fact]
+    public void GameClientPacket_Stop_Is0x69()
+    {
+        Assert.Equal(0x69, (byte)GameClientPacket.Stop);
+    }
+
+    [Fact]
+    public void GameClientPacket_MoveNorthWest_Is0x6D()
+    {
+        // Regression: previously MoveNorthWest was wrongly set to 0x69 (Stop).
+        Assert.Equal(0x6D, (byte)GameClientPacket.MoveNorthWest);
+    }
+
+    [Fact]
     public void GameServerPacket_LoginError_Is0x14()
     {
         Assert.Equal(0x14, (byte)GameServerPacket.LoginError);
@@ -241,6 +254,32 @@ public sealed class ProtocolGameTests
         var pg = new ProtocolGame();
         var ex = Record.Exception(() => pg.Dispose());
         Assert.Null(ex);
+    }
+
+    // ─── SendStop ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OutputMessage_Stop_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Stop);
+        byte[] payload = msg.ToArray();
+        Assert.Equal(0x69, payload[0]);
+    }
+
+    // ─── SendAutoWalk ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void OutputMessage_AutoWalk_StartsWithOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AutoWalk);
+        msg.WriteU8(1);           // one direction
+        msg.WriteU8(3);           // North wire byte (3)
+        byte[] payload = msg.ToArray();
+        Assert.Equal(0x64, payload[0]);   // AutoWalk opcode
+        Assert.Equal(1,    payload[1]);   // count
+        Assert.Equal(3,    payload[2]);   // North = 3 in auto-walk wire encoding
     }
 
     // ─── Helper to invoke the protected HandleRawData method ──────────────────

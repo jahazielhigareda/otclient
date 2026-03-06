@@ -155,6 +155,48 @@ public sealed partial class ProtocolGame
         SendEncrypted(msg, _xteaKey);
     }
 
+    /// <summary>Sends a <c>Stop</c> packet to halt the character's movement.</summary>
+    public void SendStop()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Stop);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // Direction wire bytes used in the AutoWalk packet (Tibia protocol encoding).
+    // These differ from the <see cref="Direction"/> enum values.
+    private static readonly Dictionary<Direction, byte> AutoWalkByte = new()
+    {
+        { Direction.East,      1 },
+        { Direction.NorthEast, 2 },
+        { Direction.North,     3 },
+        { Direction.NorthWest, 4 },
+        { Direction.West,      5 },
+        { Direction.SouthWest, 6 },
+        { Direction.South,     7 },
+        { Direction.SouthEast, 8 },
+    };
+
+    /// <summary>
+    /// Sends an <c>AutoWalk</c> packet describing a multi-step path.
+    /// Each step is encoded with its own direction byte per the Tibia wire format.
+    /// </summary>
+    public void SendAutoWalk(IReadOnlyList<Direction> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Count == 0) return;
+
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AutoWalk);
+        msg.WriteU8((byte)Math.Min(path.Count, 255));
+        for (int i = 0; i < Math.Min(path.Count, 255); i++)
+        {
+            byte wireByte = AutoWalkByte.TryGetValue(path[i], out byte b) ? b : (byte)0;
+            msg.WriteU8(wireByte);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
     // ─── Chat ─────────────────────────────────────────────────────────────────
 
     /// <summary>

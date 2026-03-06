@@ -126,4 +126,73 @@ public sealed class Game
         foreach (var (_, creature) in Map.KnownCreatures)
             creature.Update(deltaMs);
     }
+
+    // ─── Movement ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the local player requests a single-step walk.
+    /// The handler (typically <see cref="Net.ProtocolGame"/>) should send the
+    /// appropriate network packet.
+    /// </summary>
+    public event Action<Direction>? WalkRequested;
+
+    /// <summary>
+    /// Raised when the local player requests a turn (cardinal directions only).
+    /// </summary>
+    public event Action<Direction>? TurnRequested;
+
+    /// <summary>Raised when the local player requests to stop movement.</summary>
+    public event Action? StopRequested;
+
+    /// <summary>
+    /// Raised when the local player requests an auto-walk along a path.
+    /// </summary>
+    public event Action<IReadOnlyList<Direction>>? AutoWalkRequested;
+
+    /// <summary>
+    /// Requests a single-step walk in <paramref name="dir"/>.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="WalkRequested"/>.
+    /// Maps to <c>Game::walk()</c> in <c>src/client/game.cpp</c>.
+    /// </summary>
+    public void Walk(Direction dir)
+    {
+        if (!IsOnline) return;
+        WalkRequested?.Invoke(dir);
+    }
+
+    /// <summary>
+    /// Requests a turn in <paramref name="dir"/> (cardinal directions only).
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="TurnRequested"/>.
+    /// </summary>
+    public void Turn(Direction dir)
+    {
+        if (!IsOnline) return;
+        TurnRequested?.Invoke(dir);
+    }
+
+    /// <summary>
+    /// Requests that the character stop moving.
+    /// Only valid while <see cref="IsOnline"/>.
+    /// Fires <see cref="StopRequested"/>.
+    /// </summary>
+    public void Stop()
+    {
+        if (!IsOnline) return;
+        StopRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Requests an auto-walk along the provided sequence of directions.
+    /// Only valid while <see cref="IsOnline"/> and the path is non-empty.
+    /// Fires <see cref="AutoWalkRequested"/>.
+    /// Maps to <c>Game::autoWalk()</c> in <c>src/client/game.cpp</c>.
+    /// </summary>
+    public void AutoWalk(IReadOnlyList<Direction> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (!IsOnline || path.Count == 0) return;
+        AutoWalkRequested?.Invoke(path);
+    }
 }

@@ -283,4 +283,117 @@ public sealed class GameSingletonTests
         var mgr = new AttachedEffectManager();
         Assert.Null(mgr.Get(999));
     }
+
+    // ─── Walk / Turn / Stop / AutoWalk ────────────────────────────────────────
+
+    [Fact]
+    public void Walk_WhenOnline_FiresWalkRequestedEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        Direction? received = null;
+        g.WalkRequested += dir => received = dir;
+
+        g.Walk(Direction.North);
+        Assert.Equal(Direction.North, received);
+    }
+
+    [Fact]
+    public void Walk_WhenOffline_DoesNotFireEvent()
+    {
+        var g     = MakeGame();
+        bool fired = false;
+        g.WalkRequested += _ => fired = true;
+
+        g.Walk(Direction.South);
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void Turn_WhenOnline_FiresTurnRequestedEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        Direction? received = null;
+        g.TurnRequested += dir => received = dir;
+
+        g.Turn(Direction.East);
+        Assert.Equal(Direction.East, received);
+    }
+
+    [Fact]
+    public void Turn_WhenOffline_DoesNotFireEvent()
+    {
+        var g      = MakeGame();
+        bool fired = false;
+        g.TurnRequested += _ => fired = true;
+
+        g.Turn(Direction.West);
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void Stop_WhenOnline_FiresStopRequestedEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        bool fired = false;
+        g.StopRequested += () => fired = true;
+
+        g.Stop();
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void Stop_WhenOffline_DoesNotFireEvent()
+    {
+        var g      = MakeGame();
+        bool fired = false;
+        g.StopRequested += () => fired = true;
+
+        g.Stop();
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void AutoWalk_WhenOnline_FiresAutoWalkRequestedEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        IReadOnlyList<Direction>? received = null;
+        g.AutoWalkRequested += path => received = path;
+
+        var steps = new[] { Direction.North, Direction.East };
+        g.AutoWalk(steps);
+
+        Assert.NotNull(received);
+        Assert.Equal(2, received!.Count);
+        Assert.Equal(Direction.North, received[0]);
+        Assert.Equal(Direction.East,  received[1]);
+    }
+
+    [Fact]
+    public void AutoWalk_EmptyPath_DoesNotFireEvent()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+
+        bool fired = false;
+        g.AutoWalkRequested += _ => fired = true;
+
+        g.AutoWalk(Array.Empty<Direction>());
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void AutoWalk_NullPath_Throws()
+    {
+        var g = MakeGame();
+        g.EnterGame(new LocalPlayer { Id = 1, Name = "Hero" });
+        Assert.Throws<ArgumentNullException>(() => g.AutoWalk(null!));
+    }
 }
