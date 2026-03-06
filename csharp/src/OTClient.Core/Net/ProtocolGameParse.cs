@@ -819,6 +819,62 @@ public sealed partial class ProtocolGame
 
     // ─── Container handlers (T04) ─────────────────────────────────────────────
 
+    // ─── Combat status handlers (T13) ────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CreatureSkull</c> (0x90 / GameServerCreatureSkull).
+    /// Reads a creature ID and its new skull byte.
+    /// Maps to <c>ProtocolGame::parseCreatureSkulls</c>.
+    /// Task T13.
+    /// </summary>
+    private void ParseCreatureSkull(InputMessage msg)
+    {
+        uint creatureId = msg.ReadU32();
+        byte skull      = msg.ReadU8();
+        CreatureSkullUpdated?.Invoke(creatureId, skull);
+    }
+
+    /// <summary>
+    /// Parses <c>CreatureParty</c> (0x91 / GameServerCreatureParty).
+    /// Reads a creature ID and its new party-shield byte.
+    /// Maps to <c>ProtocolGame::parseCreatureShields</c>.
+    /// Task T13.
+    /// </summary>
+    private void ParseCreatureShield(InputMessage msg)
+    {
+        uint creatureId = msg.ReadU32();
+        byte shield     = msg.ReadU8();
+        CreatureShieldUpdated?.Invoke(creatureId, shield);
+    }
+
+    /// <summary>
+    /// Parses <c>CreatureMarks</c> (0x93 / GameServerCreatureMarks).
+    /// At protocol 1281 (clientVersion ≥ 1076) the permanent/timed flag is
+    /// always present as the second byte.
+    /// Maps to <c>ProtocolGame::parseCreaturesMark</c>.
+    /// Task T13.
+    /// </summary>
+    private void ParseCreatureMarks(InputMessage msg)
+    {
+        uint creatureId  = msg.ReadU32();
+        bool isPermanent = msg.ReadU8() == 0;  // 0 = permanent; non-zero = timed
+        byte markType    = msg.ReadU8();
+        CreatureMarksUpdated?.Invoke(creatureId, isPermanent, markType);
+    }
+
+    /// <summary>
+    /// Parses <c>CancelWalk</c> (0xB5 / GameServerCancelWalk).
+    /// Reads the direction the local player should face after the walk is
+    /// cancelled by the server.
+    /// Maps to <c>ProtocolGame::parseCancelWalk → Game::processWalkCancel</c>.
+    /// Task T13.
+    /// </summary>
+    private void ParseCancelWalk(InputMessage msg)
+    {
+        var direction = (Game.Direction)msg.ReadU8();
+        WalkCanceled?.Invoke(direction);
+    }
+
     /// <summary>
     /// Parses <c>OpenContainer</c> (0x6E / GameServerOpenContainer).
     /// Reads all container meta-data and initial item list, creates a

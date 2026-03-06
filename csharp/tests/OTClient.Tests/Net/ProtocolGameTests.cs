@@ -1506,6 +1506,111 @@ public sealed class ProtocolGameTests
 
     // ─── Helper builders ──────────────────────────────────────────────────────
 
+    // ─── T13: Opcode values ───────────────────────────────────────────────────
+
+    [Fact] public void GameServerPacket_CreatureSkull_Is0x90()  => Assert.Equal(0x90, (byte)GameServerPacket.CreatureSkull);
+    [Fact] public void GameServerPacket_CreatureParty_Is0x91()  => Assert.Equal(0x91, (byte)GameServerPacket.CreatureParty);
+    [Fact] public void GameServerPacket_CreatureMarks_Is0x93()  => Assert.Equal(0x93, (byte)GameServerPacket.CreatureMarks);
+    [Fact] public void GameServerPacket_CancelWalk_Is0xB5()     => Assert.Equal(0xB5, (byte)GameServerPacket.CancelWalk);
+
+    // ─── T13: ParseCreatureSkull ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureSkull_FiresCreatureSkullUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; byte? gotSkull = null;
+        pg.CreatureSkullUpdated += (id, skull) => { gotId = id; gotSkull = skull; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureSkull);
+        out_.WriteU32(0x1234_5678u);
+        out_.WriteU8(3);  // skull type 3 = red skull
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x1234_5678u, gotId);
+        Assert.Equal(3, (int)gotSkull!.Value);
+    }
+
+    // ─── T13: ParseCreatureShield ────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureShield_FiresCreatureShieldUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; byte? gotShield = null;
+        pg.CreatureShieldUpdated += (id, shield) => { gotId = id; gotShield = shield; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureParty);
+        out_.WriteU32(0xDEAD_BEEFu);
+        out_.WriteU8(4);  // shield type 4 = yellow shared
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0xDEAD_BEEFu, gotId);
+        Assert.Equal(4, (int)gotShield!.Value);
+    }
+
+    // ─── T13: ParseCreatureMarks ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureMarks_PermanentMark_IsPermanentTrue()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; bool? gotPerm = null; byte? gotMark = null;
+        pg.CreatureMarksUpdated += (id, perm, mark) => { gotId = id; gotPerm = perm; gotMark = mark; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureMarks);
+        out_.WriteU32(999u);
+        out_.WriteU8(0);    // isPermanent byte == 0 → isPermanent = true
+        out_.WriteU8(0xFF); // clear square
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(999u, gotId);
+        Assert.True(gotPerm);
+        Assert.Equal(0xFF, (int)gotMark!.Value);
+    }
+
+    [Fact]
+    public void ParseCreatureMarks_TimedMark_IsPermanentFalse()
+    {
+        using var pg = new ProtocolGame();
+        bool? gotPerm = null;
+        pg.CreatureMarksUpdated += (_, perm, _) => gotPerm = perm;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureMarks);
+        out_.WriteU32(1u);
+        out_.WriteU8(1);    // non-zero → timed → isPermanent = false
+        out_.WriteU8(5);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.False(gotPerm);
+    }
+
+    // ─── T13: ParseCancelWalk ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCancelWalk_FiresWalkCanceled_WithDirection()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Direction? gotDir = null;
+        pg.WalkCanceled += dir => gotDir = dir;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CancelWalk);
+        out_.WriteU8((byte)OTClient.Framework.Game.Direction.South);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(OTClient.Framework.Game.Direction.South, gotDir);
+    }
+
     /// <summary>
     /// Builds a minimal <c>FullMap</c> wire packet: position (5 bytes) followed
     /// by enough floor terminator bytes to satisfy the aware-range decoder without

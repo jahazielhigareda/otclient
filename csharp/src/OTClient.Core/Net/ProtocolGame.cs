@@ -68,6 +68,9 @@ public enum GameServerPacket : byte
     CreatureHealth   = 0x8C,   // GameServerCreatureHealth (140)  — parseCreatureHealth (T03)
     CreatureOutfit   = 0x8E,   // GameServerCreatureOutfit (142)  — parseCreatureOutfit (T03)
     CreatureSpeed    = 0x8F,   // GameServerCreatureSpeed  (143)  — parseCreatureSpeed (T03)
+    CreatureSkull    = 0x90,   // GameServerCreatureSkull  (144)  — parseCreatureSkulls (T13)
+    CreatureParty    = 0x91,   // GameServerCreatureParty  (145)  — parseCreatureShields (T13)
+    CreatureMarks    = 0x93,   // GameServerCreatureMarks  (147)  — parseCreaturesMark (T13)
     PlayerData       = 0xA0,   // parsePlayerStats (T05)
     PlayerSkills     = 0xA1,   // parsePlayerSkills (T05)
     PlayerState      = 0xA2,   // parsePlayerState (T05)
@@ -82,6 +85,7 @@ public enum GameServerPacket : byte
     VipAdd           = 0xD2,   // GameServerVipAdd (210)          — parseVipAdd (T11)
     VipState         = 0xD3,   // GameServerVipState (211)        — parseVipState (T11)
     VipLogout        = 0xD4,   // GameServerVipLogout (212)       — parseVipLogout (T11)
+    CancelWalk       = 0xB5,   // GameServerCancelWalk (181)      — parseCancelWalk (T13)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -292,6 +296,38 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<uint, byte, byte>? CreatureDataByteReceived;
 
+    /// <summary>
+    /// Raised when the server sends a creature skull update (packet 0x90).
+    /// Parameters: (creatureId, skullByte)
+    /// Maps to <c>ProtocolGame::parseCreatureSkulls</c>.
+    /// Task T13.
+    /// </summary>
+    public event Action<uint, byte>? CreatureSkullUpdated;
+
+    /// <summary>
+    /// Raised when the server sends a creature party/shield update (packet 0x91).
+    /// Parameters: (creatureId, shieldByte)
+    /// Maps to <c>ProtocolGame::parseCreatureShields</c>.
+    /// Task T13.
+    /// </summary>
+    public event Action<uint, byte>? CreatureShieldUpdated;
+
+    /// <summary>
+    /// Raised when the server sends a creature marks/square update (packet 0x93).
+    /// Parameters: (creatureId, isPermanent, markType)
+    /// Maps to <c>ProtocolGame::parseCreaturesMark</c>.
+    /// Task T13.
+    /// </summary>
+    public event Action<uint, bool, byte>? CreatureMarksUpdated;
+
+    /// <summary>
+    /// Raised when the server cancels the local player's walk (packet 0xB5).
+    /// Parameter: direction the player is facing after the cancel.
+    /// Maps to <c>ProtocolGame::parseCancelWalk → Game::processWalkCancel</c>.
+    /// Task T13.
+    /// </summary>
+    public event Action<Game.Direction>? WalkCanceled;
+
     // ─── Map events (T01/T02) ─────────────────────────────────────────────────
 
     /// <summary>
@@ -441,6 +477,10 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.CreatureHealth,    ParseCreatureHealth);
         RegisterHandler((byte)GameServerPacket.CreatureOutfit,    ParseCreatureOutfit);
         RegisterHandler((byte)GameServerPacket.CreatureSpeed,     ParseCreatureSpeed);
+        RegisterHandler((byte)GameServerPacket.CreatureSkull,     ParseCreatureSkull);
+        RegisterHandler((byte)GameServerPacket.CreatureParty,     ParseCreatureShield);
+        RegisterHandler((byte)GameServerPacket.CreatureMarks,     ParseCreatureMarks);
+        RegisterHandler((byte)GameServerPacket.CancelWalk,        ParseCancelWalk);
         RegisterHandler((byte)GameServerPacket.Talk,              ParseTalk);
         RegisterHandler((byte)GameServerPacket.ChannelList,       ParseChannelList);
         RegisterHandler((byte)GameServerPacket.OpenChannel,       ParseOpenChannel);
