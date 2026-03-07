@@ -568,8 +568,8 @@ public sealed partial class ProtocolGame
         int soul    = msg.ReadU8();
         int stamina = msg.ReadU16();
         msg.ReadU16(); // baseSpeed
-        msg.ReadU16(); // regeneration (offline training time placeholder)
-        msg.ReadU16(); // offline training time
+        int regenerationTime    = msg.ReadU16(); // seconds until next regeneration
+        int offlineTrainingTime = msg.ReadU16(); // offline training time remaining (seconds)
 
         // >= 1097: xpBoostTime (seconds) + enableXpBoostStore flag.
         msg.ReadU16(); // xpBoostTime
@@ -583,7 +583,8 @@ public sealed partial class ProtocolGame
             health, maxHealth, mana, maxMana,
             freeCapacity, experience,
             level, levelPercent,
-            stamina, soul);
+            stamina, soul,
+            regenerationTime, offlineTrainingTime);
     }
 
     private static readonly int SkillCount = Enum.GetValues<Game.SkillType>().Length; // 7
@@ -602,21 +603,20 @@ public sealed partial class ProtocolGame
         msg.ReadU16();                      // base + loyalty bonus (discarded)
         int magicLevelPercent = msg.ReadU16() / 100;
 
-        _ = baseMagicLevel;  // available if caller wants it
-
         // 7 combat skills: Fist, Club, Sword, Axe, Distance, Shielding, Fishing.
         // Protocol 1281: level U16, baseLevel U16, loyalty U16, percent (U16/100).
-        int[] levels   = new int[SkillCount];
-        int[] percents = new int[SkillCount];
+        int[] levels     = new int[SkillCount];
+        int[] baseLevels = new int[SkillCount];
+        int[] percents   = new int[SkillCount];
         for (int i = 0; i < SkillCount; i++)
         {
-            levels[i]   = msg.ReadU16();
-            msg.ReadU16(); // baseLevel
+            levels[i]     = msg.ReadU16();
+            baseLevels[i] = msg.ReadU16();
             msg.ReadU16(); // loyalty bonus
-            percents[i] = msg.ReadU16() / 100;
+            percents[i]   = msg.ReadU16() / 100;
         }
 
-        PlayerSkillsUpdated?.Invoke(magicLevel, magicLevelPercent, levels, percents);
+        PlayerSkillsUpdated?.Invoke(magicLevel, baseMagicLevel, magicLevelPercent, levels, baseLevels, percents);
     }
 
     /// <summary>

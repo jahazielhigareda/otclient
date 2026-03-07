@@ -711,13 +711,13 @@ public sealed class ProtocolGameTests
 
         int    health = 0, maxHealth = 0, mana = 0, maxMana = 0, freeCap = 0;
         ulong  exp    = 0;
-        int    level  = 0, lvlPct = 0, stamina = 0, soul = 0;
+        int    level  = 0, lvlPct = 0, stamina = 0, soul = 0, regen = 0, offline = 0;
 
-        pg.PlayerStatsUpdated += (h, mh, mn, mmn, fc, e, lv, lp, st, so) =>
+        pg.PlayerStatsUpdated += (h, mh, mn, mmn, fc, e, lv, lp, st, so, re, of) =>
         {
             health = h; maxHealth = mh; mana = mn; maxMana = mmn;
             freeCap = fc; exp = e; level = lv; lvlPct = lp;
-            stamina = st; soul = so;
+            stamina = st; soul = so; regen = re; offline = of;
         };
 
         var out_ = new OutputMessage();
@@ -758,6 +758,8 @@ public sealed class ProtocolGameTests
         Assert.Equal(75,    lvlPct);
         Assert.Equal(2000,  stamina);
         Assert.Equal(90,    soul);
+        Assert.Equal(60,    regen);
+        Assert.Equal(0,     offline);
     }
 
     // ─── T05: ParsePlayerSkills ───────────────────────────────────────────────
@@ -767,12 +769,13 @@ public sealed class ProtocolGameTests
     {
         using var pg = new ProtocolGame();
 
-        int magicLv = 0, magicPct = 0;
-        int[]? levels = null, percents = null;
+        int magicLv = 0, baseMagicLv = 0, magicPct = 0;
+        int[]? levels = null, baseLevels = null, percents = null;
 
-        pg.PlayerSkillsUpdated += (ml, mp, lvs, pcts) =>
+        pg.PlayerSkillsUpdated += (ml, bml, mp, lvs, blvs, pcts) =>
         {
-            magicLv = ml; magicPct = mp; levels = lvs; percents = pcts;
+            magicLv = ml; baseMagicLv = bml; magicPct = mp;
+            levels = lvs; baseLevels = blvs; percents = pcts;
         };
 
         var out_ = new OutputMessage();
@@ -794,10 +797,12 @@ public sealed class ProtocolGameTests
         InvokeHandleRawData(pg, out_.ToArray());
 
         Assert.Equal(5,  magicLv);
+        Assert.Equal(5,  baseMagicLv);
         Assert.Equal(34, magicPct);
         Assert.NotNull(levels);
         Assert.Equal(7, levels!.Length);
         Assert.Equal(10, levels[0]);   // Fist
+        Assert.Equal(10, baseLevels![0]); // base Fist
         Assert.Equal(50, percents![0]);
     }
 
@@ -2229,5 +2234,206 @@ public sealed class ProtocolGameTests
             "HandleRawData",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         method!.Invoke(pg, [data]);
+    }
+
+    // ─── T42: ConnectProtocol wires protocol events → LocalPlayer ─────────────
+
+    private static OutputMessage BuildPlayerStatsPacket(
+        int health = 450, int maxHealth = 500, int mana = 200, int maxMana = 300,
+        int freeCap = 400, ulong exp = 1000, int level = 10, int lvlPct = 75,
+        int stamina = 2000, int soul = 90, int regen = 60, int offline = 120)
+    {
+        var p = new OutputMessage();
+        p.WriteU8((byte)GameServerPacket.PlayerData);
+        p.WriteU32((uint)health);      p.WriteU32((uint)maxHealth);
+        p.WriteU32((uint)(freeCap * 100));
+        p.WriteU32((uint)(exp & 0xFFFFFFFF)); p.WriteU32((uint)(exp >> 32));
+        p.WriteU16((ushort)level);     p.WriteU8((byte)lvlPct);
+        p.WriteU16(100); p.WriteU16(0); p.WriteU16(0); p.WriteU16(100); // xp bonus
+        p.WriteU32((uint)mana);        p.WriteU32((uint)maxMana);
+        p.WriteU8((byte)soul);         p.WriteU16((ushort)stamina);
+        p.WriteU16(220);               // baseSpeed
+        p.WriteU16((ushort)regen);     p.WriteU16((ushort)offline);
+        p.WriteU16(0); p.WriteU8(0);   // xpBoost
+        p.WriteU32(0); p.WriteU32(0);  // manaShield
+        return p;
+    }
+
+    private static OutputMessage BuildPlayerSkillsPacket(
+        int magicLv = 5, int baseMagicLv = 4, int magicPct = 34,
+        int skillBase = 10, int skillLevel = 15, int skillPct = 50)
+    {
+        var p = new OutputMessage();
+        p.WriteU8((byte)GameServerPacket.PlayerSkills);
+        p.WriteU16((ushort)magicLv);     p.WriteU16((ushort)baseMagicLv);
+        p.WriteU16(0);                   p.WriteU16((ushort)(magicPct * 100));
+        for (int i = 0; i < 7; i++)
+        {
+            p.WriteU16((ushort)skillLevel); p.WriteU16((ushort)skillBase);
+            p.WriteU16(0);
+            p.WriteU16((ushort)(skillPct * 100));
+        }
+        return p;
+    }
+
+    [Fact]
+    public void ConnectProtocol_PlayerStats_UpdatesLocalPlayer()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildPlayerStatsPacket(
+            health: 400, maxHealth: 500, mana: 200, maxMana: 300,
+            freeCap: 400, exp: 1000, level: 10, lvlPct: 75,
+            stamina: 2000, soul: 90, regen: 60, offline: 120).ToArray());
+
+        var lp = game.LocalPlayer;
+        Assert.Equal(400,   lp.Health);
+        Assert.Equal(500,   lp.MaxHealth);
+        Assert.Equal(200,   lp.Mana);
+        Assert.Equal(300,   lp.MaxMana);
+        Assert.Equal(400,   lp.FreeCapacity);
+        Assert.Equal(1000UL, lp.Exp);
+        Assert.Equal(10,    lp.Level);
+        Assert.Equal(75,    lp.LevelPercent);
+        Assert.Equal(2000,  lp.Stamina);
+        Assert.Equal(90,    lp.Soul);
+        Assert.Equal(60,    lp.RegenerationTime);
+        Assert.Equal(120,   lp.OfflineTrainingTime);
+    }
+
+    [Fact]
+    public void ConnectProtocol_PlayerSkills_UpdatesLocalPlayer()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildPlayerSkillsPacket(
+            magicLv: 5, baseMagicLv: 4, magicPct: 34,
+            skillBase: 10, skillLevel: 15, skillPct: 50).ToArray());
+
+        var lp = game.LocalPlayer;
+        Assert.Equal(5,  lp.MagicLevel);
+        Assert.Equal(4,  lp.BaseMagicLevel);
+        Assert.Equal(34, lp.MagicLevelPercent);
+        // Fist (skill 0): level=15, base=10, percent=50
+        Assert.Equal(15, lp.GetSkillLevel(OTClient.Framework.Game.SkillType.Fist));
+        Assert.Equal(10, lp.GetSkillBaseLevel(OTClient.Framework.Game.SkillType.Fist));
+        Assert.Equal(50, lp.GetSkillPercent(OTClient.Framework.Game.SkillType.Fist));
+        // Fishing (skill 6)
+        Assert.Equal(15, lp.GetSkillLevel(OTClient.Framework.Game.SkillType.Fishing));
+    }
+
+    [Fact]
+    public void ConnectProtocol_PlayerState_UpdatesConditions()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerState);
+        out_.WriteU32(0b1010_0101u);
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0b1010_0101u, game.LocalPlayer.Conditions);
+    }
+
+    [Fact]
+    public void ConnectProtocol_PlayerModes_UpdatesFightChaseModesOnLocalPlayer()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerModes);
+        out_.WriteU8((byte)OTClient.Framework.Game.FightMode.Offensive);
+        out_.WriteU8((byte)OTClient.Framework.Game.ChaseMode.ChaseOpponent);
+        out_.WriteU8(0);   // safeMode = false
+        out_.WriteU8((byte)OTClient.Framework.Game.PvpMode.WhiteHand);
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        var lp = game.LocalPlayer;
+        Assert.Equal(OTClient.Framework.Game.FightMode.Offensive,    lp.FightMode);
+        Assert.Equal(OTClient.Framework.Game.ChaseMode.ChaseOpponent, lp.ChaseMode);
+        Assert.False(lp.SafeMode);
+        Assert.Equal(OTClient.Framework.Game.PvpMode.WhiteHand, lp.PvpMode);
+    }
+
+    [Fact]
+    public void ConnectProtocol_MultiplePackets_AccumulateCorrectly()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        // First stats packet
+        InvokeHandleRawData(pg, BuildPlayerStatsPacket(level: 5, exp: 500).ToArray());
+        Assert.Equal(5,    game.LocalPlayer.Level);
+        Assert.Equal(500UL, game.LocalPlayer.Exp);
+
+        // Second stats packet overrides
+        InvokeHandleRawData(pg, BuildPlayerStatsPacket(level: 6, exp: 1500).ToArray());
+        Assert.Equal(6,    game.LocalPlayer.Level);
+        Assert.Equal(1500UL, game.LocalPlayer.Exp);
+    }
+
+    [Fact]
+    public void ParsePlayerStats_NowIncludesRegenerationAndOfflineTraining()
+    {
+        using var pg = new ProtocolGame();
+
+        int regen = -1, offline = -1;
+        pg.PlayerStatsUpdated += (_, _, _, _, _, _, _, _, _, _, re, of) =>
+            { regen = re; offline = of; };
+
+        InvokeHandleRawData(pg, BuildPlayerStatsPacket(regen: 45, offline: 300).ToArray());
+
+        Assert.Equal(45,  regen);
+        Assert.Equal(300, offline);
+    }
+
+    [Fact]
+    public void ParsePlayerSkills_NowIncludesBaseValues()
+    {
+        using var pg = new ProtocolGame();
+
+        int baseMagic = -1;
+        int[]? baseLvs = null;
+        pg.PlayerSkillsUpdated += (_, bml, _, _, blvs, _) =>
+            { baseMagic = bml; baseLvs = blvs; };
+
+        InvokeHandleRawData(pg, BuildPlayerSkillsPacket(baseMagicLv: 3, skillBase: 8).ToArray());
+
+        Assert.Equal(3, baseMagic);
+        Assert.NotNull(baseLvs);
+        Assert.Equal(8, baseLvs![0]);   // Fist base
+        Assert.Equal(8, baseLvs![6]);   // Fishing base
+    }
+
+    [Fact]
+    public void ConnectProtocol_NullProtocol_Throws()
+    {
+        var game = new OTClient.Framework.Game.Game();
+        Assert.Throws<ArgumentNullException>(() => game.ConnectProtocol(null!));
+    }
+
+    [Fact]
+    public void ConnectProtocol_TwoProtocols_BothWired()
+    {
+        using var pg1 = new ProtocolGame();
+        using var pg2 = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg1);
+        game.ConnectProtocol(pg2);
+
+        // Each subscription is additive; the last packet to fire wins (both handlers run,
+        // the second overwriting the first in LocalPlayer).
+        InvokeHandleRawData(pg1, BuildPlayerStatsPacket(level: 10).ToArray());
+        InvokeHandleRawData(pg2, BuildPlayerStatsPacket(level: 20).ToArray());
+        Assert.Equal(20, game.LocalPlayer.Level);
     }
 }

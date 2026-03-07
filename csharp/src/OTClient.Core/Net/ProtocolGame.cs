@@ -387,16 +387,18 @@ public sealed partial class ProtocolGame : Protocol
 
     /// <summary>
     /// Raised when the server sends updated player stat values.
-    /// Parameters: (health, maxHealth, mana, maxMana, freeCapacity, experience, level, levelPercent, stamina, soul)
+    /// Parameters: (health, maxHealth, mana, maxMana, freeCapacity, experience,
+    ///              level, levelPercent, stamina, soul, regenerationTime, offlineTrainingTime)
+    /// Task T42.
     /// </summary>
-    public event Action<int, int, int, int, int, ulong, int, int, int, int>? PlayerStatsUpdated;
+    public event Action<int, int, int, int, int, ulong, int, int, int, int, int, int>? PlayerStatsUpdated;
 
     /// <summary>
     /// Raised when the server sends updated player skill values.
-    /// Parameters: (magicLevel, magicLevelPercent, fist, club, sword, axe, distance, shielding, fishing)
-    /// — all skill values are level only; percent for combat skills is also included in a separate event arg.
+    /// Parameters: (magicLevel, baseMagicLevel, magicLevelPercent, levels[], baseLevels[], percents[])
+    /// Task T42.
     /// </summary>
-    public event Action<int, int, int[], int[]>? PlayerSkillsUpdated;
+    public event Action<int, int, int, int[], int[], int[]>? PlayerSkillsUpdated;
 
     /// <summary>
     /// Raised when the server sends updated player condition flags.

@@ -935,4 +935,62 @@ public sealed class Game
         if (!IsOnline) return;
         SeekInContainerRequested?.Invoke(containerId, index);
     }
+
+    // ─── Protocol wiring (T42) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Wires a <see cref="Net.ProtocolGame"/> instance to update this game's
+    /// <see cref="LocalPlayer"/> automatically whenever the server sends stat,
+    /// skill, state or mode packets.
+    /// Call this once after creating the protocol object; the subscriptions are
+    /// kept alive as long as both objects exist.
+    /// Maps to the direct field assignments inside <c>ProtocolGame.ParsePlayerStats</c>
+    /// etc. in the original C++ code (<c>src/client/protocolgameparse.cpp</c>).
+    /// Task T42.
+    /// </summary>
+    public void ConnectProtocol(Net.ProtocolGame protocol)
+    {
+        ArgumentNullException.ThrowIfNull(protocol);
+
+        protocol.PlayerStatsUpdated += (health, maxHealth, mana, maxMana,
+            freeCapacity, experience, level, levelPercent,
+            stamina, soul, regenerationTime, offlineTrainingTime) =>
+        {
+            LocalPlayer.Health              = health;
+            LocalPlayer.MaxHealth           = maxHealth;
+            LocalPlayer.Mana                = mana;
+            LocalPlayer.MaxMana             = maxMana;
+            LocalPlayer.FreeCapacity        = freeCapacity;
+            LocalPlayer.Exp                 = experience;
+            LocalPlayer.Level               = level;
+            LocalPlayer.LevelPercent        = levelPercent;
+            LocalPlayer.Stamina             = stamina;
+            LocalPlayer.Soul                = soul;
+            LocalPlayer.RegenerationTime    = regenerationTime;
+            LocalPlayer.OfflineTrainingTime = offlineTrainingTime;
+        };
+
+        protocol.PlayerSkillsUpdated += (magicLevel, baseMagicLevel, magicLevelPercent,
+            levels, baseLevels, percents) =>
+        {
+            LocalPlayer.MagicLevel        = magicLevel;
+            LocalPlayer.BaseMagicLevel    = baseMagicLevel;
+            LocalPlayer.MagicLevelPercent = magicLevelPercent;
+            for (int i = 0; i < levels.Length && i < Enum.GetValues<SkillType>().Length; i++)
+                LocalPlayer.SetSkill((SkillType)i, levels[i], percents[i], baseLevels[i]);
+        };
+
+        protocol.PlayerStateUpdated += states =>
+        {
+            LocalPlayer.Conditions = states;
+        };
+
+        protocol.PlayerModesUpdated += (fightMode, chaseMode, safeMode, pvpMode) =>
+        {
+            LocalPlayer.FightMode = fightMode;
+            LocalPlayer.ChaseMode = chaseMode;
+            LocalPlayer.SafeMode  = safeMode;
+            LocalPlayer.PvpMode   = pvpMode;
+        };
+    }
 }
