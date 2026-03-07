@@ -1892,4 +1892,268 @@ public sealed class LuaGameGlobalsTests : IDisposable
         Assert.Equal(5, r);
         lua.Dispose();
     }
+
+    // ─── T41: Player / LocalPlayer stat Lua methods ───────────────────────────
+
+    [Fact]
+    public void Player_GetLevel_ReturnsLevel()
+    {
+        var p   = new Player { Level = 42, LevelPercent = 75 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        Assert.Equal(42, (int)lua.DoString("return p:getLevel()").Number);
+        Assert.Equal(75, (int)lua.DoString("return p:getLevelPercent()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetExperience_ReturnsExp()
+    {
+        var p = new Player { Exp = 1_000_000 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        Assert.Equal(1_000_000.0, lua.DoString("return p:getExperience()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetMana_ReturnsManaAndMaxMana()
+    {
+        var p = new Player { Mana = 300, MaxMana = 500 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        Assert.Equal(300, (int)lua.DoString("return p:getMana()").Number);
+        Assert.Equal(500, (int)lua.DoString("return p:getMaxMana()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetMagicLevel_ReturnsMagicLevels()
+    {
+        var p = new Player { MagicLevel = 12, MagicLevelPercent = 60, BaseMagicLevel = 10 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        Assert.Equal(12, (int)lua.DoString("return p:getMagicLevel()").Number);
+        Assert.Equal(60, (int)lua.DoString("return p:getMagicLevelPercent()").Number);
+        Assert.Equal(10, (int)lua.DoString("return p:getBaseMagicLevel()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetCapacity_ReturnsFreeAndTotal()
+    {
+        var p = new Player { FreeCapacity = 150, TotalCapacity = 400 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        Assert.Equal(150, (int)lua.DoString("return p:getFreeCapacity()").Number);
+        Assert.Equal(400, (int)lua.DoString("return p:getTotalCapacity()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetSkillLevel_ReturnsSkillData()
+    {
+        var p = new Player();
+        p.SetSkill(SkillType.Sword, 55, 80, 50);
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        // SkillType.Sword = 2
+        Assert.Equal(55, (int)lua.DoString("return p:getSkillLevel(2)").Number);
+        Assert.Equal(50, (int)lua.DoString("return p:getSkillBaseLevel(2)").Number);
+        Assert.Equal(80, (int)lua.DoString("return p:getSkillLevelPercent(2)").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_GetSkillLevel_DefaultsToZero()
+    {
+        var p   = new Player();
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        Assert.Equal(0, (int)lua.DoString("return p:getSkillLevel(0)").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_GetSoul_ReturnsSoul()
+    {
+        var lp  = new LocalPlayer { Soul = 87 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(87, (int)lua.DoString("return lp:getSoul()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_GetStamina_ReturnsStamina()
+    {
+        var lp  = new LocalPlayer { Stamina = 1800 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(1800, (int)lua.DoString("return lp:getStamina()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_GetStates_ReturnsConditions()
+    {
+        var lp  = new LocalPlayer { Conditions = 0b0101u };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(5, (int)lua.DoString("return lp:getStates()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_GetOfflineTrainingTime_ReturnsValue()
+    {
+        var lp  = new LocalPlayer { OfflineTrainingTime = 720 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(720, (int)lua.DoString("return lp:getOfflineTrainingTime()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_GetRegenerationTime_ReturnsValue()
+    {
+        var lp  = new LocalPlayer { RegenerationTime = 300 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(300, (int)lua.DoString("return lp:getRegenerationTime()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_IsPremium_ReturnsPremiumFlag()
+    {
+        var lp  = new LocalPlayer { IsPremium = true };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.True(lua.DoString("return lp:isPremium()").Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_SetSkill_WithDefaultBaseLevel_UsesLevelAsBase()
+    {
+        var p = new Player();
+        p.SetSkill(SkillType.Axe, 30, 50);   // no explicit base
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        // SkillType.Axe = 3; base should default to level value (30)
+        Assert.Equal(30, (int)lua.DoString("return p:getSkillBaseLevel(3)").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_InheritsPlayerStatMethods()
+    {
+        var lp = new LocalPlayer { Level = 10, Mana = 200, MaxMana = 300 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(10,  (int)lua.DoString("return lp:getLevel()").Number);
+        Assert.Equal(200, (int)lua.DoString("return lp:getMana()").Number);
+        Assert.Equal(300, (int)lua.DoString("return lp:getMaxMana()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void GGame_GetLocalPlayer_ExposesStatMethods()
+    {
+        var g  = new OTClient.Framework.Game.Game();
+        g.LocalPlayer.Level   = 99;
+        g.LocalPlayer.Soul    = 50;
+        g.LocalPlayer.Stamina = 2520;
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        Assert.Equal(99,   (int)lua.DoString("return g_game.getLocalPlayer():getLevel()").Number);
+        Assert.Equal(50,   (int)lua.DoString("return g_game.getLocalPlayer():getSoul()").Number);
+        Assert.Equal(2520, (int)lua.DoString("return g_game.getLocalPlayer():getStamina()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Player_AllSkillTypes_Accessible()
+    {
+        var p = new Player();
+        // Set all 7 skills
+        foreach (var s in Enum.GetValues<SkillType>())
+            p.SetSkill(s, (int)s + 10, (int)s * 5, (int)s + 5);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["p"] = p;
+
+        // Verify Fishing (id=6): level=16, base=11, percent=30
+        Assert.Equal(16, (int)lua.DoString("return p:getSkillLevel(6)").Number);
+        Assert.Equal(11, (int)lua.DoString("return p:getSkillBaseLevel(6)").Number);
+        Assert.Equal(30, (int)lua.DoString("return p:getSkillLevelPercent(6)").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void LocalPlayer_DefaultValues_AreCorrect()
+    {
+        var lp  = new LocalPlayer();
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["lp"] = lp;
+
+        Assert.Equal(100,  (int)lua.DoString("return lp:getSoul()").Number);
+        Assert.Equal(2520, (int)lua.DoString("return lp:getStamina()").Number);
+        Assert.Equal(0,    (int)lua.DoString("return lp:getStates()").Number);
+        Assert.False(lua.DoString("return lp:isPremium()").Boolean);
+        lua.Dispose();
+    }
 }

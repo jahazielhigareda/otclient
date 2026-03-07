@@ -239,21 +239,34 @@ public class Player : Creature
 
     private static readonly int SkillCount = Enum.GetValues<SkillType>().Length;
 
-    private readonly int[] _skillLevel   = new int[Enum.GetValues<SkillType>().Length];
-    private readonly int[] _skillPercent = new int[Enum.GetValues<SkillType>().Length];
+    private readonly int[] _skillLevel     = new int[Enum.GetValues<SkillType>().Length];
+    private readonly int[] _skillBaseLevel = new int[Enum.GetValues<SkillType>().Length];
+    private readonly int[] _skillPercent   = new int[Enum.GetValues<SkillType>().Length];
 
     /// <summary>Returns the level of a combat skill.</summary>
-    public int GetSkillLevel(SkillType skill)   => _skillLevel[(int)skill];
+    public int GetSkillLevel(SkillType skill)     => _skillLevel[(int)skill];
+
+    /// <summary>Returns the base level of a combat skill (before modifiers).</summary>
+    public int GetSkillBaseLevel(SkillType skill)  => _skillBaseLevel[(int)skill];
 
     /// <summary>Returns the percent progress (0–100) of a combat skill.</summary>
-    public int GetSkillPercent(SkillType skill) => _skillPercent[(int)skill];
+    public int GetSkillPercent(SkillType skill)   => _skillPercent[(int)skill];
 
-    /// <summary>Sets the level and percent progress of a combat skill.</summary>
-    public void SetSkill(SkillType skill, int level, int percent)
+    /// <summary>Sets the level, base level, and percent progress of a combat skill.</summary>
+    public void SetSkill(SkillType skill, int level, int percent, int baseLevel = 0)
     {
-        _skillLevel[(int)skill]   = level;
-        _skillPercent[(int)skill] = percent;
+        _skillLevel[(int)skill]     = level;
+        _skillBaseLevel[(int)skill] = baseLevel > 0 ? baseLevel : level;
+        _skillPercent[(int)skill]   = percent;
     }
+
+    // ─── Magic level base ─────────────────────────────────────────────────────
+
+    public int BaseMagicLevel { get; set; }
+
+    // ─── Total capacity ───────────────────────────────────────────────────────
+
+    public int TotalCapacity { get; set; } = 400;
 
     // ─── Vocations ────────────────────────────────────────────────────────────
 
@@ -262,6 +275,40 @@ public class Player : Creature
     // ─── Gold ─────────────────────────────────────────────────────────────────
 
     public long Gold { get; set; }
+
+    // ─── Lua accessor methods (T41) ───────────────────────────────────────────
+
+    public int   getLevel()              => Level;
+    public int   getLevelPercent()       => LevelPercent;
+    public ulong getExperience()         => Exp;
+    public int   getMana()               => Mana;
+    public int   getMaxMana()            => MaxMana;
+    public int   getMagicLevel()         => MagicLevel;
+    public int   getMagicLevelPercent()  => MagicLevelPercent;
+    public int   getBaseMagicLevel()     => BaseMagicLevel;
+    public int   getFreeCapacity()       => FreeCapacity;
+    public int   getTotalCapacity()      => TotalCapacity;
+
+    /// <summary>
+    /// Returns the level of the given combat skill (0-based id matching <see cref="SkillType"/>).
+    /// Out-of-range ids are clamped to the nearest valid id so Lua callers never receive an exception.
+    /// </summary>
+    public int   getSkillLevel(int skillId)
+        => _skillLevel[Math.Clamp(skillId, 0, _skillLevel.Length - 1)];
+
+    /// <summary>
+    /// Returns the base level of the given combat skill (before modifiers).
+    /// Out-of-range ids are clamped to the nearest valid id so Lua callers never receive an exception.
+    /// </summary>
+    public int   getSkillBaseLevel(int skillId)
+        => _skillBaseLevel[Math.Clamp(skillId, 0, _skillBaseLevel.Length - 1)];
+
+    /// <summary>
+    /// Returns the percent progress (0–100) of the given combat skill.
+    /// Out-of-range ids are clamped to the nearest valid id so Lua callers never receive an exception.
+    /// </summary>
+    public int   getSkillLevelPercent(int skillId)
+        => _skillPercent[Math.Clamp(skillId, 0, _skillPercent.Length - 1)];
 
     // ─── Lua accessor overrides (T38) ─────────────────────────────────────────
 
@@ -315,6 +362,20 @@ public sealed class LocalPlayer : Player
     /// map data arrived.
     /// </summary>
     public bool IsKnown { get; set; }
+
+    // ─── Offline training / regeneration ─────────────────────────────────────
+
+    public int OfflineTrainingTime { get; set; }
+    public int RegenerationTime    { get; set; }
+
+    // ─── Lua accessor methods (T41) ───────────────────────────────────────────
+
+    public int   getSoul()                => Soul;
+    public int   getStamina()             => Stamina;
+    public uint  getStates()              => Conditions;
+    public int   getOfflineTrainingTime() => OfflineTrainingTime;
+    public int   getRegenerationTime()    => RegenerationTime;
+    public bool  isPremium()              => IsPremium;
 }
 
 // ─── Monster ──────────────────────────────────────────────────────────────────
