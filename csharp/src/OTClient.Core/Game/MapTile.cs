@@ -1,3 +1,4 @@
+using MoonSharp.Interpreter;
 using Raylib_cs;
 
 namespace OTClient.Framework.Game;
@@ -43,7 +44,8 @@ public readonly record struct AwareRange(int Left, int Top, int Right, int Botto
 /// 7. Effects
 /// </remarks>
 /// Maps to <c>src/client/tile.h</c>.
-/// Task 8.10.
+/// Task 8.10 / T40.
+[MoonSharpUserData]
 public sealed class Tile
 {
     public Position Position { get; }
@@ -272,6 +274,150 @@ public sealed class Tile
 
     public Color MinimapColor
         => _ground?.ThingType?.MinimapColor ?? Color.Black;
+
+    // ─── Lua camelCase accessors (Task T40) ───────────────────────────────────
+
+    /// <summary>Lua: <c>tile:getPosition()</c> — returns a Lua table {x, y, z}.</summary>
+    public Table getPosition()
+    {
+        var t = new Table(null);
+        t["x"] = Position.X;
+        t["y"] = Position.Y;
+        t["z"] = Position.Z;
+        return t;
+    }
+
+    /// <summary>Lua: <c>tile:getGround()</c></summary>
+    public object? getGround() => _ground;
+
+    /// <summary>Lua: <c>tile:getItems()</c> — returns a Lua array table of items.</summary>
+    public Table getItems()
+    {
+        var t = new Table(null);
+        for (int i = 0; i < _items.Count; i++)
+            t[i + 1] = _items[i];
+        return t;
+    }
+
+    /// <summary>Lua: <c>tile:getCreatures()</c> — returns a Lua array table of creatures.</summary>
+    public Table getCreatures()
+    {
+        var t = new Table(null);
+        for (int i = 0; i < _creatures.Count; i++)
+            t[i + 1] = _creatures[i];
+        return t;
+    }
+
+    /// <summary>
+    /// Lua: <c>tile:getThings()</c> — returns all things (ground, items, creatures)
+    /// as a Lua array table in rendering order.
+    /// </summary>
+    public Table getThings()
+    {
+        var t = new Table(null);
+        int idx = 1;
+        if (_ground is not null)  t[idx++] = _ground;
+        foreach (var item in _items)    t[idx++] = item;
+        foreach (var c in _creatures)   t[idx++] = c;
+        return t;
+    }
+
+    /// <summary>
+    /// Lua: <c>tile:getThing(stackPos)</c> — thing at the given 0-based stack position
+    /// (0 = ground).  Returns nil when out of range.
+    /// </summary>
+    public object? getThing(int stackPos) => GetThingAtStack(stackPos);
+
+    /// <summary>
+    /// Lua: <c>tile:getThingStackPos(thing)</c> — 0-based stack position of the given
+    /// thing, or –1 if not found.
+    /// </summary>
+    public int getThingStackPos(Thing thing)
+    {
+        if (ReferenceEquals(thing, _ground)) return 0;
+        int offset = _ground is not null ? 1 : 0;
+        if (thing is Item item2)
+        {
+            int idx = _items.IndexOf(item2);
+            if (idx >= 0) return offset + idx;
+        }
+        if (thing is Creature c)
+        {
+            int ci = _creatures.IndexOf(c);
+            if (ci >= 0) return offset + _items.Count + ci;
+        }
+        return -1;
+    }
+
+    /// <summary>Lua: <c>tile:getThingCount()</c></summary>
+    public int getThingCount() => ThingCount;
+
+    /// <summary>
+    /// Lua: <c>tile:getTopThing()</c> — topmost thing (creatures first, then
+    /// top item, then ground).  Returns nil when tile is empty.
+    /// </summary>
+    public object? getTopThing()
+    {
+        if (_creatures.Count > 0) return _creatures[^1];
+        if (_items.Count    > 0) return _items[^1];
+        return _ground;
+    }
+
+    /// <summary>Lua: <c>tile:getTopLookThing()</c> — topmost thing a player can look at.</summary>
+    public object? getTopLookThing()
+    {
+        if (_creatures.Count > 0) return _creatures[^1];
+        for (int i = _items.Count - 1; i >= 0; i--)
+            if (_items[i].IsPickupable || _items[i].IsNotWalkable)
+                return _items[i];
+        return _ground;
+    }
+
+    /// <summary>Lua: <c>tile:getTopUseThing()</c> — topmost item that can be used.</summary>
+    public object? getTopUseThing()
+    {
+        for (int i = _items.Count - 1; i >= 0; i--)
+            if (_items[i].IsPickupable || _items[i].IsNotWalkable)
+                return _items[i];
+        return _ground;
+    }
+
+    /// <summary>Lua: <c>tile:getTopCreature()</c> — topmost creature or nil.</summary>
+    public object? getTopCreature()
+        => _creatures.Count > 0 ? _creatures[^1] : null;
+
+    /// <summary>Lua: <c>tile:getTopMoveThing()</c> — topmost moveable item.</summary>
+    public object? getTopMoveThing()
+    {
+        for (int i = _items.Count - 1; i >= 0; i--)
+            if (_items[i].IsPickupable)
+                return _items[i];
+        return null;
+    }
+
+    /// <summary>Lua: <c>tile:isWalkable()</c></summary>
+    public bool isWalkable() => IsWalkable;
+
+    /// <summary>Lua: <c>tile:isPathable()</c></summary>
+    public bool isPathable() => IsPathable;
+
+    /// <summary>Lua: <c>tile:isLookPossible()</c></summary>
+    public bool isLookPossible() => IsLookPossible;
+
+    /// <summary>Lua: <c>tile:isFullyOpaque()</c></summary>
+    public bool isFullyOpaque() => IsFullyOpaque;
+
+    /// <summary>Lua: <c>tile:isFullGround()</c></summary>
+    public bool isFullGround() => _ground?.ThingType?.IsFullGround ?? false;
+
+    /// <summary>Lua: <c>tile:isEmpty()</c></summary>
+    public bool isEmpty() => IsEmpty;
+
+    /// <summary>Lua: <c>tile:hasCreatures()</c></summary>
+    public bool hasCreatures() => HasCreatures;
+
+    /// <summary>Lua: <c>tile:clean()</c></summary>
+    public void clean() => Clear();
 }
 
 // ─── Pathfinding result / flags (T07) ────────────────────────────────────────

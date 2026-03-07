@@ -166,6 +166,10 @@ public static class LuaGlobals
         LuaBinder.RegisterType<Game.Item>();
         LuaBinder.RegisterType<Game.Container>();
 
+        // T40 — Tile and Outfit as Lua userdata
+        LuaBinder.RegisterType<Game.Tile>();
+        LuaBinder.RegisterType<Game.Outfit>();
+
         // Task 6.11 — UI
         LuaBinder.RegisterType<LuaUiProxy>();
         LuaBinder.RegisterType<UI.UIWidget>();

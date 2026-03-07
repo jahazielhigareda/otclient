@@ -1592,4 +1592,304 @@ public sealed class LuaGameGlobalsTests : IDisposable
         Assert.Equal(77, capturedItemId);
         lua.Dispose();
     }
+
+    // ─── T40: Outfit as Lua userdata ─────────────────────────────────────────
+
+    [Fact]
+    public void Outfit_GettersReturnConstructedValues()
+    {
+        var outfit = new Outfit { Id = 42, Head = 10, Body = 20, Legs = 30, Feet = 40, Addons = 3, MountId = 5 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["outfit"] = outfit;
+
+        Assert.Equal(42, lua.DoString("return outfit:getId()").Number);
+        Assert.Equal(5,  lua.DoString("return outfit:getMount()").Number);
+        Assert.Equal(10, lua.DoString("return outfit:getHead()").Number);
+        Assert.Equal(20, lua.DoString("return outfit:getBody()").Number);
+        Assert.Equal(30, lua.DoString("return outfit:getLegs()").Number);
+        Assert.Equal(40, lua.DoString("return outfit:getFeet()").Number);
+        Assert.Equal(3,  lua.DoString("return outfit:getAddons()").Number);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Outfit_HasMount_ReturnsCorrectly()
+    {
+        var mounted   = new Outfit { MountId = 10 };
+        var unmounted = new Outfit { MountId = 0 };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["mounted"]   = mounted;
+        lua.RawScript.Globals["unmounted"] = unmounted;
+
+        Assert.True (lua.DoString("return mounted:hasMount()").Boolean);
+        Assert.False(lua.DoString("return unmounted:hasMount()").Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Outfit_SettersUpdateValues()
+    {
+        var outfit = new Outfit();
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["outfit"] = outfit;
+
+        lua.DoString("outfit:setId(128); outfit:setMount(120); outfit:setHead(5); outfit:setBody(6); outfit:setLegs(7); outfit:setFeet(8); outfit:setAddons(3)");
+
+        Assert.Equal(128, outfit.Id);
+        Assert.Equal(120, outfit.MountId);
+        Assert.Equal(5,   outfit.Head);
+        Assert.Equal(6,   outfit.Body);
+        Assert.Equal(7,   outfit.Legs);
+        Assert.Equal(8,   outfit.Feet);
+        Assert.Equal(3,   outfit.Addons);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Outfit_SettersClampToByte()
+    {
+        var outfit = new Outfit();
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["outfit"] = outfit;
+
+        lua.DoString("outfit:setHead(999); outfit:setAddons(-5)");
+
+        Assert.Equal(255, outfit.Head);
+        Assert.Equal(0,   outfit.Addons);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Creature_GetOutfit_ReturnsLuaAccessibleOutfit()
+    {
+        var creature = new Creature { Outfit = new Outfit { Id = 77, Head = 3 } };
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["c"] = creature;
+
+        Assert.Equal(77, lua.DoString("return c:getOutfit():getId()").Number);
+        Assert.Equal(3,  lua.DoString("return c:getOutfit():getHead()").Number);
+        lua.Dispose();
+    }
+
+    // ─── T40: Tile as Lua userdata ───────────────────────────────────────────
+
+    [Fact]
+    public void Tile_GetPosition_ReturnsTable()
+    {
+        var tile = new Tile(new Position(100, 200, 7));
+        var lua  = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var x = lua.DoString("return tile:getPosition().x").Number;
+        var y = lua.DoString("return tile:getPosition().y").Number;
+        var z = lua.DoString("return tile:getPosition().z").Number;
+
+        Assert.Equal(100, x);
+        Assert.Equal(200, y);
+        Assert.Equal(7,   z);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetGround_ReturnsNilWhenEmpty()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        var lua  = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var r = lua.DoString("return tile:getGround()");
+        Assert.Equal(MoonSharp.Interpreter.DataType.Nil, r.Type);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetGround_ReturnsItemAfterSetGround()
+    {
+        var tile   = new Tile(new Position(0, 0, 7));
+        var ground = new Item { Id = 101 };
+        tile.SetGround(ground);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var r = lua.DoString("return tile:getGround():getId()").Number;
+        Assert.Equal(101, r);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetItems_ReturnsTableWithItems()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        tile.AddItem(new Item { Id = 10 });
+        tile.AddItem(new Item { Id = 20 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var count = lua.DoString("local t = tile:getItems(); local n=0; for _ in pairs(t) do n=n+1 end; return n").Number;
+        Assert.Equal(2, count);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetThings_IncludesGroundAndItems()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        tile.SetGround(new Item { Id = 1 });
+        tile.AddItem(new Item { Id = 2 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var count = lua.DoString("local t = tile:getThings(); local n=0; for _ in pairs(t) do n=n+1 end; return n").Number;
+        Assert.Equal(2, count);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetThing_ReturnsGroundAtStackPos0()
+    {
+        var tile   = new Tile(new Position(0, 0, 7));
+        var ground = new Item { Id = 55 };
+        tile.SetGround(ground);
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var r = lua.DoString("return tile:getThing(0):getId()").Number;
+        Assert.Equal(55, r);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetThingCount_CountsAllThings()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        tile.SetGround(new Item { Id = 1 });
+        tile.AddItem(new Item { Id = 2 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var count = lua.DoString("return tile:getThingCount()").Number;
+        Assert.Equal(2, count);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_IsWalkable_FalseWhenNoGround()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        var lua  = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        Assert.False(lua.DoString("return tile:isWalkable()").Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_IsEmpty_TrueWhenNoThings()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        var lua  = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        Assert.True(lua.DoString("return tile:isEmpty()").Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_HasCreatures_TrueAfterAddCreature()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        tile.AddCreature(new Creature { Id = 1 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        Assert.True(lua.DoString("return tile:hasCreatures()").Boolean);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_Clean_RemovesAllItems()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        tile.SetGround(new Item { Id = 1 });
+        tile.AddItem(new Item { Id = 2 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        lua.DoString("tile:clean()");
+        Assert.True(tile.IsEmpty);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void Tile_GetCreatures_ReturnsTable()
+    {
+        var tile = new Tile(new Position(0, 0, 7));
+        tile.AddCreature(new Creature { Id = 1 });
+        tile.AddCreature(new Creature { Id = 2 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua);
+        lua.RawScript.Globals["tile"] = tile;
+
+        var count = lua.DoString("local t = tile:getCreatures(); local n=0; for _ in pairs(t) do n=n+1 end; return n").Number;
+        Assert.Equal(2, count);
+        lua.Dispose();
+    }
+
+    [Fact]
+    public void GMap_GetTile_ReturnsTileAsLuaUserdata()
+    {
+        var g    = new OTClient.Framework.Game.Game();
+        var pos  = new Position(100, 100, 7);
+        var tile = g.Map.GetOrCreate(pos);
+        tile.SetGround(new Item { Id = 5 });
+
+        var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: g);
+
+        var r = lua.DoString("local t = g_map.getTile(100, 100, 7); return t:getGround():getId()").Number;
+        Assert.Equal(5, r);
+        lua.Dispose();
+    }
 }
