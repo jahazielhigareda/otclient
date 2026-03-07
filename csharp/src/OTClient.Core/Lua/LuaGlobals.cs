@@ -170,6 +170,9 @@ public static class LuaGlobals
         LuaBinder.RegisterType<Game.Tile>();
         LuaBinder.RegisterType<Game.Outfit>();
 
+        // T43 — VipEntry as Lua userdata
+        LuaBinder.RegisterType<Game.VipEntry>();
+
         // Task 6.11 — UI
         LuaBinder.RegisterType<LuaUiProxy>();
         LuaBinder.RegisterType<UI.UIWidget>();

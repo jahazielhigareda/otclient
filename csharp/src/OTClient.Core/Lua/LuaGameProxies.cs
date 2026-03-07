@@ -344,7 +344,7 @@ public sealed class LuaGameProxy
     [LuaMethod] public void rejectTrade()
         => _game.RejectTrade();
 
-    // ─── VIP management (T21) ─────────────────────────────────────────────────
+    // ─── VIP management (T21 / T43) ──────────────────────────────────────────
 
     /// <summary>Adds a player to the VIP (friends) list.</summary>
     [LuaMethod] public void addVip(string name)
@@ -353,6 +353,22 @@ public sealed class LuaGameProxy
     /// <summary>Removes a player from the VIP (friends) list by creature ID.</summary>
     [LuaMethod] public void removeVip(uint id)
         => _game.RemoveVip(id);
+
+    /// <summary>
+    /// Returns the VIP entry for the given creature ID, or nil if unknown.
+    /// Maps to <c>Game::GetVip()</c>.
+    /// Task T43.
+    /// </summary>
+    [LuaMethod] public Game.VipEntry? getVip(uint id)
+        => _game.GetVip(id);
+
+    /// <summary>
+    /// Returns a list of all known VIP entries.
+    /// Maps to <c>Game::getVips()</c> in the C++ client.
+    /// Task T43.
+    /// </summary>
+    [LuaMethod] public IReadOnlyList<Game.VipEntry> getVips()
+        => _game.GetVips();
 
     // ─── Container / Inventory accessors (T39) ────────────────────────────────
 

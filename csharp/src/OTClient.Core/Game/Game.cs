@@ -558,13 +558,77 @@ public sealed class Game
         RejectTradeRequested?.Invoke();
     }
 
-    // ─── VIP management (T21) ─────────────────────────────────────────────────
+    // ─── VIP management (T21 / T43) ──────────────────────────────────────────────
+
+    private readonly Dictionary<uint, VipEntry> _vips = [];
 
     /// <summary>Raised to request adding a player to the VIP list.</summary>
     public event Action<string>? AddVipRequested;   // name
 
     /// <summary>Raised to request removing a player from the VIP list.</summary>
     public event Action<uint>? RemoveVipRequested;  // id
+
+    /// <summary>
+    /// Raised when the server adds or refreshes a VIP entry.
+    /// Parameter is the updated <see cref="VipEntry"/>.
+    /// Maps to <c>Game::processVipAdd</c> / <c>g_lua.callGlobalField("g_game","onAddVip")</c>.
+    /// Task T43.
+    /// </summary>
+    public event Action<VipEntry>? OnVipAdded;
+
+    /// <summary>
+    /// Raised when the online/offline status of a VIP entry changes.
+    /// Parameters: (id, newStatus — 0=offline, 1=online).
+    /// Maps to <c>Game::processVipStateChange</c> / <c>g_lua.callGlobalField("g_game","onVipStateChange")</c>.
+    /// Task T43.
+    /// </summary>
+    public event Action<uint, uint>? OnVipStateChanged;
+
+    /// <summary>
+    /// Returns a snapshot of all known VIP entries.
+    /// Maps to <c>Game::getVips()</c>.
+    /// Task T43.
+    /// </summary>
+    public IReadOnlyList<VipEntry> GetVips()
+        => [.. _vips.Values];
+
+    /// <summary>
+    /// Returns the VIP entry with the given creature ID, or <c>null</c> if unknown.
+    /// Task T43.
+    /// </summary>
+    public VipEntry? GetVip(uint id)
+        => _vips.TryGetValue(id, out var e) ? e : null;
+
+    /// <summary>
+    /// Processes a VIP entry received from the server.
+    /// Stores the entry in <see cref="_vips"/> and raises <see cref="OnVipAdded"/>.
+    /// Maps to <c>Game::processVipAdd</c>.
+    /// Task T43.
+    /// </summary>
+    internal void ProcessVipAdd(uint id, string name, uint status,
+        string description, uint iconId, bool notifyLogin)
+    {
+        var entry = _vips.TryGetValue(id, out var existing) ? existing : new VipEntry { Id = id };
+        entry.Name        = name;
+        entry.Status      = status;
+        entry.Description = description;
+        entry.IconId      = iconId;
+        entry.NotifyLogin = notifyLogin;
+        _vips[id] = entry;
+        OnVipAdded?.Invoke(entry);
+    }
+
+    /// <summary>
+    /// Updates the status of an existing VIP entry.
+    /// Maps to <c>Game::processVipStateChange</c>.
+    /// Task T43.
+    /// </summary>
+    internal void ProcessVipStateChange(uint id, uint status)
+    {
+        if (!_vips.TryGetValue(id, out var entry)) return;
+        entry.Status = status;
+        OnVipStateChanged?.Invoke(id, status);
+    }
 
     /// <summary>
     /// Adds a player to the VIP (friends) list.
@@ -946,7 +1010,7 @@ public sealed class Game
     /// kept alive as long as both objects exist.
     /// Maps to the direct field assignments inside <c>ProtocolGame.ParsePlayerStats</c>
     /// etc. in the original C++ code (<c>src/client/protocolgameparse.cpp</c>).
-    /// Task T42.
+    /// Task T42.  VIP wiring added in T43.
     /// </summary>
     public void ConnectProtocol(Net.ProtocolGame protocol)
     {
@@ -992,5 +1056,12 @@ public sealed class Game
             LocalPlayer.SafeMode  = safeMode;
             LocalPlayer.PvpMode   = pvpMode;
         };
+
+        // T43: wire VIP list events
+        protocol.VipAdded += (id, name, status, description, iconId, notifyLogin) =>
+            ProcessVipAdd(id, name, status, description, iconId, notifyLogin);
+
+        protocol.VipStateChanged += (id, status) =>
+            ProcessVipStateChange(id, status);
     }
 }

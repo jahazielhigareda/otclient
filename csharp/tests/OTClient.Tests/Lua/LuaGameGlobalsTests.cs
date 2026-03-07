@@ -363,6 +363,51 @@ public sealed class LuaGameGlobalsTests : IDisposable
         Assert.True(result.Boolean);
     }
 
+    // ─── g_game T43: getVip / getVips Lua methods ─────────────────────────────
+
+    [Fact]
+    public void G_Game_GetVip_UnknownId_ReturnsNil()
+    {
+        var result = _lua.DoString("return g_game.getVip(9999)");
+        Assert.Equal(DataType.Nil, result.Type);
+    }
+
+    [Fact]
+    public void G_Game_GetVips_EmptyGame_ReturnsEmptyTable()
+    {
+        var result = _lua.DoString("local v = g_game.getVips() return #v");
+        Assert.Equal(0.0, result.Number);
+    }
+
+    [Fact]
+    public void G_Game_GetVip_KnownId_ReturnsVipEntry()
+    {
+        var game = new OTClient.Framework.Game.Game();
+        game.ProcessVipAdd(77, "Charlie", 1, "best bud", 2, true);
+
+        using var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: game);
+
+        var result = lua.DoString("local e = g_game.getVip(77) return e:getName()");
+        Assert.Equal("Charlie", result.String);
+    }
+
+    [Fact]
+    public void G_Game_GetVips_ReturnsAllEntries()
+    {
+        var game = new OTClient.Framework.Game.Game();
+        game.ProcessVipAdd(1, "Alpha", 0, "", 0, false);
+        game.ProcessVipAdd(2, "Beta",  1, "", 0, false);
+
+        using var lua = new LuaInterface();
+        lua.Init();
+        LuaGlobals.Register(lua, game: game);
+
+        var result = lua.DoString("return #g_game.getVips()");
+        Assert.Equal(2.0, result.Number);
+    }
+
     // ─── g_map (6.10) ────────────────────────────────────────────────────────
 
     [Fact]

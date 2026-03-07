@@ -1241,3 +1241,47 @@ public sealed class StorePurchaseResult
     public uint   TransferableCoins { get; set; }
 }
 
+// ─── VipEntry (T43) ───────────────────────────────────────────────────────────
+
+/// <summary>
+/// One entry in the player's VIP (friends) list as maintained by the game client.
+/// Populated by <c>ProtocolGame.ParseVipAdd</c> and updated by
+/// <c>ProtocolGame.ParseVipState</c>.
+/// Maps to the <c>Vip</c> tuple in <c>src/client/staticdata.h</c>:
+/// <c>using Vip = std::tuple&lt;string, uint32_t, string, int, bool, vector&lt;uint8_t&gt;&gt;</c>.
+/// Task T43.
+/// </summary>
+[MoonSharpUserData]
+public sealed class VipEntry
+{
+    /// <summary>Server-assigned creature ID for the VIP player.</summary>
+    public uint   Id           { get; set; }
+    /// <summary>Display name of the VIP player.</summary>
+    public string Name         { get; set; } = string.Empty;
+    /// <summary>Online status received from the server: 0 = offline, 1 = online.
+    /// Only values 0 and 1 are currently defined in the Tibia 12.x protocol.</summary>
+    public uint   Status       { get; set; }
+    /// <summary>Optional description text set by the player.</summary>
+    public string Description  { get; set; } = string.Empty;
+    /// <summary>Icon identifier chosen for this VIP entry.</summary>
+    public uint   IconId       { get; set; }
+    /// <summary>Whether the client should notify when this player logs in.</summary>
+    public bool   NotifyLogin  { get; set; }
+
+    // ── Lua accessor methods ────────────────────────────────────────────────
+    /// <summary>Lua: <c>entry:getId()</c></summary>
+    public uint   getId()          => Id;
+    /// <summary>Lua: <c>entry:getName()</c></summary>
+    public string getName()        => Name;
+    /// <summary>Lua: <c>entry:getStatus()</c> — 0=offline, 1=online</summary>
+    public uint   getStatus()      => Status;
+    /// <summary>Lua: <c>entry:getDescription()</c></summary>
+    public string getDescription() => Description;
+    /// <summary>Lua: <c>entry:getIconId()</c></summary>
+    public uint   getIconId()      => IconId;
+    /// <summary>Lua: <c>entry:getNotifyLogin()</c></summary>
+    public bool   getNotifyLogin() => NotifyLogin;
+    /// <summary>Lua: <c>entry:isOnline()</c></summary>
+    public bool   isOnline()       => Status != 0;
+}
+

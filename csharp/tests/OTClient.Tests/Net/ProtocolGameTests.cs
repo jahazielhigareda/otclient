@@ -2436,4 +2436,157 @@ public sealed class ProtocolGameTests
         InvokeHandleRawData(pg2, BuildPlayerStatsPacket(level: 20).ToArray());
         Assert.Equal(20, game.LocalPlayer.Level);
     }
+
+    // ─── T43: ConnectProtocol wires VIP events → Game._vips ─────────────────
+
+    static OutputMessage BuildVipAddPacket(uint id, string name, uint status = 1,
+        string description = "", uint iconId = 0, bool notify = false)
+    {
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.VipAdd);
+        out_.WriteU32(id);
+        out_.WriteString(name);
+        out_.WriteString(description);
+        out_.WriteU32(iconId);
+        out_.WriteU8(notify ? (byte)1 : (byte)0);
+        out_.WriteU8((byte)status);
+        out_.WriteU8(0);   // vipGroupSize = 0
+        return out_;
+    }
+
+    static OutputMessage BuildVipStatePacket(uint id, uint status)
+    {
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.VipState);
+        out_.WriteU32(id);
+        out_.WriteU8((byte)status);
+        return out_;
+    }
+
+    [Fact]
+    public void ConnectProtocol_VipAdd_PopulatesGameVipList()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildVipAddPacket(10, "Alice", status: 1).ToArray());
+
+        var entry = game.GetVip(10);
+        Assert.NotNull(entry);
+        Assert.Equal("Alice", entry!.Name);
+        Assert.Equal(1u, entry.Status);
+    }
+
+    [Fact]
+    public void ConnectProtocol_VipAdd_RaisesOnVipAddedEvent()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        OTClient.Framework.Game.VipEntry? raised = null;
+        game.OnVipAdded += e => raised = e;
+
+        InvokeHandleRawData(pg, BuildVipAddPacket(20, "Bob", status: 0, description: "pal",
+            iconId: 3, notify: true).ToArray());
+
+        Assert.NotNull(raised);
+        Assert.Equal(20u,   raised!.Id);
+        Assert.Equal("Bob", raised.Name);
+        Assert.Equal(0u,    raised.Status);
+        Assert.Equal("pal", raised.Description);
+        Assert.Equal(3u,    raised.IconId);
+        Assert.True(raised.NotifyLogin);
+    }
+
+    [Fact]
+    public void ConnectProtocol_VipStateChange_UpdatesExistingEntry()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        // Add VIP first (offline)
+        InvokeHandleRawData(pg, BuildVipAddPacket(30, "Carol", status: 0).ToArray());
+        Assert.Equal(0u, game.GetVip(30)!.Status);
+
+        // Then bring online
+        InvokeHandleRawData(pg, BuildVipStatePacket(30, 1).ToArray());
+        Assert.Equal(1u, game.GetVip(30)!.Status);
+    }
+
+    [Fact]
+    public void ConnectProtocol_VipStateChange_RaisesOnVipStateChangedEvent()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildVipAddPacket(40, "Dave", status: 1).ToArray());
+
+        uint? gotId = null; uint? gotStatus = null;
+        game.OnVipStateChanged += (id, st) => { gotId = id; gotStatus = st; };
+
+        InvokeHandleRawData(pg, BuildVipStatePacket(40, 0).ToArray());
+
+        Assert.Equal(40u, gotId);
+        Assert.Equal(0u,  gotStatus);
+    }
+
+    [Fact]
+    public void ConnectProtocol_VipStateChange_UnknownId_DoesNotThrow()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        // No entry added — should silently ignore
+        var ex = Record.Exception(() =>
+            InvokeHandleRawData(pg, BuildVipStatePacket(999, 1).ToArray()));
+        Assert.Null(ex);
+        Assert.Null(game.GetVip(999));
+    }
+
+    [Fact]
+    public void GetVips_ReturnsAllEntries()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildVipAddPacket(1, "Alpha").ToArray());
+        InvokeHandleRawData(pg, BuildVipAddPacket(2, "Beta").ToArray());
+        InvokeHandleRawData(pg, BuildVipAddPacket(3, "Gamma").ToArray());
+
+        var all = game.GetVips();
+        Assert.Equal(3, all.Count);
+        Assert.Contains(all, e => e.Name == "Alpha");
+        Assert.Contains(all, e => e.Name == "Beta");
+        Assert.Contains(all, e => e.Name == "Gamma");
+    }
+
+    [Fact]
+    public void GetVip_UnknownId_ReturnsNull()
+    {
+        var game = new OTClient.Framework.Game.Game();
+        Assert.Null(game.GetVip(9999));
+    }
+
+    [Fact]
+    public void ConnectProtocol_VipAdd_UpdatesExistingEntryName()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildVipAddPacket(50, "Eve", status: 0).ToArray());
+        InvokeHandleRawData(pg, BuildVipAddPacket(50, "Eve Renamed", status: 1).ToArray());
+
+        var entry = game.GetVip(50);
+        Assert.NotNull(entry);
+        Assert.Equal("Eve Renamed", entry!.Name);
+        Assert.Equal(1u, entry.Status);
+        Assert.Single(game.GetVips(), e => e.Id == 50);
+    }
 }
