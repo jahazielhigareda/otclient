@@ -2927,4 +2927,307 @@ public sealed class ProtocolGameTests
         lua.Dispose();
         Assert.False(val);
     }
+
+    // ─── T45: Opcode values ───────────────────────────────────────────────────
+
+    [Fact] public void GameServerPacket_AttchedEffect_Is0x34()   => Assert.Equal(0x34, (byte)GameServerPacket.AttchedEffect);
+    [Fact] public void GameServerPacket_DetachEffect_Is0x35()    => Assert.Equal(0x35, (byte)GameServerPacket.DetachEffect);
+    [Fact] public void GameServerPacket_CreatureShader_Is0x36()  => Assert.Equal(0x36, (byte)GameServerPacket.CreatureShader);
+    [Fact] public void GameServerPacket_MapShader_Is0x37()       => Assert.Equal(0x37, (byte)GameServerPacket.MapShader);
+    [Fact] public void GameServerPacket_CreatureTyping_Is0x38()  => Assert.Equal(0x38, (byte)GameServerPacket.CreatureTyping);
+    [Fact] public void GameServerPacket_CreatureUnpass_Is0x92()  => Assert.Equal(0x92, (byte)GameServerPacket.CreatureUnpass);
+    [Fact] public void GameServerPacket_PlayerHelpers_Is0x94()   => Assert.Equal(0x94, (byte)GameServerPacket.PlayerHelpers);
+    [Fact] public void GameServerPacket_CreatureType_Is0x95()    => Assert.Equal(0x95, (byte)GameServerPacket.CreatureType);
+    [Fact] public void GameServerPacket_FloorChangeUp_Is0xBE()   => Assert.Equal(0xBE, (byte)GameServerPacket.FloorChangeUp);
+    [Fact] public void GameServerPacket_FloorChangeDown_Is0xBF() => Assert.Equal(0xBF, (byte)GameServerPacket.FloorChangeDown);
+
+    // ─── T45: ParseCreatureUnpass ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureUnpass_True_FiresCreatureUnpassUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; bool? gotUnpass = null;
+        pg.CreatureUnpassUpdated += (id, unpass) => { gotId = id; gotUnpass = unpass; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureUnpass);
+        out_.WriteU32(0xABCD_1234u);
+        out_.WriteU8(1);  // unpassable = true
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0xABCD_1234u, gotId);
+        Assert.True(gotUnpass);
+    }
+
+    [Fact]
+    public void ParseCreatureUnpass_False_FiresCreatureUnpassUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; bool? gotUnpass = null;
+        pg.CreatureUnpassUpdated += (id, unpass) => { gotId = id; gotUnpass = unpass; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureUnpass);
+        out_.WriteU32(0x0000_0001u);
+        out_.WriteU8(0);  // unpassable = false
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_0001u, gotId);
+        Assert.False(gotUnpass);
+    }
+
+    // ─── T45: ParsePlayerHelpers ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerHelpers_FiresPlayerHelpersReceived()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; ushort? gotHelpers = null;
+        pg.PlayerHelpersReceived += (id, helpers) => { gotId = id; gotHelpers = helpers; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerHelpers);
+        out_.WriteU32(0x0000_0042u);
+        out_.WriteU16(5);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_0042u, gotId);
+        Assert.Equal(5, (int)gotHelpers!.Value);
+    }
+
+    // ─── T45: ParseCreatureType ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureType_FiresCreatureTypeUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; byte? gotType = null;
+        pg.CreatureTypeUpdated += (id, type) => { gotId = id; gotType = type; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureType);
+        out_.WriteU32(0xDEAD_BEEF);
+        out_.WriteU8(1);  // monster
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0xDEAD_BEEFu, gotId);
+        Assert.Equal(1, (int)gotType!.Value);
+    }
+
+    // ─── T45: ParseCreatureTyping ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureTyping_IsTypingTrue_FiresCreatureTypingUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; bool? gotTyping = null;
+        pg.CreatureTypingUpdated += (id, typing) => { gotId = id; gotTyping = typing; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureTyping);
+        out_.WriteU32(0x0000_1111u);
+        out_.WriteU8(1);  // typing = true
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_1111u, gotId);
+        Assert.True(gotTyping);
+    }
+
+    [Fact]
+    public void ParseCreatureTyping_IsTypingFalse_FiresCreatureTypingUpdated()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; bool? gotTyping = null;
+        pg.CreatureTypingUpdated += (id, typing) => { gotId = id; gotTyping = typing; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureTyping);
+        out_.WriteU32(0x0000_2222u);
+        out_.WriteU8(0);  // typing = false
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_2222u, gotId);
+        Assert.False(gotTyping);
+    }
+
+    // ─── T45: ParseAttachedEffect ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseAttachedEffect_FiresCreatureEffectAttached()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; ushort? gotEffect = null;
+        pg.CreatureEffectAttached += (id, effectId) => { gotId = id; gotEffect = effectId; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.AttchedEffect);
+        out_.WriteU32(0x0000_CAFE);
+        out_.WriteU16(42);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_CAFEu, gotId);
+        Assert.Equal(42, (int)gotEffect!.Value);
+    }
+
+    // ─── T45: ParseDetachEffect ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseDetachEffect_FiresCreatureEffectDetached()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; ushort? gotEffect = null;
+        pg.CreatureEffectDetached += (id, effectId) => { gotId = id; gotEffect = effectId; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DetachEffect);
+        out_.WriteU32(0x0000_F00Du);
+        out_.WriteU16(99);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_F00Du, gotId);
+        Assert.Equal(99, (int)gotEffect!.Value);
+    }
+
+    // ─── T45: ParseCreatureShader ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureShader_FiresCreatureShaderChanged()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; string? gotShader = null;
+        pg.CreatureShaderChanged += (id, name) => { gotId = id; gotShader = name; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureShader);
+        out_.WriteU32(0x0000_0007u);
+        out_.WriteString("glow");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x0000_0007u, gotId);
+        Assert.Equal("glow", gotShader);
+    }
+
+    [Fact]
+    public void ParseCreatureShader_EmptyString_ClearsShader()
+    {
+        using var pg = new ProtocolGame();
+        string? gotShader = "previous";
+        pg.CreatureShaderChanged += (_, name) => gotShader = name;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureShader);
+        out_.WriteU32(1u);
+        out_.WriteString(string.Empty);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(string.Empty, gotShader);
+    }
+
+    // ─── T45: ParseMapShader ──────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseMapShader_FiresMapShaderChanged()
+    {
+        using var pg = new ProtocolGame();
+        string? gotShader = null;
+        pg.MapShaderChanged += name => gotShader = name;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MapShader);
+        out_.WriteString("rain");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("rain", gotShader);
+    }
+
+    [Fact]
+    public void ParseMapShader_EmptyString_ClearsShader()
+    {
+        using var pg = new ProtocolGame();
+        string? gotShader = "old";
+        pg.MapShaderChanged += name => gotShader = name;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MapShader);
+        out_.WriteString(string.Empty);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(string.Empty, gotShader);
+    }
+
+    // ─── T45: ParseFloorChangeUp ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseFloorChangeUp_FromUnderground_UpdatesCentralPositionAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? gotNew = null; OTClient.Framework.Game.Position? gotOld = null;
+        pg.FloorChanged += (n, o) => { gotNew = n; gotOld = o; };
+
+        // Simulate being underground at z=9
+        pg.Map.CentralPosition = new OTClient.Framework.Game.Position(100, 100, 9);
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.FloorChangeUp);
+        // position payload: x=100, y=100, z=9 → parser will decrement z to 8
+        out_.WriteU16(100);
+        out_.WriteU16(100);
+        out_.WriteU8(9);
+        // z=8 > MapSeaFloor(7): one floor loaded at z-aware=6.
+        // Floor 6 has 18×14=252 tiles; 0xFFFB covers all: first tile returns skip=251,
+        // the remaining 251 are cleaned without further reads.
+        out_.WriteU16(0xFFFB); // one floor descriptor: skip = 251 (covers 252 tiles)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        // After floor change up from z=9 to z=8: newPos = (100+1, 100+1, 8)
+        Assert.Equal(new OTClient.Framework.Game.Position(101, 101, 8), gotNew);
+        Assert.Equal(new OTClient.Framework.Game.Position(100, 100, 9), gotOld);
+        Assert.Equal(new OTClient.Framework.Game.Position(101, 101, 8), pg.Map.CentralPosition);
+    }
+
+    // ─── T45: ParseFloorChangeDown ────────────────────────────────────────────
+
+    [Fact]
+    public void ParseFloorChangeDown_ToFirstUnderground_UpdatesCentralPositionAndFiresEvent()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? gotNew = null; OTClient.Framework.Game.Position? gotOld = null;
+        pg.FloorChanged += (n, o) => { gotNew = n; gotOld = o; };
+
+        // Simulate being on sea floor z=7
+        pg.Map.CentralPosition = new OTClient.Framework.Game.Position(200, 200, 7);
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.FloorChangeDown);
+        // position payload: x=200, y=200, z=7 → parser will increment z to 8
+        out_.WriteU16(200);
+        out_.WriteU16(200);
+        out_.WriteU8(7);
+        // z+1 = 8 = MapSeaFloor+1: loads 3 floors (8, 9, 10 = z .. z+aware_range).
+        // Each floor has 18×14=252 tiles; 0xFFFB covers a full floor.
+        out_.WriteU16(0xFFFB); // floor 8
+        out_.WriteU16(0xFFFB); // floor 9
+        out_.WriteU16(0xFFFB); // floor 10
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        // After floor change down from z=7 to z=8: newPos = (200-1, 200-1, 8)
+        Assert.Equal(new OTClient.Framework.Game.Position(199, 199, 8), gotNew);
+        Assert.Equal(new OTClient.Framework.Game.Position(200, 200, 7), gotOld);
+        Assert.Equal(new OTClient.Framework.Game.Position(199, 199, 8), pg.Map.CentralPosition);
+    }
 }

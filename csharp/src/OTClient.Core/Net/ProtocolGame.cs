@@ -161,6 +161,18 @@ public enum GameServerPacket : byte
     StoreOffers              = 0xFC,  // GameServerStoreOffers (252)             — parseStoreOffers (T28)
     StoreTransactionHistory  = 0xFD,  // GameServerStoreTransactionHistory (253) — parseStoreTransactionHistory (T28)
     StoreCompletePurchase    = 0xFE,  // GameServerStoreCompletePurchase (254)   — parseCompleteStorePurchase (T28)
+
+    // T45 opcodes
+    AttchedEffect   = 0x34,  // GameServerAttchedEffect (52)    — parseAttachedEffect (T45)
+    DetachEffect    = 0x35,  // GameServerDetachEffect (53)     — parseDetachEffect (T45)
+    CreatureShader  = 0x36,  // GameServerCreatureShader (54)   — parseCreatureShader (T45)
+    MapShader       = 0x37,  // GameServerMapShader (55)        — parseMapShader (T45)
+    CreatureTyping  = 0x38,  // GameServerCreatureTyping (56)   — parseCreatureTyping (T45)
+    CreatureUnpass  = 0x92,  // GameServerCreatureUnpass (146)  — parseCreatureUnpass (T45)
+    PlayerHelpers   = 0x94,  // GameServerPlayerHelpers (148)   — parsePlayerHelpers (T45)
+    CreatureType    = 0x95,  // GameServerCreatureType (149)    — parseCreatureType (T45)
+    FloorChangeUp   = 0xBE,  // GameServerFloorChangeUp (190)   — parseFloorChangeUp (T45)
+    FloorChangeDown = 0xBF,  // GameServerFloorChangeDown (191) — parseFloorChangeDown (T45)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -658,6 +670,81 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<uint, uint>? VipStateChanged;
 
+    // ─── Creature-state events (T45) ──────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server updates the passable/unpassable state of a creature.
+    /// Parameters: (creatureId, isUnpassable — true means the tile is blocked).
+    /// Maps to <c>ProtocolGame::parseCreatureUnpass</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, bool>? CreatureUnpassUpdated;
+
+    /// <summary>
+    /// Raised when the server sends the number of party/helper members for a player.
+    /// Parameters: (creatureId, helpersCount).
+    /// Maps to <c>ProtocolGame::parsePlayerHelpers</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, ushort>? PlayerHelpersReceived;
+
+    /// <summary>
+    /// Raised when the server sends a creature's type (player/monster/NPC/summon).
+    /// Parameters: (creatureId, creatureType — byte matching <c>Otc::CreatureType</c>).
+    /// Maps to <c>ProtocolGame::parseCreatureType</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, byte>? CreatureTypeUpdated;
+
+    /// <summary>
+    /// Raised when the server updates a creature's chat-bubble (typing) state.
+    /// Parameters: (creatureId, isTyping).
+    /// Maps to <c>ProtocolGame::parseCreatureTyping</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, bool>? CreatureTypingUpdated;
+
+    /// <summary>
+    /// Raised when the server attaches a visual effect to a creature.
+    /// Parameters: (creatureId, attachedEffectId).
+    /// Maps to <c>ProtocolGame::parseAttachedEffect</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, ushort>? CreatureEffectAttached;
+
+    /// <summary>
+    /// Raised when the server removes a visual effect from a creature.
+    /// Parameters: (creatureId, attachedEffectId).
+    /// Maps to <c>ProtocolGame::parseDetachEffect</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, ushort>? CreatureEffectDetached;
+
+    /// <summary>
+    /// Raised when the server sets a GLSL shader on a creature.
+    /// Parameters: (creatureId, shaderName — empty string to clear).
+    /// Maps to <c>ProtocolGame::parseCreatureShader</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<uint, string>? CreatureShaderChanged;
+
+    /// <summary>
+    /// Raised when the server sets a GLSL shader on the map view.
+    /// Parameters: shaderName — empty string to clear.
+    /// Maps to <c>ProtocolGame::parseMapShader</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<string>? MapShaderChanged;
+
+    /// <summary>
+    /// Raised after the map central position changes due to a floor change.
+    /// Parameters: (newPosition, oldPosition).
+    /// Maps to <c>ProtocolGame::parseFloorChangeUp</c> and
+    /// <c>ProtocolGame::parseFloorChangeDown</c>.
+    /// Task T45.
+    /// </summary>
+    public event Action<Game.Position, Game.Position>? FloorChanged;
+
     // ─── NPC trade events (T15) ───────────────────────────────────────────────
 
     /// <summary>
@@ -800,6 +887,18 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.StoreOffers,             ParseStoreOffers);
         RegisterHandler((byte)GameServerPacket.StoreTransactionHistory, ParseStoreTransactionHistory);
         RegisterHandler((byte)GameServerPacket.StoreCompletePurchase,   ParseCompleteStorePurchase);
+
+        // T45 handlers
+        RegisterHandler((byte)GameServerPacket.AttchedEffect,   ParseAttachedEffect);
+        RegisterHandler((byte)GameServerPacket.DetachEffect,    ParseDetachEffect);
+        RegisterHandler((byte)GameServerPacket.CreatureShader,  ParseCreatureShader);
+        RegisterHandler((byte)GameServerPacket.MapShader,       ParseMapShader);
+        RegisterHandler((byte)GameServerPacket.CreatureTyping,  ParseCreatureTyping);
+        RegisterHandler((byte)GameServerPacket.CreatureUnpass,  ParseCreatureUnpass);
+        RegisterHandler((byte)GameServerPacket.PlayerHelpers,   ParsePlayerHelpers);
+        RegisterHandler((byte)GameServerPacket.CreatureType,    ParseCreatureType);
+        RegisterHandler((byte)GameServerPacket.FloorChangeUp,   ParseFloorChangeUp);
+        RegisterHandler((byte)GameServerPacket.FloorChangeDown, ParseFloorChangeDown);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

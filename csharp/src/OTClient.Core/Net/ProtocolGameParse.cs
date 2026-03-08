@@ -2342,4 +2342,223 @@ public sealed partial class ProtocolGame
         result.TransferableCoins = msg.ReadU32();
         StorePurchaseCompleted?.Invoke(result);
     }
+
+    // ─── T45: CreatureUnpass ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CreatureUnpass</c> (0x92 / GameServerCreatureUnpass).
+    /// Reads the creature ID and a boolean indicating whether the creature
+    /// is unpassable (true = tile is blocked by creature).
+    /// Fires <see cref="CreatureUnpassUpdated"/>.
+    /// Maps to <c>ProtocolGame::parseCreatureUnpass</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseCreatureUnpass(InputMessage msg)
+    {
+        uint creatureId    = msg.ReadU32();
+        bool isUnpassable  = msg.ReadU8() != 0;
+        CreatureUnpassUpdated?.Invoke(creatureId, isUnpassable);
+    }
+
+    // ─── T45: PlayerHelpers ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>PlayerHelpers</c> (0x94 / GameServerPlayerHelpers).
+    /// Reads the creature ID (for which player) and the helpers count (U16).
+    /// Fires <see cref="PlayerHelpersReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePlayerHelpers</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParsePlayerHelpers(InputMessage msg)
+    {
+        uint   creatureId = msg.ReadU32();
+        ushort helpers    = msg.ReadU16();
+        PlayerHelpersReceived?.Invoke(creatureId, helpers);
+    }
+
+    // ─── T45: CreatureType ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CreatureType</c> (0x95 / GameServerCreatureType).
+    /// Reads the creature ID and a byte encoding the creature type
+    /// (0 = player, 1 = monster, 2 = NPC, 3 = summon-own, 4 = summon-other).
+    /// Fires <see cref="CreatureTypeUpdated"/>.
+    /// Maps to <c>ProtocolGame::parseCreatureType</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseCreatureType(InputMessage msg)
+    {
+        uint creatureId  = msg.ReadU32();
+        byte creatureType = msg.ReadU8();
+        CreatureTypeUpdated?.Invoke(creatureId, creatureType);
+    }
+
+    // ─── T45: CreatureTyping ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CreatureTyping</c> (0x38 / GameServerCreatureTyping).
+    /// Reads the creature ID and a boolean indicating whether the creature is
+    /// currently typing (chat-bubble visible).
+    /// Fires <see cref="CreatureTypingUpdated"/>.
+    /// Maps to <c>ProtocolGame::parseCreatureTyping</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseCreatureTyping(InputMessage msg)
+    {
+        uint creatureId = msg.ReadU32();
+        bool isTyping   = msg.ReadU8() != 0;
+        CreatureTypingUpdated?.Invoke(creatureId, isTyping);
+    }
+
+    // ─── T45: AttachedEffect / DetachEffect ───────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>AttchedEffect</c> (0x34 / GameServerAttchedEffect).
+    /// Reads the creature ID and the attached-effect ID to add.
+    /// Fires <see cref="CreatureEffectAttached"/>.
+    /// Maps to <c>ProtocolGame::parseAttachedEffect</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseAttachedEffect(InputMessage msg)
+    {
+        uint   creatureId = msg.ReadU32();
+        ushort effectId   = msg.ReadU16();
+        CreatureEffectAttached?.Invoke(creatureId, effectId);
+    }
+
+    /// <summary>
+    /// Parses <c>DetachEffect</c> (0x35 / GameServerDetachEffect).
+    /// Reads the creature ID and the attached-effect ID to remove.
+    /// Fires <see cref="CreatureEffectDetached"/>.
+    /// Maps to <c>ProtocolGame::parseDetachEffect</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseDetachEffect(InputMessage msg)
+    {
+        uint   creatureId = msg.ReadU32();
+        ushort effectId   = msg.ReadU16();
+        CreatureEffectDetached?.Invoke(creatureId, effectId);
+    }
+
+    // ─── T45: CreatureShader / MapShader ──────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CreatureShader</c> (0x36 / GameServerCreatureShader).
+    /// Reads the creature ID and a GLSL shader name string.
+    /// An empty string clears the shader.
+    /// Fires <see cref="CreatureShaderChanged"/>.
+    /// Maps to <c>ProtocolGame::parseCreatureShader</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseCreatureShader(InputMessage msg)
+    {
+        uint   creatureId  = msg.ReadU32();
+        string shaderName  = msg.ReadString();
+        CreatureShaderChanged?.Invoke(creatureId, shaderName);
+    }
+
+    /// <summary>
+    /// Parses <c>MapShader</c> (0x37 / GameServerMapShader).
+    /// Reads a GLSL shader name string to apply to the map view.
+    /// An empty string clears the shader.
+    /// Fires <see cref="MapShaderChanged"/>.
+    /// Maps to <c>ProtocolGame::parseMapShader</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseMapShader(InputMessage msg)
+    {
+        string shaderName = msg.ReadString();
+        MapShaderChanged?.Invoke(shaderName);
+    }
+
+    // ─── T45: FloorChangeUp / FloorChangeDown ─────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>FloorChangeUp</c> (0xBE / GameServerFloorChangeUp).
+    /// Called when the local player moves to a higher floor (e.g., leaves a cave).
+    /// At protocol 1281 (GameMapMovePosition always set) the new central position
+    /// is read from the wire; z is decremented to obtain the destination floor.
+    /// For the surface transition (landing on sea floor 7), floors
+    /// [7 − <c>MapAwareUndergroundRange</c>, 0] are loaded.
+    /// For any other underground transition one floor at
+    /// pos.z − <c>MapAwareUndergroundRange</c> is loaded.
+    /// The map central position is then set to pos + (1, 1) as per the C++ reference,
+    /// and <see cref="FloorChanged"/> is fired with (newPosition, oldPosition).
+    /// Maps to <c>ProtocolGame::parseFloorChangeUp</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseFloorChangeUp(InputMessage msg)
+    {
+        var oldPos = _map.CentralPosition;
+        var pos    = ReadPosition(msg);
+        pos = new Game.Position(pos.X, pos.Y, pos.Z - 1);
+
+        int skip = 0;
+        var range = _map.AwareRange;
+
+        if (pos.Z == MapSeaFloor)
+        {
+            // Resurfacing: load all floors from underground-range limit down to 0
+            for (int i = MapSeaFloor - MapAwareUndergroundRange; i >= 0; i--)
+                skip = SetFloorDescription(msg, pos.X - range.Left, pos.Y - range.Top,
+                                           i, range.Horizontal, range.Vertical,
+                                           offset: MapSeaFloor + 1 - i, skip);
+        }
+        else if (pos.Z > MapSeaFloor)
+        {
+            // Underground: load the single floor coming into view above
+            SetFloorDescription(msg, pos.X - range.Left, pos.Y - range.Top,
+                                pos.Z - MapAwareUndergroundRange, range.Horizontal, range.Vertical,
+                                offset: MapAwareUndergroundRange + 1, skip);
+        }
+
+        var newPos = new Game.Position(pos.X + 1, pos.Y + 1, pos.Z);
+        _map.CentralPosition = newPos;
+        FloorChanged?.Invoke(newPos, oldPos);
+    }
+
+    /// <summary>
+    /// Parses <c>FloorChangeDown</c> (0xBF / GameServerFloorChangeDown).
+    /// Called when the local player descends to a lower floor (e.g., enters a cave).
+    /// At protocol 1281 the new central position is read from the wire; z is
+    /// incremented to obtain the destination floor.
+    /// When entering the underground for the first time (pos.z == 8) three floors
+    /// [8, 8 + <c>MapAwareUndergroundRange</c>] are loaded.
+    /// When already underground (and not at the deepest level − 1) one additional
+    /// floor at pos.z + <c>MapAwareUndergroundRange</c> is loaded.
+    /// The map central position is then set to pos − (1, 1) as per the C++ reference,
+    /// and <see cref="FloorChanged"/> is fired with (newPosition, oldPosition).
+    /// Maps to <c>ProtocolGame::parseFloorChangeDown</c>.
+    /// Task T45.
+    /// </summary>
+    private void ParseFloorChangeDown(InputMessage msg)
+    {
+        var oldPos = _map.CentralPosition;
+        var pos    = ReadPosition(msg);
+        pos = new Game.Position(pos.X, pos.Y, pos.Z + 1);
+
+        int skip = 0;
+        var range = _map.AwareRange;
+
+        if (pos.Z == MapSeaFloor + 1)
+        {
+            // First underground floor: load range [z, z + aware range]
+            int j = -1;
+            for (int i = pos.Z; i <= pos.Z + MapAwareUndergroundRange; i++, j--)
+                skip = SetFloorDescription(msg, pos.X - range.Left, pos.Y - range.Top,
+                                           i, range.Horizontal, range.Vertical,
+                                           offset: j, skip);
+        }
+        else if (pos.Z > MapSeaFloor + 1 && pos.Z < MapMaxZ - 1)
+        {
+            // Deeper underground: load only the one new floor coming into view
+            SetFloorDescription(msg, pos.X - range.Left, pos.Y - range.Top,
+                                pos.Z + MapAwareUndergroundRange, range.Horizontal, range.Vertical,
+                                offset: -MapAwareUndergroundRange - 1, skip);
+        }
+
+        var newPos = new Game.Position(pos.X - 1, pos.Y - 1, pos.Z);
+        _map.CentralPosition = newPos;
+        FloorChanged?.Invoke(newPos, oldPos);
+    }
 }
