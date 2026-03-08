@@ -228,7 +228,30 @@ public sealed class LuaGameProxy
     [LuaMethod] public bool isGM()               => false;
     [LuaMethod] public bool hasFeature(string f) => false;
 
-    // ─── Movement (T06/T07) ───────────────────────────────────────────────────
+    // ─── Server config accessors (T44) ────────────────────────────────────────
+
+    /// <summary>Server heartbeat interval in ms. Maps to <c>g_game:getServerBeat()</c>. Task T44.</summary>
+    [LuaMethod] public int  getServerBeat()    => _game.ServerBeat;
+
+    /// <summary>Whether the player can submit bug reports. Maps to <c>g_game:canReportBugs()</c>. Task T44.</summary>
+    [LuaMethod] public bool canReportBugs()    => _game.CanReportBugs;
+
+    /// <summary>Whether expert PvP mode is active. Maps to <c>g_game:getExpertPvpMode()</c>. Task T44.</summary>
+    [LuaMethod] public bool isExpertPvpMode()  => _game.ExpertPvpMode;
+
+    /// <summary>
+    /// Returns the 20-element GM action-permission table (Lua array of integers).
+    /// Maps to <c>g_game:getGMActions()</c>. Task T44.
+    /// </summary>
+    [LuaMethod]
+    public MoonSharp.Interpreter.DynValue getGmActions()
+    {
+        var table = new MoonSharp.Interpreter.Table(null!);
+        var actions = _game.GmActions;
+        for (int i = 0; i < actions.Count; i++)
+            table.Set(i + 1, MoonSharp.Interpreter.DynValue.NewNumber(actions[i]));
+        return MoonSharp.Interpreter.DynValue.NewTable(table);
+    }
 
     /// <summary>Walk in a direction. <paramref name="dir"/> is the Tibia wire byte (0=N,1=E,2=S,3=W…).</summary>
     [LuaMethod] public void walk(int dir)     => _game.Walk((Game.Direction)dir);

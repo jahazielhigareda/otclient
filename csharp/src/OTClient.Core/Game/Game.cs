@@ -66,7 +66,57 @@ public sealed class Game
     public ThingTypeManager   Things      { get; } = new();
     public CreatureDataManager Creatures  { get; } = new();
 
-    // ─── Character list ───────────────────────────────────────────────────────
+    // ─── Server configuration (T44) ──────────────────────────────────────────
+
+    /// <summary>
+    /// Server heartbeat interval in ms (default 50, set from <c>ParseLoginSuccess</c>).
+    /// Maps to <c>g_game.m_serverBeat</c>.
+    /// Task T44.
+    /// </summary>
+    public int  ServerBeat    { get; private set; } = 50;
+
+    /// <summary>
+    /// Whether the player can report bugs via the in-game bug-report button.
+    /// Maps to <c>g_game.m_canReportBugs</c>.
+    /// Task T44.
+    /// </summary>
+    public bool CanReportBugs { get; private set; }
+
+    /// <summary>
+    /// Whether expert PvP mode is active.
+    /// Maps to <c>g_game.m_expertPvpMode</c>.
+    /// Task T44.
+    /// </summary>
+    public bool ExpertPvpMode { get; private set; }
+
+    /// <summary>
+    /// Current GM action-permission bytes (20 bytes, all zero until received).
+    /// Maps to <c>g_game.m_gmActions</c>.
+    /// Task T44.
+    /// </summary>
+    public IReadOnlyList<byte> GmActions { get; private set; } = Array.Empty<byte>();
+
+    // ─── Login-flow events (T44) ──────────────────────────────────────────────
+
+    /// <summary>Raised when <c>ParseLoginSuccess</c> has been processed.</summary>
+    public event Action? OnLogin;
+
+    /// <summary>Raised when the server transitions the session to "pending game" state.</summary>
+    public event Action? OnPendingGame;
+
+    /// <summary>Raised when the server transitions the session to "entered game" state.</summary>
+    public event Action? OnEnterGame;
+
+    /// <summary>Raised when the server ends the session. Parameter: reason byte.</summary>
+    public event Action<byte>? OnSessionEnd;
+
+    /// <summary>Raised when GM action permissions are updated. Parameter: 20-byte array.</summary>
+    public event Action<IReadOnlyList<byte>>? OnGMActionsChanged;
+
+    /// <summary>Raised when the server requests a client update. Parameter: signature string.</summary>
+    public event Action<string>? OnUpdateNeeded;
+
+
 
     private readonly List<CharacterInfo> _characters = [];
     public IReadOnlyList<CharacterInfo>  Characters  => _characters;
@@ -561,6 +611,78 @@ public sealed class Game
     // ─── VIP management (T21 / T43) ──────────────────────────────────────────────
 
     private readonly Dictionary<uint, VipEntry> _vips = [];
+
+    // ─── Login-flow process methods (T44) ─────────────────────────────────────
+
+    /// <summary>
+    /// Processes a <c>LoginSuccess</c> packet from the protocol layer.
+    /// Stores server-beat, expert-PvP flag, and fires <see cref="OnLogin"/>.
+    /// Maps to <c>Game::processLogin</c>.
+    /// Task T44.
+    /// </summary>
+    internal void ProcessLogin(uint playerId, ushort serverBeat,
+        double speedA, double speedB, double speedC,
+        bool expertPvpMode, string storeUrl, ushort coinsPacketSize)
+    {
+        LocalPlayer.Id = playerId;
+        LocalPlayer.IsKnown = true;
+        ServerBeat    = serverBeat;
+        ExpertPvpMode = expertPvpMode;
+        OnLogin?.Invoke();
+    }
+
+    /// <summary>
+    /// Processes a <c>PendingGame</c> packet from the protocol layer.
+    /// Maps to <c>Game::processPendingGame</c>.
+    /// Task T44.
+    /// </summary>
+    internal void ProcessPendingGame()
+    {
+        SetState(GameState.PendingGame);
+        OnPendingGame?.Invoke();
+    }
+
+    /// <summary>
+    /// Processes an <c>EnterGame</c> packet from the protocol layer.
+    /// Maps to <c>Game::processEnterGame + processGameStart</c>.
+    /// Task T44.
+    /// </summary>
+    internal void ProcessEnterGame()
+    {
+        SetState(GameState.InGame);
+        OnEnterGame?.Invoke();
+    }
+
+    /// <summary>
+    /// Processes a <c>SessionEnd</c> packet from the protocol layer.
+    /// Maps to <c>Game::processSessionEnd</c>.
+    /// Task T44.
+    /// </summary>
+    internal void ProcessSessionEnd(byte reason)
+    {
+        OnSessionEnd?.Invoke(reason);
+    }
+
+    /// <summary>
+    /// Processes GM action-permission bytes received from the server.
+    /// Maps to <c>Game::processGMActions</c>.
+    /// Task T44.
+    /// </summary>
+    internal void ProcessGMActions(byte[] actions)
+    {
+        GmActions = actions;
+        OnGMActionsChanged?.Invoke(GmActions);
+    }
+
+    /// <summary>
+    /// Processes an <c>UpdateNeeded</c> notification from the protocol layer.
+    /// Maps to <c>Game::processUpdateNeeded</c>.
+    /// Task T44.
+    /// </summary>
+    internal void ProcessUpdateNeeded(string signature)
+    {
+        OnUpdateNeeded?.Invoke(signature);
+    }
 
     /// <summary>Raised to request adding a player to the VIP list.</summary>
     public event Action<string>? AddVipRequested;   // name
@@ -1063,5 +1185,21 @@ public sealed class Game
 
         protocol.VipStateChanged += (id, status) =>
             ProcessVipStateChange(id, status);
+
+        // T44: wire login-flow events
+        protocol.LoginSuccessReceived += (playerId, serverBeat, speedA, speedB, speedC,
+            expertPvpMode, storeUrl, coinsPacketSize) =>
+            ProcessLogin(playerId, serverBeat, speedA, speedB, speedC,
+                         expertPvpMode, storeUrl, coinsPacketSize);
+
+        protocol.PendingGameReceived += ProcessPendingGame;
+
+        protocol.EnterGameReceived += ProcessEnterGame;
+
+        protocol.SessionEndReceived += ProcessSessionEnd;
+
+        protocol.GMActionsUpdated += ProcessGMActions;
+
+        protocol.UpdateNeededReceived += ProcessUpdateNeeded;
     }
 }

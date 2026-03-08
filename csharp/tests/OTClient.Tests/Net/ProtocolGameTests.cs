@@ -2589,4 +2589,342 @@ public sealed class ProtocolGameTests
         Assert.Equal(1u, entry.Status);
         Assert.Single(game.GetVips(), e => e.Id == 50);
     }
+
+    // ─── T44: login-flow opcodes ──────────────────────────────────────────────
+
+    [Fact]
+    public void GameServerPacket_LoginOrPendingState_Is0x0A()
+        => Assert.Equal(0x0A, (byte)GameServerPacket.LoginOrPendingState);
+
+    [Fact]
+    public void GameServerPacket_GMActions_Is0x0B()
+        => Assert.Equal(0x0B, (byte)GameServerPacket.GMActions);
+
+    [Fact]
+    public void GameServerPacket_ServerEnterGame_Is0x0F()
+        => Assert.Equal(0x0F, (byte)GameServerPacket.ServerEnterGame);
+
+    [Fact]
+    public void GameServerPacket_UpdateNeeded_Is0x11()
+        => Assert.Equal(0x11, (byte)GameServerPacket.UpdateNeeded);
+
+    [Fact]
+    public void GameServerPacket_LoginSuccess_Is0x17()
+        => Assert.Equal(0x17, (byte)GameServerPacket.LoginSuccess);
+
+    [Fact]
+    public void GameServerPacket_SessionEnd_Is0x18()
+        => Assert.Equal(0x18, (byte)GameServerPacket.SessionEnd);
+
+    [Fact]
+    public void GameServerPacket_StoreButtonIndicators_Is0x19()
+        => Assert.Equal(0x19, (byte)GameServerPacket.StoreButtonIndicators);
+
+    // ─── T44: ParseLoginOrPendingState (PendingGame) ──────────────────────────
+
+    [Fact]
+    public void ParseLoginOrPendingState_RaisesPendingGameReceived()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.PendingGameReceived += () => fired = true;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.LoginOrPendingState);
+        // No payload — pending-game packet at protocol 1281
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void ConnectProtocol_PendingGame_SetsGameStatePending()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.LoginOrPendingState);
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal(OTClient.Framework.Game.GameState.PendingGame, game.State);
+    }
+
+    // ─── T44: ParseLoginSuccess ───────────────────────────────────────────────
+
+    private static OutputMessage BuildLoginSuccessPacket(
+        uint playerId = 100,
+        ushort serverBeat = 50,
+        double speedA = 857.36,
+        double speedB = -163.97,
+        double speedC = -835.3,
+        bool expertPvp = false,
+        string storeUrl = "https://store.example.com",
+        ushort coinsPacketSize = 25,
+        byte exivaEnabled = 0)
+    {
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.LoginSuccess);
+        pkt.WriteU32(playerId);
+        pkt.WriteU16(serverBeat);
+        pkt.WriteDouble(speedA);
+        pkt.WriteDouble(speedB);
+        pkt.WriteDouble(speedC);
+        pkt.WriteU8(0);                    // canChangePvpFrame (skip)
+        pkt.WriteU8(expertPvp ? (byte)1 : (byte)0);
+        pkt.WriteString(storeUrl);
+        pkt.WriteU16(coinsPacketSize);
+        pkt.WriteU8(exivaEnabled);         // exivaEnabled (skip)
+        return pkt;
+    }
+
+    [Fact]
+    public void ParseLoginSuccess_FiresLoginSuccessReceivedWithPlayerId()
+    {
+        using var pg = new ProtocolGame();
+        uint receivedId = 0;
+        pg.LoginSuccessReceived += (id, beat, sA, sB, sC, expert, url, coins) => receivedId = id;
+
+        InvokeHandleRawData(pg, BuildLoginSuccessPacket(playerId: 42).ToArray());
+
+        Assert.Equal(42u, receivedId);
+    }
+
+    [Fact]
+    public void ParseLoginSuccess_FiresLoginSuccessReceivedWithServerBeat()
+    {
+        using var pg = new ProtocolGame();
+        ushort beat = 0;
+        pg.LoginSuccessReceived += (id, b, sA, sB, sC, expert, url, coins) => beat = b;
+
+        InvokeHandleRawData(pg, BuildLoginSuccessPacket(serverBeat: 120).ToArray());
+
+        Assert.Equal(120, beat);
+    }
+
+    [Fact]
+    public void ParseLoginSuccess_FiresLoginSuccessReceivedWithExpertPvp()
+    {
+        using var pg = new ProtocolGame();
+        bool expert = false;
+        pg.LoginSuccessReceived += (id, b, sA, sB, sC, e, url, coins) => expert = e;
+
+        InvokeHandleRawData(pg, BuildLoginSuccessPacket(expertPvp: true).ToArray());
+
+        Assert.True(expert);
+    }
+
+    [Fact]
+    public void ConnectProtocol_LoginSuccess_SetsServerBeatAndPlayerId()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildLoginSuccessPacket(playerId: 77, serverBeat: 200).ToArray());
+
+        Assert.Equal(200, game.ServerBeat);
+        Assert.Equal(77u, game.LocalPlayer.Id);
+    }
+
+    [Fact]
+    public void ConnectProtocol_LoginSuccess_SetsExpertPvpMode()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        InvokeHandleRawData(pg, BuildLoginSuccessPacket(expertPvp: true).ToArray());
+
+        Assert.True(game.ExpertPvpMode);
+    }
+
+    // ─── T44: ParseServerEnterGame ────────────────────────────────────────────
+
+    [Fact]
+    public void ParseServerEnterGame_FiresEnterGameReceived()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.EnterGameReceived += () => fired = true;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.ServerEnterGame);
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void ConnectProtocol_EnterGame_SetsStateInGame()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.ServerEnterGame);
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal(OTClient.Framework.Game.GameState.InGame, game.State);
+    }
+
+    // ─── T44: ParseSessionEnd ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseSessionEnd_FiresSessionEndReceivedWithReason()
+    {
+        using var pg = new ProtocolGame();
+        byte reason = 0;
+        pg.SessionEndReceived += r => reason = r;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.SessionEnd);
+        pkt.WriteU8(3);
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal(3, reason);
+    }
+
+    [Fact]
+    public void ConnectProtocol_SessionEnd_RaisesGameOnSessionEnd()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+        byte reasonReceived = 0;
+        game.OnSessionEnd += r => reasonReceived = r;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.SessionEnd);
+        pkt.WriteU8(5);
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal(5, reasonReceived);
+    }
+
+    // ─── T44: ParseGMActions ──────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseGMActions_FiresGMActionsUpdatedWith20Bytes()
+    {
+        using var pg = new ProtocolGame();
+        byte[]? received = null;
+        pg.GMActionsUpdated += actions => received = actions;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.GMActions);
+        for (byte i = 0; i < 20; i++) pkt.WriteU8(i);
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.NotNull(received);
+        Assert.Equal(20, received!.Length);
+        Assert.Equal(7, received[7]);
+    }
+
+    [Fact]
+    public void ConnectProtocol_GMActions_SetsGameGmActions()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.GMActions);
+        for (byte i = 0; i < 20; i++) pkt.WriteU8((byte)(i * 2));
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal(20, game.GmActions.Count);
+        Assert.Equal(4, game.GmActions[2]);   // 2 * 2
+    }
+
+    // ─── T44: ParseUpdateNeeded ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseUpdateNeeded_FiresUpdateNeededReceivedWithSignature()
+    {
+        using var pg = new ProtocolGame();
+        string? sig = null;
+        pg.UpdateNeededReceived += s => sig = s;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.UpdateNeeded);
+        pkt.WriteString("v1281sig");
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal("v1281sig", sig);
+    }
+
+    [Fact]
+    public void ConnectProtocol_UpdateNeeded_RaisesGameOnUpdateNeeded()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+        string? received = null;
+        game.OnUpdateNeeded += s => received = s;
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.UpdateNeeded);
+        pkt.WriteString("sig-abc");
+        InvokeHandleRawData(pg, pkt.ToArray());
+
+        Assert.Equal("sig-abc", received);
+    }
+
+    // ─── T44: ParseStoreButtonIndicators ─────────────────────────────────────
+
+    [Fact]
+    public void ParseStoreButtonIndicators_DoesNotThrow()
+    {
+        using var pg = new ProtocolGame();
+
+        var pkt = new OutputMessage();
+        pkt.WriteU8((byte)GameServerPacket.StoreButtonIndicators);
+        pkt.WriteU8(1); // isSaleBannerVisible
+        pkt.WriteU8(0); // isNewBannerVisible
+        var ex = Record.Exception(() =>
+            InvokeHandleRawData(pg, pkt.ToArray()));
+
+        Assert.Null(ex);
+    }
+
+    // ─── T44: LuaGameProxy accessors ─────────────────────────────────────────
+
+    [Fact]
+    public void LuaGameProxy_GetServerBeat_ReturnsDefaultFifty()
+    {
+        var lua  = new OTClient.Framework.Lua.LuaInterface();
+        lua.Init();
+        OTClient.Framework.Lua.LuaGlobals.Register(lua,
+            game: new OTClient.Framework.Game.Game());
+        int beat = (int)lua.DoString("return g_game.getServerBeat()").Number;
+        lua.Dispose();
+        Assert.Equal(50, beat);
+    }
+
+    [Fact]
+    public void LuaGameProxy_CanReportBugs_DefaultFalse()
+    {
+        var lua  = new OTClient.Framework.Lua.LuaInterface();
+        lua.Init();
+        OTClient.Framework.Lua.LuaGlobals.Register(lua,
+            game: new OTClient.Framework.Game.Game());
+        bool val = lua.DoString("return g_game.canReportBugs()").Boolean;
+        lua.Dispose();
+        Assert.False(val);
+    }
+
+    [Fact]
+    public void LuaGameProxy_IsExpertPvpMode_DefaultFalse()
+    {
+        var lua  = new OTClient.Framework.Lua.LuaInterface();
+        lua.Init();
+        OTClient.Framework.Lua.LuaGlobals.Register(lua,
+            game: new OTClient.Framework.Game.Game());
+        bool val = lua.DoString("return g_game.isExpertPvpMode()").Boolean;
+        lua.Dispose();
+        Assert.False(val);
+    }
 }

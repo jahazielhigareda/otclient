@@ -43,7 +43,116 @@ public sealed partial class ProtocolGame
         LoginWait?.Invoke(message, waitSecs);
     }
 
-    // ─── Game-world entry + map description (T01) ────────────────────────────
+    // ─── Login-flow parsers (T44) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>GameServerLoginOrPendingState</c> (0x0A).
+    /// In Tibia 12.x (protocol 1281) <c>GameLoginPending</c> is active, so this
+    /// opcode carries no payload and means the session is now in "pending" state.
+    /// Maps to <c>ProtocolGame::parsePendingGame</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseLoginOrPendingState(InputMessage msg)
+    {
+        // At protocol 1281 GameLoginPending IS active → no payload, pending state.
+        PendingGameReceived?.Invoke();
+    }
+
+    /// <summary>
+    /// Parses <c>GameServerLoginSuccess</c> (0x17).
+    /// Reads the full login payload (playerId, serverBeat, speed params, etc.)
+    /// and fires <see cref="LoginSuccessReceived"/>.
+    /// Maps to <c>ProtocolGame::parseLogin</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseLoginSuccess(InputMessage msg)
+    {
+        // Wire format at protocol 1281:
+        // U32  playerId
+        // U16  serverBeat
+        // dbl  speedA  (GameNewSpeedLaw always on at 1281)
+        // dbl  speedB
+        // dbl  speedC
+        // [canReportBugs skipped — GameDynamicBugReporter on at 1281]
+        // U8   canChangePvpFrame  (>= 1054, skip)
+        // U8   expertPvpMode      (>= 1058)
+        // str  storeUrl           (GameIngameStore on at 1281)
+        // U16  coinsPacketSize
+        // U8   exivaEnabled       (>= 1281, skip)
+        uint   playerId        = msg.ReadU32();
+        ushort serverBeat      = msg.ReadU16();
+        double speedA          = msg.ReadDouble();
+        double speedB          = msg.ReadDouble();
+        double speedC          = msg.ReadDouble();
+        msg.ReadU8();                              // canChangePvpFrame — skip
+        bool   expertPvpMode   = msg.ReadU8() > 0;
+        string storeUrl        = msg.ReadString();
+        ushort coinsPacketSize = msg.ReadU16();
+        msg.ReadU8();                              // exivaEnabled — skip
+        LoginSuccessReceived?.Invoke(playerId, serverBeat, speedA, speedB, speedC,
+                                     expertPvpMode, storeUrl, coinsPacketSize);
+    }
+
+    /// <summary>
+    /// Parses <c>GameServerEnterGame</c> (0x0F) — the server confirms the player
+    /// is now fully in-game.
+    /// Maps to <c>ProtocolGame::parseEnterGame</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseServerEnterGame(InputMessage msg)
+    {
+        EnterGameReceived?.Invoke();
+    }
+
+    /// <summary>
+    /// Parses <c>GameServerSessionEnd</c> (0x18) — the server is ending the session.
+    /// Reads one byte: the session-end reason code.
+    /// Maps to <c>ProtocolGame::parseSessionEnd → Game::processSessionEnd</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseSessionEnd(InputMessage msg)
+    {
+        byte reason = msg.ReadU8();
+        SessionEndReceived?.Invoke(reason);
+    }
+
+    /// <summary>
+    /// Parses <c>GameServerGMActions</c> (0x0B) — 20 bytes of GM action permissions.
+    /// Maps to <c>ProtocolGame::parseGMActions → Game::processGMActions</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseGMActions(InputMessage msg)
+    {
+        var actions = new byte[20];
+        for (int i = 0; i < actions.Length; i++)
+            actions[i] = msg.ReadU8();
+        GMActionsUpdated?.Invoke(actions);
+    }
+
+    /// <summary>
+    /// Parses <c>GameServerUpdateNeeded</c> (0x11) — server requests a client update.
+    /// Reads a string signature identifying the required version.
+    /// Maps to <c>ProtocolGame::parseUpdateNeeded → Game::processUpdateNeeded</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseUpdateNeeded(InputMessage msg)
+    {
+        string signature = msg.ReadString();
+        UpdateNeededReceived?.Invoke(signature);
+    }
+
+    /// <summary>
+    /// Parses <c>GameServerStoreButtonIndicators</c> (0x19).
+    /// Reads two booleans (isSaleBannerVisible, isNewBannerVisible) and discards them;
+    /// the C# client does not have an in-game store UI yet.
+    /// Maps to <c>ProtocolGame::parseStoreButtonIndicators</c>.
+    /// Task T44.
+    /// </summary>
+    private void ParseStoreButtonIndicators(InputMessage msg)
+    {
+        msg.ReadU8(); // isSaleBannerVisible
+        msg.ReadU8(); // isNewBannerVisible
+    }
 
     // Map constants from C++ gameconfig defaults:
     private const int MapSeaFloor             = 7;   // floors 0-7 are above ground

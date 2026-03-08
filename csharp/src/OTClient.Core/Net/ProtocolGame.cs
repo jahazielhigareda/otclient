@@ -74,10 +74,16 @@ public enum GameServerPacket : byte
 {
     Ping             = 0x1C,
     PingBack         = 0x1D,
+    LoginOrPendingState    = 0x0A,   // GameServerLoginOrPendingState (10)   — parseLogin/parsePendingGame (T44)
+    GMActions              = 0x0B,   // GameServerGMActions (11)             — parseGMActions (T44)
+    ServerEnterGame        = 0x0F,   // GameServerEnterGame (15)             — parseEnterGame (T44)
+    UpdateNeeded           = 0x11,   // GameServerUpdateNeeded (17)          — parseUpdateNeeded (T44)
     LoginError       = 0x14,
     LoginAdvice      = 0x15,
     LoginWait        = 0x16,
-    SessionEnd       = 0x17,
+    LoginSuccess           = 0x17,   // GameServerLoginSuccess (23)          — parseLogin (T44)
+    SessionEnd             = 0x18,   // GameServerSessionEnd (24)            — parseSessionEnd (T44)
+    StoreButtonIndicators  = 0x19,   // GameServerStoreButtonIndicators (25) — parseStoreButtonIndicators (T44)
     Death            = 0x28,
     FloorDescription = 0x4B,   // GameServerFloorDescription (75) — parseFloorDescription (T01)
     FullMap          = 0x64,   // GameServerFullMap (100)         — parseMapDescription (T01)
@@ -282,7 +288,61 @@ public sealed partial class ProtocolGame : Protocol
     /// <summary>Server requests the client to wait before retrying.</summary>
     public event Action<string, int>? LoginWait;
 
-    /// <summary>Player entered the game world successfully.</summary>
+    // ─── Login-flow events (T44) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server accepts the login (GameServerLoginSuccess = 0x17 or
+    /// GameServerLoginOrPendingState = 0x0A without GameLoginPending).
+    /// Parameters: (playerId, serverBeat, speedA, speedB, speedC, expertPvpMode,
+    ///              storeUrl, coinsPacketSize)
+    /// Maps to <c>ProtocolGame::parseLogin</c>.
+    /// Task T44.
+    /// </summary>
+    public event Action<uint, ushort, double, double, double, bool, string, ushort>? LoginSuccessReceived;
+
+    /// <summary>
+    /// Raised when the server sends <c>GameServerLoginOrPendingState</c> (0x0A)
+    /// in "pending" mode (GameLoginPending feature active).
+    /// No parameters.
+    /// Maps to <c>ProtocolGame::parsePendingGame</c>.
+    /// Task T44.
+    /// </summary>
+    public event Action? PendingGameReceived;
+
+    /// <summary>
+    /// Raised when the server confirms the player has fully entered the game world
+    /// (<c>GameServerEnterGame</c> = 0x0F).
+    /// No parameters.
+    /// Maps to <c>ProtocolGame::parseEnterGame</c>.
+    /// Task T44.
+    /// </summary>
+    public event Action? EnterGameReceived;
+
+    /// <summary>
+    /// Raised when the server ends the game session (<c>GameServerSessionEnd</c> = 0x18).
+    /// Parameter: reason byte.
+    /// Maps to <c>ProtocolGame::parseSessionEnd</c>.
+    /// Task T44.
+    /// </summary>
+    public event Action<byte>? SessionEndReceived;
+
+    /// <summary>
+    /// Raised when the server sends GM action permissions (<c>GameServerGMActions</c> = 0x0B).
+    /// Parameter: array of 20 action-permission bytes.
+    /// Maps to <c>ProtocolGame::parseGMActions → Game::processGMActions</c>.
+    /// Task T44.
+    /// </summary>
+    public event Action<byte[]>? GMActionsUpdated;
+
+    /// <summary>
+    /// Raised when the server requests a client update (<c>GameServerUpdateNeeded</c> = 0x11).
+    /// Parameter: signature string.
+    /// Maps to <c>ProtocolGame::parseUpdateNeeded → Game::processUpdateNeeded</c>.
+    /// Task T44.
+    /// </summary>
+    public event Action<string>? UpdateNeededReceived;
+
+
     public event Action? GameEntered;
 
     /// <summary>Player character died.</summary>
@@ -655,6 +715,15 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.LoginAdvice,       ParseLoginAdvice);
         RegisterHandler((byte)GameServerPacket.LoginWait,         ParseLoginWait);
         RegisterHandler((byte)GameServerPacket.Death,             ParseDeath);
+
+        // T44 login-flow handlers
+        RegisterHandler((byte)GameServerPacket.LoginOrPendingState,   ParseLoginOrPendingState);
+        RegisterHandler((byte)GameServerPacket.GMActions,             ParseGMActions);
+        RegisterHandler((byte)GameServerPacket.ServerEnterGame,       ParseServerEnterGame);
+        RegisterHandler((byte)GameServerPacket.UpdateNeeded,          ParseUpdateNeeded);
+        RegisterHandler((byte)GameServerPacket.LoginSuccess,          ParseLoginSuccess);
+        RegisterHandler((byte)GameServerPacket.SessionEnd,            ParseSessionEnd);
+        RegisterHandler((byte)GameServerPacket.StoreButtonIndicators, ParseStoreButtonIndicators);
         RegisterHandler((byte)GameServerPacket.FullMap,           ParseMapDescription);
         RegisterHandler((byte)GameServerPacket.FloorDescription,  ParseFloorDescription);
         RegisterHandler((byte)GameServerPacket.MapTopRow,         ParseMapMoveNorth);
