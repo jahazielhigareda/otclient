@@ -183,6 +183,16 @@ public enum GameServerPacket : byte
     PvpSituations      = 0xB8,  // GameServerPvpSituations (184)    — parsePvpSituations (T46)
     ResourceBalance    = 0xEE,  // GameServerResourceBalance (238)  — parseResourceBalance (T46)
     WorldTime          = 0xEF,  // GameServerWorldTime (239)        — parseWorldTime (T46)
+
+    // T47 opcodes
+    WorldLight        = 0x82,  // GameServerAmbient (130)          — parseWorldLight (T47)
+    GraphicalEffect   = 0x83,  // GameServerGraphicalEffect (131)  — parseMagicEffect (T47)
+    AnimatedText      = 0x84,  // GameServerTextEffect (132)       — parseAnimatedText (T47)
+    DistanceMissile   = 0x85,  // GameServerMissileEffect (133)    — parseDistanceMissile (T47)
+    CreatureLight     = 0x8D,  // GameServerCreatureLight (141)    — parseCreatureLight (T47)
+    PlayerInfo        = 0x9F,  // GameServerPlayerDataBasic (159)  — parsePlayerInfo (T47)
+    ClearTarget       = 0xA3,  // GameServerClearTarget (163)      — parsePlayerCancelAttack (T47)
+    WalkWait          = 0xB6,  // GameServerWalkWait (182)         — parseWalkWait (T47)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -821,7 +831,75 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<byte, byte>? WorldTimeChanged;
 
-    // ─── NPC trade events (T15) ───────────────────────────────────────────────
+    // ─── T47 events (world/creature light, effects, player info, walk wait) ───
+
+    /// <summary>
+    /// Raised when the server sends a <c>WorldLight</c> (0x82) packet.
+    /// Parameters: intensity, color.
+    /// Maps to <c>ProtocolGame::parseWorldLight</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<byte, byte>? WorldLightChanged;
+
+    /// <summary>
+    /// Raised for each <c>MAGIC_EFFECTS_CREATE_EFFECT</c> entry inside a
+    /// <c>GraphicalEffect</c> (0x83) packet.
+    /// Parameters: position, effectId.
+    /// Maps to <c>ProtocolGame::parseMagicEffect</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<Game.Position, ushort>? MagicEffectReceived;
+
+    /// <summary>
+    /// Raised when the server sends an <c>AnimatedText</c> (0x84) packet.
+    /// Parameters: position, color, text.
+    /// Maps to <c>ProtocolGame::parseAnimatedText</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<Game.Position, byte, string>? AnimatedTextReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>DistanceMissile</c> (0x85) packet.
+    /// Parameters: fromPosition, toPosition, shotId.
+    /// Maps to <c>ProtocolGame::parseDistanceMissile</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<Game.Position, Game.Position, ushort>? DistanceMissileReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>CreatureLight</c> (0x8D) packet.
+    /// Parameters: creatureId, intensity, color.
+    /// Maps to <c>ProtocolGame::parseCreatureLight</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<uint, byte, byte>? CreatureLightUpdated;
+
+    /// <summary>
+    /// Raised when the server sends a <c>PlayerInfo</c> (0x9F) packet
+    /// with the basic player information (premium, vocation, spells).
+    /// Parameters: isPremium, vocation, spells.
+    /// Maps to <c>ProtocolGame::parsePlayerInfo</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<bool, byte, IReadOnlyList<ushort>>? PlayerInfoReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>ClearTarget</c> (0xA3) packet
+    /// cancelling the current attack.
+    /// Parameters: sequence number.
+    /// Maps to <c>ProtocolGame::parsePlayerCancelAttack</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<uint>? AttackCancelReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>WalkWait</c> (0xB6) packet
+    /// indicating the client should delay walking.
+    /// Parameters: delay in milliseconds.
+    /// Maps to <c>ProtocolGame::parseWalkWait</c>.
+    /// Task T47.
+    /// </summary>
+    public event Action<ushort>? WalkWaitReceived;
 
     /// <summary>
     /// Raised when the server opens the NPC trade window.
@@ -985,6 +1063,16 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.PvpSituations,      ParsePvpSituations);
         RegisterHandler((byte)GameServerPacket.ResourceBalance,    ParseResourceBalance);
         RegisterHandler((byte)GameServerPacket.WorldTime,          ParseWorldTime);
+
+        // T47 handlers
+        RegisterHandler((byte)GameServerPacket.WorldLight,        ParseWorldLight);
+        RegisterHandler((byte)GameServerPacket.GraphicalEffect,   ParseMagicEffect);
+        RegisterHandler((byte)GameServerPacket.AnimatedText,      ParseAnimatedText);
+        RegisterHandler((byte)GameServerPacket.DistanceMissile,   ParseDistanceMissile);
+        RegisterHandler((byte)GameServerPacket.CreatureLight,     ParseCreatureLight);
+        RegisterHandler((byte)GameServerPacket.PlayerInfo,        ParsePlayerInfo);
+        RegisterHandler((byte)GameServerPacket.ClearTarget,       ParsePlayerCancelAttack);
+        RegisterHandler((byte)GameServerPacket.WalkWait,          ParseWalkWait);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

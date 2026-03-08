@@ -1221,5 +1221,12 @@ public sealed class Game
         {
             OpenPvpSituations = count;
         };
+
+        protocol.PlayerInfoReceived += (isPremium, vocation, spells) =>
+        {
+            LocalPlayer.IsPremium = isPremium;
+            LocalPlayer.Vocation  = vocation;
+            LocalPlayer.SetSpells(spells);
+        };
     }
 }

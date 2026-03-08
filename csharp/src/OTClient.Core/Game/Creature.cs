@@ -377,6 +377,21 @@ public sealed class LocalPlayer : Player
     /// </summary>
     public uint Blessings { get; set; }
 
+    // ─── Spells ───────────────────────────────────────────────────────────────
+
+    private IReadOnlyList<ushort> _spells = Array.Empty<ushort>();
+
+    /// <summary>
+    /// The list of spell ids available to the local player.
+    /// Updated via <see cref="SetSpells"/>.
+    /// Maps to <c>LocalPlayer::setSpells</c>.
+    /// Task T47.
+    /// </summary>
+    public IReadOnlyList<ushort> Spells => _spells;
+
+    /// <summary>Replaces the spell list with <paramref name="spells"/>.</summary>
+    public void SetSpells(IReadOnlyList<ushort> spells) => _spells = spells;
+
     // ─── Lua accessor methods (T41) ───────────────────────────────────────────
 
     public int   getSoul()                => Soul;

@@ -3488,4 +3488,412 @@ public sealed class ProtocolGameTests
         Assert.Equal(0, (int)gotHour!.Value);
         Assert.Equal(0, (int)gotMin!.Value);
     }
+
+    // ─── T47: ParseWorldLight ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseWorldLight_FiresWorldLightChangedWithIntensityAndColor()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotIntensity = null; byte? gotColor = null;
+        pg.WorldLightChanged += (i, c) => { gotIntensity = i; gotColor = c; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WorldLight);
+        out_.WriteU8(215);  // intensity
+        out_.WriteU8(33);   // color
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(215, (int)gotIntensity!.Value);
+        Assert.Equal(33, (int)gotColor!.Value);
+    }
+
+    [Fact]
+    public void ParseWorldLight_ZeroIntensity_FiresEvent()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotIntensity = null;
+        pg.WorldLightChanged += (i, _) => gotIntensity = i;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WorldLight);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotIntensity!.Value);
+    }
+
+    // ─── T47: ParseMagicEffect ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseMagicEffect_CreateEffect_FiresMagicEffectReceived()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? gotPos = null; ushort? gotId = null;
+        pg.MagicEffectReceived += (p, id) => { gotPos = p; gotId = id; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.GraphicalEffect);
+        out_.WriteU16(100); out_.WriteU16(200); out_.WriteU8(7);  // position
+        out_.WriteU8(3);    // MAGIC_EFFECTS_CREATE_EFFECT
+        out_.WriteU16(42);  // effectId
+        out_.WriteU8(0);    // MAGIC_EFFECTS_END_LOOP
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(new OTClient.Framework.Game.Position(100, 200, 7), gotPos);
+        Assert.Equal(42, (int)gotId!.Value);
+    }
+
+    [Fact]
+    public void ParseMagicEffect_DeltaAndDelay_SkipsOneByte()
+    {
+        using var pg = new ProtocolGame();
+        int fireCount = 0;
+        pg.MagicEffectReceived += (_, __) => fireCount++;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.GraphicalEffect);
+        out_.WriteU16(10); out_.WriteU16(10); out_.WriteU8(7); // pos
+        out_.WriteU8(1);   // DELTA — reads U8
+        out_.WriteU8(5);   // delta value
+        out_.WriteU8(2);   // DELAY — reads U8
+        out_.WriteU8(10);  // delay value
+        out_.WriteU8(0);   // END_LOOP
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, fireCount);  // no CREATE_EFFECT fired
+    }
+
+    [Fact]
+    public void ParseMagicEffect_DistanceEffect_FiresDistanceMissileReceived()
+    {
+        using var pg = new ProtocolGame();
+        ushort? gotShot = null;
+        pg.DistanceMissileReceived += (_, __, shot) => gotShot = shot;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.GraphicalEffect);
+        out_.WriteU16(5); out_.WriteU16(5); out_.WriteU8(7); // pos
+        out_.WriteU8(4);   // MAGIC_EFFECTS_CREATE_DISTANCEEFFECT
+        out_.WriteU16(7);  // shotId
+        out_.WriteU8(1);   // offsetX
+        out_.WriteU8(255); // offsetY (-1 as sbyte)
+        out_.WriteU8(0);   // END_LOOP
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(7, (int)gotShot!.Value);
+    }
+
+    [Fact]
+    public void ParseMagicEffect_EmptyLoop_DoesNotFireEvent()
+    {
+        using var pg = new ProtocolGame();
+        int fireCount = 0;
+        pg.MagicEffectReceived += (_, __) => fireCount++;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.GraphicalEffect);
+        out_.WriteU16(1); out_.WriteU16(2); out_.WriteU8(3); // pos
+        out_.WriteU8(0);  // END_LOOP immediately
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, fireCount);
+    }
+
+    // ─── T47: ParseAnimatedText ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseAnimatedText_FiresAnimatedTextReceivedWithAllFields()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? gotPos = null; byte? gotColor = null; string? gotText = null;
+        pg.AnimatedTextReceived += (p, c, t) => { gotPos = p; gotColor = c; gotText = t; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.AnimatedText);
+        out_.WriteU16(50); out_.WriteU16(60); out_.WriteU8(7); // position
+        out_.WriteU8(180);        // color
+        out_.WriteString("500"); // text
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(new OTClient.Framework.Game.Position(50, 60, 7), gotPos);
+        Assert.Equal(180, (int)gotColor!.Value);
+        Assert.Equal("500", gotText);
+    }
+
+    [Fact]
+    public void ParseAnimatedText_EmptyString_FiresWithEmptyText()
+    {
+        using var pg = new ProtocolGame();
+        string? gotText = null;
+        pg.AnimatedTextReceived += (_, __, t) => gotText = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.AnimatedText);
+        out_.WriteU16(1); out_.WriteU16(2); out_.WriteU8(3);
+        out_.WriteU8(0);
+        out_.WriteString(string.Empty);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(string.Empty, gotText);
+    }
+
+    // ─── T47: ParseDistanceMissile ────────────────────────────────────────────
+
+    [Fact]
+    public void ParseDistanceMissile_FiresDistanceMissileReceivedWithAllFields()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? gotFrom = null;
+        OTClient.Framework.Game.Position? gotTo   = null;
+        ushort?        gotShot = null;
+        pg.DistanceMissileReceived += (f, t, s) => { gotFrom = f; gotTo = t; gotShot = s; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DistanceMissile);
+        out_.WriteU16(10); out_.WriteU16(20); out_.WriteU8(7);  // fromPos
+        out_.WriteU16(15); out_.WriteU16(20); out_.WriteU8(7);  // toPos
+        out_.WriteU16(3);  // shotId
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(new OTClient.Framework.Game.Position(10, 20, 7), gotFrom);
+        Assert.Equal(new OTClient.Framework.Game.Position(15, 20, 7), gotTo);
+        Assert.Equal(3, (int)gotShot!.Value);
+    }
+
+    [Fact]
+    public void ParseDistanceMissile_SamePositionMissile_Parses()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? gotFrom = null; OTClient.Framework.Game.Position? gotTo = null;
+        pg.DistanceMissileReceived += (f, t, _) => { gotFrom = f; gotTo = t; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DistanceMissile);
+        out_.WriteU16(5); out_.WriteU16(5); out_.WriteU8(7);
+        out_.WriteU16(5); out_.WriteU16(5); out_.WriteU8(7);
+        out_.WriteU16(1);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(gotFrom, gotTo);
+    }
+
+    // ─── T47: ParseCreatureLight ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCreatureLight_FiresCreatureLightUpdatedWithAllFields()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotId = null; byte? gotIntensity = null; byte? gotColor = null;
+        pg.CreatureLightUpdated += (id, i, c) => { gotId = id; gotIntensity = i; gotColor = c; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureLight);
+        out_.WriteU32(12345u);  // creatureId
+        out_.WriteU8(100);      // intensity
+        out_.WriteU8(55);       // color
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(12345u, gotId);
+        Assert.Equal(100, (int)gotIntensity!.Value);
+        Assert.Equal(55, (int)gotColor!.Value);
+    }
+
+    [Fact]
+    public void ParseCreatureLight_ZeroLight_Parses()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotIntensity = null;
+        pg.CreatureLightUpdated += (_, i, __) => gotIntensity = i;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CreatureLight);
+        out_.WriteU32(1u);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotIntensity!.Value);
+    }
+
+    // ─── T47: ParsePlayerInfo ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerInfo_FiresPlayerInfoReceivedWithAllFields()
+    {
+        using var pg = new ProtocolGame();
+        bool? gotPremium = null; byte? gotVocation = null; IReadOnlyList<ushort>? gotSpells = null;
+        pg.PlayerInfoReceived += (prem, voc, spells) => { gotPremium = prem; gotVocation = voc; gotSpells = spells; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerInfo);
+        out_.WriteU8(1);           // isPremium = true
+        out_.WriteU32(0u);         // premiumExpiration (discarded)
+        out_.WriteU8(3);           // vocation = sorcerer
+        out_.WriteU8(1);           // preyEnabled (discarded)
+        out_.WriteU16(2);          // 2 spells
+        out_.WriteU16(100);        // spell 100
+        out_.WriteU16(200);        // spell 200
+        out_.WriteU8(0);           // isMagicShieldActive (discarded)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(gotPremium);
+        Assert.Equal(3, (int)gotVocation!.Value);
+        Assert.NotNull(gotSpells);
+        Assert.Equal(2, gotSpells.Count);
+        Assert.Equal(100, (int)gotSpells[0]);
+        Assert.Equal(200, (int)gotSpells[1]);
+    }
+
+    [Fact]
+    public void ParsePlayerInfo_NonPremium_FiresWithFalse()
+    {
+        using var pg = new ProtocolGame();
+        bool? gotPremium = null;
+        pg.PlayerInfoReceived += (prem, _, __) => gotPremium = prem;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerInfo);
+        out_.WriteU8(0);           // isPremium = false
+        out_.WriteU32(0u);
+        out_.WriteU8(1);
+        out_.WriteU8(0);
+        out_.WriteU16(0);          // 0 spells
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.False(gotPremium);
+    }
+
+    [Fact]
+    public void ParsePlayerInfo_EmptySpellList_Parses()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<ushort>? gotSpells = null;
+        pg.PlayerInfoReceived += (_, __, spells) => gotSpells = spells;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerInfo);
+        out_.WriteU8(0);
+        out_.WriteU32(0u);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU16(0);   // 0 spells
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotSpells);
+        Assert.Empty(gotSpells);
+    }
+
+    // ─── T47: ConnectProtocol — PlayerInfoReceived → LocalPlayer ─────────────
+
+    [Fact]
+    public void ConnectProtocol_PlayerInfoReceived_UpdatesLocalPlayer()
+    {
+        using var pg = new ProtocolGame();
+        var game = new OTClient.Framework.Game.Game();
+        game.ConnectProtocol(pg);
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerInfo);
+        out_.WriteU8(1);       // premium
+        out_.WriteU32(0u);
+        out_.WriteU8(5);       // vocation = paladin
+        out_.WriteU8(0);
+        out_.WriteU16(1);      // 1 spell
+        out_.WriteU16(77);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(game.LocalPlayer.IsPremium);
+        Assert.Equal(5, game.LocalPlayer.Vocation);
+        Assert.Single(game.LocalPlayer.Spells);
+        Assert.Equal(77, (int)game.LocalPlayer.Spells[0]);
+    }
+
+    // ─── T47: ParsePlayerCancelAttack ────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerCancelAttack_FiresAttackCancelReceivedWithSeq()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotSeq = null;
+        pg.AttackCancelReceived += seq => gotSeq = seq;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ClearTarget);
+        out_.WriteU32(0xDEADBEEF);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0xDEADBEEF, gotSeq);
+    }
+
+    [Fact]
+    public void ParsePlayerCancelAttack_ZeroSeq_Parses()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotSeq = null;
+        pg.AttackCancelReceived += seq => gotSeq = seq;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ClearTarget);
+        out_.WriteU32(0u);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0u, gotSeq);
+    }
+
+    // ─── T47: ParseWalkWait ───────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseWalkWait_FiresWalkWaitReceivedWithMillis()
+    {
+        using var pg = new ProtocolGame();
+        ushort? gotMillis = null;
+        pg.WalkWaitReceived += m => gotMillis = m;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WalkWait);
+        out_.WriteU16(500);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(500, (int)gotMillis!.Value);
+    }
+
+    [Fact]
+    public void ParseWalkWait_MaxValue_RoundTrips()
+    {
+        using var pg = new ProtocolGame();
+        ushort? gotMillis = null;
+        pg.WalkWaitReceived += m => gotMillis = m;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WalkWait);
+        out_.WriteU16(ushort.MaxValue);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(ushort.MaxValue, gotMillis);
+    }
 }

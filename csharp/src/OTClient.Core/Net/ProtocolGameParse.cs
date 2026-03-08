@@ -2673,4 +2673,180 @@ public sealed partial class ProtocolGame
         byte minute = msg.ReadU8();
         WorldTimeChanged?.Invoke(hour, minute);
     }
+
+    // ─── T47: World/creature light, effects, player info, attack cancel, walk wait ──
+
+    /// <summary>
+    /// Parses <c>WorldLight</c> (0x82 / GameServerAmbient).
+    /// Reads ambient light intensity (U8) and color (U8).
+    /// Fires <see cref="WorldLightChanged"/>.
+    /// Maps to <c>ProtocolGame::parseWorldLight</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParseWorldLight(InputMessage msg)
+    {
+        byte intensity = msg.ReadU8();
+        byte color     = msg.ReadU8();
+        WorldLightChanged?.Invoke(intensity, color);
+    }
+
+    /// <summary>
+    /// Parses <c>GraphicalEffect</c> (0x83 / GameServerGraphicalEffect).
+    /// At protocol ≥ 1203 reads a position then loops over typed effect entries
+    /// until <c>MAGIC_EFFECTS_END_LOOP (0)</c>.  For each
+    /// <c>MAGIC_EFFECTS_CREATE_EFFECT (3)</c> entry, fires
+    /// <see cref="MagicEffectReceived"/> with the position and effectId.
+    /// Maps to <c>ProtocolGame::parseMagicEffect</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParseMagicEffect(InputMessage msg)
+    {
+        var pos = ReadPosition(msg);
+
+        // Protocol 1281 always uses the ≥ 1203 loop format.
+        byte effectType = msg.ReadU8();
+        while (effectType != 0)   // 0 = MAGIC_EFFECTS_END_LOOP
+        {
+            switch (effectType)
+            {
+                case 1:  // MAGIC_EFFECTS_DELTA  — U8 delta
+                case 2:  // MAGIC_EFFECTS_DELAY  — U8 (wire) delay
+                    msg.ReadU8();
+                    break;
+
+                case 3:  // MAGIC_EFFECTS_CREATE_EFFECT — U16 effectId
+                {
+                    ushort effectId = msg.ReadU16();
+                    MagicEffectReceived?.Invoke(pos, effectId);
+                    break;
+                }
+
+                case 4:  // MAGIC_EFFECTS_CREATE_DISTANCEEFFECT
+                case 5:  // MAGIC_EFFECTS_CREATE_DISTANCEEFFECT_REVERSED
+                {
+                    ushort shotId = msg.ReadU16();
+                    msg.ReadU8();   // offsetX (int8)
+                    msg.ReadU8();   // offsetY (int8)
+                    DistanceMissileReceived?.Invoke(pos, pos, shotId);
+                    break;
+                }
+
+                case 6:  // MAGIC_EFFECTS_CREATE_SOUND_MAIN_EFFECT
+                    msg.ReadU8();    // source
+                    msg.ReadU16();   // sound id
+                    break;
+
+                case 7:  // MAGIC_EFFECTS_CREATE_SOUND_SECONDARY_EFFECT
+                    msg.ReadU8();    // enum
+                    msg.ReadU8();    // source
+                    msg.ReadU16();   // sound id
+                    break;
+
+                default:
+                    break;
+            }
+
+            effectType = msg.ReadU8();
+        }
+    }
+
+    /// <summary>
+    /// Parses <c>AnimatedText</c> (0x84 / GameServerTextEffect).
+    /// Reads the tile position, text color (U8), and text string.
+    /// Fires <see cref="AnimatedTextReceived"/>.
+    /// Maps to <c>ProtocolGame::parseAnimatedText</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParseAnimatedText(InputMessage msg)
+    {
+        var    pos   = ReadPosition(msg);
+        byte   color = msg.ReadU8();
+        string text  = msg.ReadString();
+        AnimatedTextReceived?.Invoke(pos, color, text);
+    }
+
+    /// <summary>
+    /// Parses <c>DistanceMissile</c> (0x85 / GameServerMissileEffect).
+    /// Reads fromPosition, toPosition, and shotId (U16).
+    /// Fires <see cref="DistanceMissileReceived"/>.
+    /// Maps to <c>ProtocolGame::parseDistanceMissile</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParseDistanceMissile(InputMessage msg)
+    {
+        var    fromPos = ReadPosition(msg);
+        var    toPos   = ReadPosition(msg);
+        ushort shotId  = msg.ReadU16();
+        DistanceMissileReceived?.Invoke(fromPos, toPos, shotId);
+    }
+
+    /// <summary>
+    /// Parses <c>CreatureLight</c> (0x8D / GameServerCreatureLight).
+    /// Reads creatureId (U32), intensity (U8), and color (U8).
+    /// Fires <see cref="CreatureLightUpdated"/>.
+    /// Maps to <c>ProtocolGame::parseCreatureLight</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParseCreatureLight(InputMessage msg)
+    {
+        uint creatureId = msg.ReadU32();
+        byte intensity  = msg.ReadU8();
+        byte color      = msg.ReadU8();
+        CreatureLightUpdated?.Invoke(creatureId, intensity, color);
+    }
+
+    /// <summary>
+    /// Parses <c>PlayerInfo</c> (0x9F / GameServerPlayerDataBasic).
+    /// Reads:
+    ///   U8 isPremium, U32 premiumExpiration (discarded), U8 vocation,
+    ///   U8 preyEnabled (discarded), U16 spellCount + spell ids (U16 each),
+    ///   U8 isMagicShieldActive (discarded, protocol 1281).
+    /// Fires <see cref="PlayerInfoReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePlayerInfo</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParsePlayerInfo(InputMessage msg)
+    {
+        bool isPremium = msg.ReadU8() != 0;
+        msg.ReadU32();   // premium expiration timestamp — discarded
+
+        byte vocation = msg.ReadU8();
+        msg.ReadU8();    // prey enabled (bool) — discarded
+
+        ushort spellCount = msg.ReadU16();
+        var    spells     = new List<ushort>(spellCount);
+        for (int i = 0; i < spellCount; i++)
+            spells.Add(msg.ReadU16());
+
+        msg.ReadU8();    // isMagicShieldActive — discarded (protocol 1281)
+
+        PlayerInfoReceived?.Invoke(isPremium, vocation, spells);
+    }
+
+    /// <summary>
+    /// Parses <c>ClearTarget</c> (0xA3 / GameServerClearTarget).
+    /// Reads a sequence number (U32) used to acknowledge the attack cancel.
+    /// Fires <see cref="AttackCancelReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePlayerCancelAttack</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParsePlayerCancelAttack(InputMessage msg)
+    {
+        uint seq = msg.ReadU32();
+        AttackCancelReceived?.Invoke(seq);
+    }
+
+    /// <summary>
+    /// Parses <c>WalkWait</c> (0xB6 / GameServerWalkWait).
+    /// Reads a delay in milliseconds (U16) that the local player must wait
+    /// before the next walk step is allowed.
+    /// Fires <see cref="WalkWaitReceived"/>.
+    /// Maps to <c>ProtocolGame::parseWalkWait</c>.
+    /// Task T47.
+    /// </summary>
+    private void ParseWalkWait(InputMessage msg)
+    {
+        ushort millis = msg.ReadU16();
+        WalkWaitReceived?.Invoke(millis);
+    }
 }
