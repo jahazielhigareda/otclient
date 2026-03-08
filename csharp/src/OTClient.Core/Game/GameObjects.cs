@@ -1303,3 +1303,88 @@ public sealed record UnjustifiedStats(
     byte SkullTime
 );
 
+// ─── DailyReward types (T49) ──────────────────────────────────────────────────
+
+/// <summary>
+/// A selectable item entry within a daily reward day that uses mode 1 (select-from-list).
+/// Maps to the item reading loop inside <c>parseRewardDay</c> in
+/// <c>src/client/protocolgameparse.cpp</c>.
+/// Task T49.
+/// </summary>
+public sealed record DailyRewardItem(
+    ushort ItemId,
+    string Name,
+    uint   Weight
+);
+
+/// <summary>
+/// One bundle entry within a daily reward day that uses mode 2 (click-to-redeem-all).
+/// <list type="bullet">
+///   <item><description>BundleType 1 = regular item (ItemId, Name, Count).</description></item>
+///   <item><description>BundleType 2 = prey wildcards (Count).</description></item>
+///   <item><description>BundleType 3 = XP boost (ItemId = minutes).</description></item>
+/// </list>
+/// Maps to the bundle reading loop inside <c>parseRewardDay</c> in
+/// <c>src/client/protocolgameparse.cpp</c>.
+/// Task T49.
+/// </summary>
+public sealed record DailyRewardBundle(
+    byte   BundleType,
+    ushort ItemId,
+    string Name,
+    byte   Count
+);
+
+/// <summary>
+/// Represents one day's worth of daily reward data (free or premium).
+/// <list type="bullet">
+///   <item><description>RedeemMode 1 = select <see cref="ItemsToSelect"/> items from <see cref="SelectableItems"/>.</description></item>
+///   <item><description>RedeemMode 2 = click to redeem all bundles in <see cref="BundleItems"/>.</description></item>
+/// </list>
+/// Maps to the return value of <c>parseRewardDay</c> in
+/// <c>src/client/protocolgameparse.cpp</c>.
+/// Task T49.
+/// </summary>
+public sealed class DailyRewardDay
+{
+    /// <summary>Reward type: 1=select-from-list, 2=redeem-all.</summary>
+    public byte RedeemMode { get; init; }
+    /// <summary>For mode 1: number of items the player may select.</summary>
+    public byte ItemsToSelect { get; init; }
+    /// <summary>For mode 1: pool of items to choose from.</summary>
+    public IReadOnlyList<DailyRewardItem> SelectableItems { get; init; } = [];
+    /// <summary>For mode 2: fixed bundles awarded.</summary>
+    public IReadOnlyList<DailyRewardBundle> BundleItems { get; init; } = [];
+}
+
+/// <summary>
+/// One additional bonus attached to the daily reward streak window
+/// (e.g. an XP or loot bonus).
+/// Maps to the bonus loop inside <c>ProtocolGame::parseDailyReward</c>.
+/// Task T49.
+/// </summary>
+public sealed record DailyRewardBonus(
+    string Name,
+    byte   Id
+);
+
+/// <summary>
+/// Full payload of the <c>GameServerSendDailyReward</c> (0xE4) packet.
+/// Maps to <c>ProtocolGame::parseDailyReward</c> in
+/// <c>src/client/protocolgameparse.cpp</c>.
+/// Task T49.
+/// </summary>
+public sealed class DailyRewardData
+{
+    /// <summary>Number of reward days (typically 7).</summary>
+    public byte Days { get; init; }
+    /// <summary>Free-account reward for each day (length == <see cref="Days"/>).</summary>
+    public IReadOnlyList<DailyRewardDay> FreeRewards    { get; init; } = [];
+    /// <summary>Premium-account reward for each day (length == <see cref="Days"/>).</summary>
+    public IReadOnlyList<DailyRewardDay> PremiumRewards { get; init; } = [];
+    /// <summary>Optional streak bonuses.</summary>
+    public IReadOnlyList<DailyRewardBonus> Bonuses { get; init; } = [];
+    /// <summary>Maximum number of streak "dragons" unlockable by free accounts.</summary>
+    public byte MaxUnlockableDragons { get; init; }
+}
+

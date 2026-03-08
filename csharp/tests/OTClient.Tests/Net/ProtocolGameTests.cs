@@ -4193,4 +4193,370 @@ public sealed class ProtocolGameTests
 
         Assert.Equal(0, (int)gotId!.Value);
     }
+
+    // ─── T49: ParseSetStoreDeepLink ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseSetStoreDeepLink_FiresWithServiceType()
+    {
+        using var pg = new ProtocolGame();
+        byte? got = null;
+        pg.StoreDeepLinkReceived += t => got = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SetStoreDeepLink);
+        out_.WriteU8(3);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(3, (int)got!.Value);
+    }
+
+    [Fact]
+    public void ParseSetStoreDeepLink_Zero_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? got = null;
+        pg.StoreDeepLinkReceived += t => got = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SetStoreDeepLink);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)got!.Value);
+    }
+
+    // ─── T49: ParseChangeMapAwareRange ────────────────────────────────────────
+
+    [Fact]
+    public void ParseChangeMapAwareRange_FiresWithXYRange()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotX = null, gotY = null;
+        pg.MapAwareRangeChanged += (x, y) => { gotX = x; gotY = y; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ChangeMapAwareRange);
+        out_.WriteU8(18);
+        out_.WriteU8(14);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(18, (int)gotX!.Value);
+        Assert.Equal(14, (int)gotY!.Value);
+    }
+
+    [Fact]
+    public void ParseChangeMapAwareRange_SmallRange_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotX = null, gotY = null;
+        pg.MapAwareRangeChanged += (x, y) => { gotX = x; gotY = y; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ChangeMapAwareRange);
+        out_.WriteU8(5);
+        out_.WriteU8(5);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(5, (int)gotX!.Value);
+        Assert.Equal(5, (int)gotY!.Value);
+    }
+
+    // ─── T49: ParseDailyRewardCollectionState ─────────────────────────────────
+
+    [Fact]
+    public void ParseDailyRewardCollectionState_StateOne_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? got = null;
+        pg.DailyRewardCollectionStateReceived += s => got = s;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DailyRewardCollectionState);
+        out_.WriteU8(1);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, (int)got!.Value);
+    }
+
+    [Fact]
+    public void ParseDailyRewardCollectionState_StateZero_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? got = null;
+        pg.DailyRewardCollectionStateReceived += s => got = s;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DailyRewardCollectionState);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)got!.Value);
+    }
+
+    // ─── T49: ParseOpenRewardWall (taken=0 branch) ────────────────────────────
+
+    [Fact]
+    public void ParseOpenRewardWall_NotTaken_FiresWithTimeLeft()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotBonus = null; uint? gotNext = null; byte? gotStreak = null;
+        byte? gotTaken = null; string? gotError = null; ushort? gotTokens = null;
+        uint? gotTime = null; ushort? gotLevel = null;
+        pg.RewardWallOpened += (b, n, s, t, e, tok, tl, l) =>
+        {
+            gotBonus = b; gotNext = n; gotStreak = s; gotTaken = t;
+            gotError = e; gotTokens = tok; gotTime = tl; gotLevel = l;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenRewardWall);
+        out_.WriteU8(0);          // bonusShrine
+        out_.WriteU32(9999);      // nextRewardTime
+        out_.WriteU8(3);          // dayStreakDay
+        out_.WriteU8(0);          // wasDailyRewardTaken = false
+        out_.WriteU8(0);          // unknown
+        out_.WriteU32(3600);      // timeLeft
+        out_.WriteU16(50);        // tokens
+        out_.WriteU16(7);         // dayStreakLevel
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotBonus!.Value);
+        Assert.Equal(9999u, gotNext!.Value);
+        Assert.Equal(3, (int)gotStreak!.Value);
+        Assert.Equal(0, (int)gotTaken!.Value);
+        Assert.Equal(string.Empty, gotError);
+        Assert.Equal(50, (int)gotTokens!.Value);
+        Assert.Equal(3600u, gotTime!.Value);
+        Assert.Equal(7, (int)gotLevel!.Value);
+    }
+
+    [Fact]
+    public void ParseOpenRewardWall_Taken_FiresWithErrorMessage()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotTaken = null; string? gotError = null; ushort? gotTokens = null;
+        pg.RewardWallOpened += (_, __, ___, t, e, tok, ____, _____) =>
+        {
+            gotTaken = t; gotError = e; gotTokens = tok;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenRewardWall);
+        out_.WriteU8(1);             // bonusShrine
+        out_.WriteU32(0);            // nextRewardTime
+        out_.WriteU8(1);             // dayStreakDay
+        out_.WriteU8(1);             // wasDailyRewardTaken = true
+        out_.WriteString("Already claimed!");  // errorMessage
+        out_.WriteU8(1);             // token flag present
+        out_.WriteU16(100);          // tokens
+        out_.WriteU16(1);            // dayStreakLevel
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, (int)gotTaken!.Value);
+        Assert.Equal("Already claimed!", gotError);
+        Assert.Equal(100, (int)gotTokens!.Value);
+    }
+
+    // ─── T49: ParseRewardHistory ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseRewardHistory_TwoEntries_FiresWithList()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(uint, bool, string, ushort)>? got = null;
+        pg.RewardHistoryReceived += h => got = h;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RewardHistory);
+        out_.WriteU8(2);               // count
+        out_.WriteU32(1000);           // entry1 timestamp
+        out_.WriteU8(1);               // entry1 isPremium
+        out_.WriteString("Day 1");     // entry1 description
+        out_.WriteU16(3);              // entry1 dayStreak
+        out_.WriteU32(2000);           // entry2 timestamp
+        out_.WriteU8(0);               // entry2 isPremium=false
+        out_.WriteString("Day 2");     // entry2 description
+        out_.WriteU16(4);              // entry2 dayStreak
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got.Count);
+        var (ts1, prem1, desc1, streak1) = got[0];
+        Assert.Equal(1000u, ts1);
+        Assert.True(prem1);
+        Assert.Equal("Day 1", desc1);
+        Assert.Equal(3, (int)streak1);
+        var (ts2, prem2, desc2, streak2) = got[1];
+        Assert.Equal(2000u, ts2);
+        Assert.False(prem2);
+        Assert.Equal("Day 2", desc2);
+        Assert.Equal(4, (int)streak2);
+    }
+
+    [Fact]
+    public void ParseRewardHistory_EmptyList_FiresEmptyList()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(uint, bool, string, ushort)>? got = null;
+        pg.RewardHistoryReceived += h => got = h;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RewardHistory);
+        out_.WriteU8(0);   // count = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got);
+    }
+
+    // ─── T49: ParseLootContainers ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseLootContainers_TwoContainers_FiresCorrectly()
+    {
+        using var pg = new ProtocolGame();
+        bool? gotFallback = null;
+        IReadOnlyList<(byte, ushort, ushort)>? gotList = null;
+        pg.LootContainersReceived += (f, l) => { gotFallback = f; gotList = l; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.LootContainers);
+        out_.WriteU8(1);      // quickLootFallback = true
+        out_.WriteU8(2);      // count
+        out_.WriteU8(1);      // category 1
+        out_.WriteU16(10);    // lootContainerId
+        out_.WriteU16(20);    // obtainerContainerId
+        out_.WriteU8(2);      // category 2
+        out_.WriteU16(30);
+        out_.WriteU16(40);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(gotFallback);
+        Assert.NotNull(gotList);
+        Assert.Equal(2, gotList.Count);
+        var (cat1, lc1, oc1) = gotList[0];
+        Assert.Equal(1, (int)cat1);
+        Assert.Equal(10, (int)lc1);
+        Assert.Equal(20, (int)oc1);
+        var (cat2, lc2, oc2) = gotList[1];
+        Assert.Equal(2, (int)cat2);
+        Assert.Equal(30, (int)lc2);
+        Assert.Equal(40, (int)oc2);
+    }
+
+    [Fact]
+    public void ParseLootContainers_QuickLootFalse_EmptyList_Fires()
+    {
+        using var pg = new ProtocolGame();
+        bool? gotFallback = null;
+        IReadOnlyList<(byte, ushort, ushort)>? gotList = null;
+        pg.LootContainersReceived += (f, l) => { gotFallback = f; gotList = l; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.LootContainers);
+        out_.WriteU8(0);   // quickLootFallback = false
+        out_.WriteU8(0);   // count = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.False(gotFallback);
+        Assert.NotNull(gotList);
+        Assert.Empty(gotList);
+    }
+
+    // ─── T49: ParseDailyReward ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseDailyReward_OneDayMode1_FiresCorrectData()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.DailyRewardData? got = null;
+        pg.DailyRewardReceived += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DailyReward);
+        out_.WriteU8(1);          // 1 day
+
+        // free reward (mode 1)
+        out_.WriteU8(1);          // redeemMode
+        out_.WriteU8(1);          // itemsToSelect
+        out_.WriteU8(1);          // listSize
+        out_.WriteU16(100);       // itemId
+        out_.WriteString("Sword");// name
+        out_.WriteU32(500);       // weight
+
+        // premium reward (mode 2)
+        out_.WriteU8(2);          // redeemMode
+        out_.WriteU8(1);          // listSize
+        out_.WriteU8(1);          // bundleType = item
+        out_.WriteU16(200);       // itemId
+        out_.WriteString("Shield");
+        out_.WriteU8(2);          // count
+
+        // bonuses
+        out_.WriteU8(1);          // bonusCount
+        out_.WriteString("XP Bonus");
+        out_.WriteU8(3);          // bonusId
+        out_.WriteU8(5);          // maxUnlockableDragons
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(1, (int)got.Days);
+        Assert.Single(got.FreeRewards);
+        Assert.Equal(1, (int)got.FreeRewards[0].RedeemMode);
+        Assert.Equal(1, (int)got.FreeRewards[0].ItemsToSelect);
+        Assert.Single(got.FreeRewards[0].SelectableItems);
+        Assert.Equal(100, (int)got.FreeRewards[0].SelectableItems[0].ItemId);
+        Assert.Equal("Sword", got.FreeRewards[0].SelectableItems[0].Name);
+        Assert.Equal(500u, got.FreeRewards[0].SelectableItems[0].Weight);
+
+        Assert.Single(got.PremiumRewards);
+        Assert.Equal(2, (int)got.PremiumRewards[0].RedeemMode);
+        Assert.Single(got.PremiumRewards[0].BundleItems);
+        Assert.Equal(1, (int)got.PremiumRewards[0].BundleItems[0].BundleType);
+        Assert.Equal(200, (int)got.PremiumRewards[0].BundleItems[0].ItemId);
+        Assert.Equal("Shield", got.PremiumRewards[0].BundleItems[0].Name);
+        Assert.Equal(2, (int)got.PremiumRewards[0].BundleItems[0].Count);
+
+        Assert.Single(got.Bonuses);
+        Assert.Equal("XP Bonus", got.Bonuses[0].Name);
+        Assert.Equal(3, (int)got.Bonuses[0].Id);
+        Assert.Equal(5, (int)got.MaxUnlockableDragons);
+    }
+
+    [Fact]
+    public void ParseDailyReward_ZeroDays_NoBonuses_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.DailyRewardData? got = null;
+        pg.DailyRewardReceived += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DailyReward);
+        out_.WriteU8(0);   // 0 days
+        out_.WriteU8(0);   // 0 bonuses
+        out_.WriteU8(0);   // maxUnlockableDragons
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(0, (int)got.Days);
+        Assert.Empty(got.FreeRewards);
+        Assert.Empty(got.PremiumRewards);
+        Assert.Empty(got.Bonuses);
+        Assert.Equal(0, (int)got.MaxUnlockableDragons);
+    }
 }

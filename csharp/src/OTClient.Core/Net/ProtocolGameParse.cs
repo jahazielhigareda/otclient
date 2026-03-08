@@ -2972,4 +2972,227 @@ public sealed partial class ProtocolGame
         byte   eventType   = msg.ReadU8();
         ChannelEventReceived?.Invoke(channelId, channelName, eventType);
     }
+
+    // ─── T49 parsers ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>SetStoreDeepLink</c> (0xA8 / GameServerSetStoreDeepLink).
+    /// Reads one U8 service-type byte (discarded by the C++ reference client).
+    /// Fires <see cref="StoreDeepLinkReceived"/>.
+    /// Maps to <c>ProtocolGame::parseSetStoreDeepLink</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseSetStoreDeepLink(InputMessage msg)
+    {
+        byte serviceType = msg.ReadU8();
+        StoreDeepLinkReceived?.Invoke(serviceType);
+    }
+
+    /// <summary>
+    /// Parses <c>ChangeMapAwareRange</c> (0x33 / GameServerChangeMapAwareRange).
+    /// Reads xRange (U8) and yRange (U8) defining the new client-visible area.
+    /// Fires <see cref="MapAwareRangeChanged"/>.
+    /// Maps to <c>ProtocolGame::parseChangeMapAwareRange</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseChangeMapAwareRange(InputMessage msg)
+    {
+        byte xRange = msg.ReadU8();
+        byte yRange = msg.ReadU8();
+        MapAwareRangeChanged?.Invoke(xRange, yRange);
+    }
+
+    /// <summary>
+    /// Parses <c>DailyRewardCollectionState</c> (0xDE / GameServerSendDailyRewardCollectionState).
+    /// Reads one U8 state (0 = not collected, 1 = collected).
+    /// Fires <see cref="DailyRewardCollectionStateReceived"/>.
+    /// Maps to <c>ProtocolGame::parseDailyRewardCollectionState</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseDailyRewardCollectionState(InputMessage msg)
+    {
+        byte state = msg.ReadU8();
+        DailyRewardCollectionStateReceived?.Invoke(state);
+    }
+
+    /// <summary>
+    /// Parses <c>OpenRewardWall</c> (0xE2 / GameServerSendOpenRewardWall).
+    /// Wire format: U8 bonusShrine, U32 nextRewardTime, U8 dayStreakDay,
+    /// U8 wasDailyRewardTaken; if taken: string errorMessage + optional U8+U16 tokens;
+    /// else: skip U8 + U32 timeLeft + U16 tokens; finally U16 dayStreakLevel.
+    /// Fires <see cref="RewardWallOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenRewardWall</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseOpenRewardWall(InputMessage msg)
+    {
+        byte   bonusShrine         = msg.ReadU8();
+        uint   nextRewardTime      = msg.ReadU32();
+        byte   dayStreakDay        = msg.ReadU8();
+        byte   wasDailyRewardTaken = msg.ReadU8();
+
+        string errorMessage = string.Empty;
+        ushort tokens       = 0;
+        uint   timeLeft     = 0;
+
+        if (wasDailyRewardTaken != 0)
+        {
+            errorMessage = msg.ReadString();
+            if (msg.ReadU8() != 0)
+                tokens = msg.ReadU16();
+        }
+        else
+        {
+            msg.ReadU8();           // unknown
+            timeLeft = msg.ReadU32();
+            tokens   = msg.ReadU16();
+        }
+
+        ushort dayStreakLevel = msg.ReadU16();
+        RewardWallOpened?.Invoke(bonusShrine, nextRewardTime, dayStreakDay,
+            wasDailyRewardTaken, errorMessage, tokens, timeLeft, dayStreakLevel);
+    }
+
+    /// <summary>
+    /// Helper: reads one <c>DailyRewardDay</c> from the wire stream.
+    /// Mode 1 (select-from-list): U8 itemsToSelect, U8 listSize × (U16 id, string name, U32 weight).
+    /// Mode 2 (redeem-all): U8 listSize × (U8 bundleType, then type-specific fields).
+    /// Maps to the <c>parseRewardDay</c> lambda in <c>protocolgameparse.cpp</c>.
+    /// Task T49.
+    /// </summary>
+    private static Game.DailyRewardDay ReadRewardDay(InputMessage msg)
+    {
+        byte redeemMode = msg.ReadU8();
+        if (redeemMode == 1)
+        {
+            byte itemsToSelect = msg.ReadU8();
+            byte listSize      = msg.ReadU8();
+            var  items         = new List<Game.DailyRewardItem>(listSize);
+            for (int i = 0; i < listSize; i++)
+            {
+                ushort itemId = msg.ReadU16();
+                string name   = msg.ReadString();
+                uint   weight = msg.ReadU32();
+                items.Add(new Game.DailyRewardItem(itemId, name, weight));
+            }
+            return new Game.DailyRewardDay
+            {
+                RedeemMode = redeemMode, ItemsToSelect = itemsToSelect, SelectableItems = items
+            };
+        }
+        else if (redeemMode == 2)
+        {
+            byte listSize = msg.ReadU8();
+            var  bundles  = new List<Game.DailyRewardBundle>(listSize);
+            for (int i = 0; i < listSize; i++)
+            {
+                byte   bundleType = msg.ReadU8();
+                ushort itemId     = 0;
+                string name       = string.Empty;
+                byte   count      = 0;
+                switch (bundleType)
+                {
+                    case 1:
+                        itemId = msg.ReadU16();
+                        name   = msg.ReadString();
+                        count  = msg.ReadU8();
+                        break;
+                    case 2:
+                        name  = "Prey Wildcards";
+                        count = msg.ReadU8();
+                        break;
+                    case 3:
+                        itemId = msg.ReadU16(); // XP Boost minutes
+                        name   = "XP Boost";
+                        break;
+                }
+                bundles.Add(new Game.DailyRewardBundle(bundleType, itemId, name, count));
+            }
+            return new Game.DailyRewardDay { RedeemMode = redeemMode, BundleItems = bundles };
+        }
+
+        return new Game.DailyRewardDay { RedeemMode = redeemMode };
+    }
+
+    /// <summary>
+    /// Parses <c>DailyReward</c> (0xE4 / GameServerSendDailyReward).
+    /// Reads a <see cref="Game.DailyRewardData"/> structure:
+    /// U8 days × (free DailyRewardDay + premium DailyRewardDay);
+    /// U8 bonusCount × (string name, U8 id); U8 maxUnlockableDragons.
+    /// Fires <see cref="DailyRewardReceived"/>.
+    /// Maps to <c>ProtocolGame::parseDailyReward</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseDailyReward(InputMessage msg)
+    {
+        byte days         = msg.ReadU8();
+        var  freeRewards    = new List<Game.DailyRewardDay>(days);
+        var  premiumRewards = new List<Game.DailyRewardDay>(days);
+        for (int i = 0; i < days; i++)
+        {
+            freeRewards.Add(ReadRewardDay(msg));
+            premiumRewards.Add(ReadRewardDay(msg));
+        }
+
+        byte bonusCount = msg.ReadU8();
+        var  bonuses    = new List<Game.DailyRewardBonus>(bonusCount);
+        for (int i = 0; i < bonusCount; i++)
+        {
+            string bonusName = msg.ReadString();
+            byte   bonusId   = msg.ReadU8();
+            bonuses.Add(new Game.DailyRewardBonus(bonusName, bonusId));
+        }
+
+        byte maxDragons = msg.ReadU8();
+        DailyRewardReceived?.Invoke(new Game.DailyRewardData
+        {
+            Days = days, FreeRewards = freeRewards, PremiumRewards = premiumRewards,
+            Bonuses = bonuses, MaxUnlockableDragons = maxDragons
+        });
+    }
+
+    /// <summary>
+    /// Parses <c>RewardHistory</c> (0xE5 / GameServerSendRewardHistory).
+    /// Wire: U8 count × (U32 timestamp, U8 isPremium, string description, U16 dayStreak).
+    /// Fires <see cref="RewardHistoryReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRewardHistory</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseRewardHistory(InputMessage msg)
+    {
+        byte count   = msg.ReadU8();
+        var  history = new List<(uint, bool, string, ushort)>(count);
+        for (int i = 0; i < count; i++)
+        {
+            uint   timestamp   = msg.ReadU32();
+            bool   isPremium   = msg.ReadU8() != 0;
+            string description = msg.ReadString();
+            ushort dayStreak   = msg.ReadU16();
+            history.Add((timestamp, isPremium, description, dayStreak));
+        }
+        RewardHistoryReceived?.Invoke(history);
+    }
+
+    /// <summary>
+    /// Parses <c>LootContainers</c> (0xC0 / GameServerLootContainers).
+    /// Wire: U8 quickLootFallback, U8 count × (U8 categoryType, U16 lootContainerId,
+    /// U16 obtainerContainerId for protocol ≥ 1332 — we always read it at 1281).
+    /// Fires <see cref="LootContainersReceived"/>.
+    /// Maps to <c>ProtocolGame::parseLootContainers</c>.
+    /// Task T49.
+    /// </summary>
+    private void ParseLootContainers(InputMessage msg)
+    {
+        bool quickLootFallback = msg.ReadU8() != 0;
+        byte count             = msg.ReadU8();
+        var  list              = new List<(byte, ushort, ushort)>(count);
+        for (int i = 0; i < count; i++)
+        {
+            byte   categoryType        = msg.ReadU8();
+            ushort lootContainerId     = msg.ReadU16();
+            ushort obtainerContainerId = msg.ReadU16();
+            list.Add((categoryType, lootContainerId, obtainerContainerId));
+        }
+        LootContainersReceived?.Invoke(quickLootFallback, list);
+    }
 }

@@ -203,6 +203,15 @@ public enum GameServerPacket : byte
     TutorialHint      = 0xDC,  // GameServerTutorialHint (220)     — parseTutorialHint (T48)
     AutomapFlag       = 0xDD,  // GameServerAutomapFlag (221)      — parseAutomapFlag (T48)
     ChannelEvent      = 0xF3,  // GameServerChannelEvent (243)     — parseChannelEvent (T48)
+
+    // T49 opcodes
+    ChangeMapAwareRange          = 0x33,  // GameServerChangeMapAwareRange (51)              — parseChangeMapAwareRange (T49)
+    LootContainers               = 0xC0,  // GameServerLootContainers (192)                  — parseLootContainers (T49)
+    SetStoreDeepLink             = 0xA8,  // GameServerSetStoreDeepLink (168)                — parseSetStoreDeepLink (T49)
+    DailyRewardCollectionState   = 0xDE,  // GameServerSendDailyRewardCollectionState (222)  — parseDailyRewardCollectionState (T49)
+    OpenRewardWall               = 0xE2,  // GameServerSendOpenRewardWall (226)              — parseOpenRewardWall (T49)
+    DailyReward                  = 0xE4,  // GameServerSendDailyReward (228)                 — parseDailyReward (T49)
+    RewardHistory                = 0xE5,  // GameServerSendRewardHistory (229)               — parseRewardHistory (T49)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -977,6 +986,67 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<ushort, string, byte>? ChannelEventReceived;
 
+    // ─── T49 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends a <c>SetStoreDeepLink</c> (0xA8) packet.
+    /// Parameters: serviceType (discarded by client but forwarded here).
+    /// Maps to <c>ProtocolGame::parseSetStoreDeepLink</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<byte>? StoreDeepLinkReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>ChangeMapAwareRange</c> (0x33) packet
+    /// updating the client's visible map area.
+    /// Parameters: (xRange, yRange).
+    /// Maps to <c>ProtocolGame::parseChangeMapAwareRange</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<byte, byte>? MapAwareRangeChanged;
+
+    /// <summary>
+    /// Raised when the server sends a <c>DailyRewardCollectionState</c> (0xDE) packet.
+    /// Parameters: state (0 = not collected, 1 = collected).
+    /// Maps to <c>ProtocolGame::parseDailyRewardCollectionState</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<byte>? DailyRewardCollectionStateReceived;
+
+    /// <summary>
+    /// Raised when the server sends an <c>OpenRewardWall</c> (0xE2) packet.
+    /// Parameters: (bonusShrine, nextRewardTime, dayStreakDay, wasDailyRewardTaken,
+    ///   errorMessage, tokens, timeLeft, dayStreakLevel).
+    /// Maps to <c>ProtocolGame::parseOpenRewardWall</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<byte, uint, byte, byte, string, ushort, uint, ushort>? RewardWallOpened;
+
+    /// <summary>
+    /// Raised when the server sends a <c>DailyReward</c> (0xE4) packet.
+    /// Parameters: <see cref="OTClient.Framework.Game.DailyRewardData"/>.
+    /// Maps to <c>ProtocolGame::parseDailyReward</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<Game.DailyRewardData>? DailyRewardReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>RewardHistory</c> (0xE5) packet.
+    /// Parameters: list of (timestamp, isPremium, description, dayStreak) tuples.
+    /// Maps to <c>ProtocolGame::parseRewardHistory</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<IReadOnlyList<(uint Timestamp, bool IsPremium, string Description, ushort DayStreak)>>? RewardHistoryReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>LootContainers</c> (0xC0) packet
+    /// describing the quick-loot container configuration.
+    /// Parameters: (quickLootFallback, list of (categoryType, lootContainerId, obtainerContainerId)).
+    /// Maps to <c>ProtocolGame::parseLootContainers</c>.
+    /// Task T49.
+    /// </summary>
+    public event Action<bool, IReadOnlyList<(byte CategoryType, ushort LootContainerId, ushort ObtainerContainerId)>>? LootContainersReceived;
+
     /// <summary>
     /// Raised when the server opens the NPC trade window.
     /// Parameters: list of <see cref="Game.NpcTradeItem"/> entries.
@@ -1159,6 +1229,15 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.TutorialHint,      ParseTutorialHint);
         RegisterHandler((byte)GameServerPacket.AutomapFlag,       ParseAutomapFlag);
         RegisterHandler((byte)GameServerPacket.ChannelEvent,      ParseChannelEvent);
+
+        // T49
+        RegisterHandler((byte)GameServerPacket.SetStoreDeepLink,           ParseSetStoreDeepLink);
+        RegisterHandler((byte)GameServerPacket.ChangeMapAwareRange,        ParseChangeMapAwareRange);
+        RegisterHandler((byte)GameServerPacket.LootContainers,             ParseLootContainers);
+        RegisterHandler((byte)GameServerPacket.DailyRewardCollectionState, ParseDailyRewardCollectionState);
+        RegisterHandler((byte)GameServerPacket.OpenRewardWall,             ParseOpenRewardWall);
+        RegisterHandler((byte)GameServerPacket.DailyReward,               ParseDailyReward);
+        RegisterHandler((byte)GameServerPacket.RewardHistory,             ParseRewardHistory);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────
