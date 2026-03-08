@@ -1285,3 +1285,21 @@ public sealed class VipEntry
     public bool   isOnline()       => Status != 0;
 }
 
+// ─── UnjustifiedStats (T48) ───────────────────────────────────────────────────
+
+/// <summary>
+/// Unjustified kill statistics for the local player as sent by
+/// <c>GameServerUnjustifiedStats</c> (opcode 0xB7).
+/// Maps to <c>ProtocolGame::parseUnjustifiedStats</c> in <c>src/client/protocolgameparse.cpp</c>.
+/// Task T48.
+/// </summary>
+public sealed record UnjustifiedStats(
+    byte KillsDay,
+    byte KillsDayRemaining,
+    byte KillsWeek,
+    byte KillsWeekRemaining,
+    byte KillsMonth,
+    byte KillsMonthRemaining,
+    byte SkullTime
+);
+

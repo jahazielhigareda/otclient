@@ -105,6 +105,16 @@ public sealed class Game
     /// </summary>
     public byte OpenPvpSituations { get; private set; }
 
+    // ─── Unjustified kills / skull (T48) ─────────────────────────────────────
+
+    /// <summary>
+    /// Current unjustified kill statistics as last received from the server.
+    /// Null until the first <c>UnjustifiedStats</c> packet arrives.
+    /// Maps to <c>Game::setUnjustifiedPoints</c>.
+    /// Task T48.
+    /// </summary>
+    public UnjustifiedStats? UnjustifiedStats { get; private set; }
+
     // ─── Login-flow events (T44) ──────────────────────────────────────────────
 
     /// <summary>Raised when <c>ParseLoginSuccess</c> has been processed.</summary>
@@ -1227,6 +1237,17 @@ public sealed class Game
             LocalPlayer.IsPremium = isPremium;
             LocalPlayer.Vocation  = vocation;
             LocalPlayer.SetSpells(spells);
+        };
+
+        // T48: wire bug-report and unjustified-stats events
+        protocol.BugReportReceived += canReport =>
+        {
+            CanReportBugs = canReport;
+        };
+
+        protocol.UnjustifiedStatsReceived += stats =>
+        {
+            UnjustifiedStats = stats;
         };
     }
 }

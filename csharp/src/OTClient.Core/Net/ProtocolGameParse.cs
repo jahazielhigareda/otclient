@@ -2849,4 +2849,127 @@ public sealed partial class ProtocolGame
         ushort millis = msg.ReadU16();
         WalkWaitReceived?.Invoke(millis);
     }
+
+    // ─── T48 parsers ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>BugReport</c> (0x1A / GameServerBugReport).
+    /// Reads one U8: non-zero means the player is allowed to report bugs.
+    /// Fires <see cref="BugReportReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBugReport</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseBugReport(InputMessage msg)
+    {
+        bool canReport = msg.ReadU8() != 0;
+        BugReportReceived?.Invoke(canReport);
+    }
+
+    /// <summary>
+    /// Parses <c>Trappers</c> (0x87 / GameServerTrappers).
+    /// Reads U8 count followed by one U32 creature ID per entry.
+    /// Fires <see cref="TrappersReceived"/>.
+    /// Maps to <c>ProtocolGame::parseTrappers</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseTrappers(InputMessage msg)
+    {
+        byte count = msg.ReadU8();
+        var  ids   = new List<uint>(count);
+        for (int i = 0; i < count; i++)
+            ids.Add(msg.ReadU32());
+        TrappersReceived?.Invoke(ids);
+    }
+
+    /// <summary>
+    /// Parses <c>CloseForgeWindow</c> (0x89 / GameServerCloseForgeWindow).
+    /// No payload — simply fires <see cref="ForgeWindowClosed"/>.
+    /// Maps to <c>ProtocolGame::parseCloseForgeWindow</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseCloseForgeWindow(InputMessage _)
+        => ForgeWindowClosed?.Invoke();
+
+    /// <summary>
+    /// Parses <c>RestingAreaState</c> (0xA9 / GameServerSendRestingAreaState).
+    /// Reads U8 zone, U8 state, and a string message.
+    /// Fires <see cref="RestingAreaStateReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRestingAreaState</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseRestingAreaState(InputMessage msg)
+    {
+        byte   zone    = msg.ReadU8();
+        byte   state   = msg.ReadU8();
+        string message = msg.ReadString();
+        RestingAreaStateReceived?.Invoke(zone, state, message);
+    }
+
+    /// <summary>
+    /// Parses <c>UnjustifiedStats</c> (0xB7 / GameServerUnjustifiedStats).
+    /// Reads seven U8 values: killsDay, killsDayRemaining, killsWeek,
+    /// killsWeekRemaining, killsMonth, killsMonthRemaining, skullTime.
+    /// Fires <see cref="UnjustifiedStatsReceived"/>.
+    /// Maps to <c>ProtocolGame::parseUnjustifiedStats</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseUnjustifiedStats(InputMessage msg)
+    {
+        byte killsDay              = msg.ReadU8();
+        byte killsDayRemaining     = msg.ReadU8();
+        byte killsWeek             = msg.ReadU8();
+        byte killsWeekRemaining    = msg.ReadU8();
+        byte killsMonth            = msg.ReadU8();
+        byte killsMonthRemaining   = msg.ReadU8();
+        byte skullTime             = msg.ReadU8();
+        UnjustifiedStatsReceived?.Invoke(new UnjustifiedStats(
+            killsDay, killsDayRemaining,
+            killsWeek, killsWeekRemaining,
+            killsMonth, killsMonthRemaining,
+            skullTime));
+    }
+
+    /// <summary>
+    /// Parses <c>TutorialHint</c> (0xDC / GameServerTutorialHint).
+    /// Reads one U8 hint ID.
+    /// Fires <see cref="TutorialHintReceived"/>.
+    /// Maps to <c>ProtocolGame::parseTutorialHint</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseTutorialHint(InputMessage msg)
+    {
+        byte hintId = msg.ReadU8();
+        TutorialHintReceived?.Invoke(hintId);
+    }
+
+    /// <summary>
+    /// Parses <c>AutomapFlag</c> (0xDD / GameServerAutomapFlag).
+    /// Reads a map position, icon (U8), description string, and remove flag (U8).
+    /// Fires <see cref="AutomapFlagReceived"/>.
+    /// Maps to <c>ProtocolGame::parseAutomapFlag</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseAutomapFlag(InputMessage msg)
+    {
+        Position pos         = ReadPosition(msg);
+        byte     icon        = msg.ReadU8();
+        string   description = msg.ReadString();
+        bool     remove      = msg.ReadU8() != 0;
+        AutomapFlagReceived?.Invoke(pos, icon, description, remove);
+    }
+
+    /// <summary>
+    /// Parses <c>ChannelEvent</c> (0xF3 / GameServerChannelEvent).
+    /// Reads channel ID (U16), channel name (string), and event type (U8).
+    /// Fires <see cref="ChannelEventReceived"/>.
+    /// Maps to <c>ProtocolGame::parseChannelEvent</c>.
+    /// Task T48.
+    /// </summary>
+    private void ParseChannelEvent(InputMessage msg)
+    {
+        ushort channelId   = msg.ReadU16();
+        string channelName = msg.ReadString();
+        byte   eventType   = msg.ReadU8();
+        ChannelEventReceived?.Invoke(channelId, channelName, eventType);
+    }
 }

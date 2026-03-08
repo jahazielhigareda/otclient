@@ -193,6 +193,16 @@ public enum GameServerPacket : byte
     PlayerInfo        = 0x9F,  // GameServerPlayerDataBasic (159)  — parsePlayerInfo (T47)
     ClearTarget       = 0xA3,  // GameServerClearTarget (163)      — parsePlayerCancelAttack (T47)
     WalkWait          = 0xB6,  // GameServerWalkWait (182)         — parseWalkWait (T47)
+
+    // T48 opcodes
+    BugReport         = 0x1A,  // GameServerBugReport (26)         — parseBugReport (T48)
+    Trappers          = 0x87,  // GameServerTrappers (135)         — parseTrappers (T48)
+    CloseForgeWindow  = 0x89,  // GameServerCloseForgeWindow (137) — parseCloseForgeWindow (T48)
+    RestingAreaState  = 0xA9,  // GameServerSendRestingAreaState (169) — parseRestingAreaState (T48)
+    UnjustifiedStats  = 0xB7,  // GameServerUnjustifiedStats (183) — parseUnjustifiedStats (T48)
+    TutorialHint      = 0xDC,  // GameServerTutorialHint (220)     — parseTutorialHint (T48)
+    AutomapFlag       = 0xDD,  // GameServerAutomapFlag (221)      — parseAutomapFlag (T48)
+    ChannelEvent      = 0xF3,  // GameServerChannelEvent (243)     — parseChannelEvent (T48)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -901,6 +911,72 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<ushort>? WalkWaitReceived;
 
+    // ─── T48 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends a <c>BugReport</c> (0x1A) packet.
+    /// Parameters: canReportBugs.
+    /// Maps to <c>ProtocolGame::parseBugReport</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<bool>? BugReportReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>Trappers</c> (0x87) packet
+    /// listing creature IDs that are currently trappers.
+    /// Parameters: list of creature IDs.
+    /// Maps to <c>ProtocolGame::parseTrappers</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<IReadOnlyList<uint>>? TrappersReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>CloseForgeWindow</c> (0x89) packet.
+    /// Maps to <c>ProtocolGame::parseCloseForgeWindow</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action? ForgeWindowClosed;
+
+    /// <summary>
+    /// Raised when the server sends a <c>RestingAreaState</c> (0xA9) packet.
+    /// Parameters: (zone, state, message).
+    /// Maps to <c>ProtocolGame::parseRestingAreaState</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<byte, byte, string>? RestingAreaStateReceived;
+
+    /// <summary>
+    /// Raised when the server sends an <c>UnjustifiedStats</c> (0xB7) packet.
+    /// Parameters: <see cref="OTClient.Framework.Game.UnjustifiedStats"/>.
+    /// Maps to <c>ProtocolGame::parseUnjustifiedStats</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<UnjustifiedStats>? UnjustifiedStatsReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>TutorialHint</c> (0xDC) packet.
+    /// Parameters: hint ID.
+    /// Maps to <c>ProtocolGame::parseTutorialHint</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<byte>? TutorialHintReceived;
+
+    /// <summary>
+    /// Raised when the server sends an <c>AutomapFlag</c> (0xDD) packet.
+    /// Parameters: (position, icon, description, remove).
+    /// Maps to <c>ProtocolGame::parseAutomapFlag</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<Position, byte, string, bool>? AutomapFlagReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>ChannelEvent</c> (0xF3) packet.
+    /// Parameters: (channelId, channelName, eventType).
+    /// Maps to <c>ProtocolGame::parseChannelEvent</c>.
+    /// Task T48.
+    /// </summary>
+    public event Action<ushort, string, byte>? ChannelEventReceived;
+
     /// <summary>
     /// Raised when the server opens the NPC trade window.
     /// Parameters: list of <see cref="Game.NpcTradeItem"/> entries.
@@ -1073,6 +1149,16 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.PlayerInfo,        ParsePlayerInfo);
         RegisterHandler((byte)GameServerPacket.ClearTarget,       ParsePlayerCancelAttack);
         RegisterHandler((byte)GameServerPacket.WalkWait,          ParseWalkWait);
+
+        // T48
+        RegisterHandler((byte)GameServerPacket.BugReport,         ParseBugReport);
+        RegisterHandler((byte)GameServerPacket.Trappers,          ParseTrappers);
+        RegisterHandler((byte)GameServerPacket.CloseForgeWindow,  ParseCloseForgeWindow);
+        RegisterHandler((byte)GameServerPacket.RestingAreaState,  ParseRestingAreaState);
+        RegisterHandler((byte)GameServerPacket.UnjustifiedStats,  ParseUnjustifiedStats);
+        RegisterHandler((byte)GameServerPacket.TutorialHint,      ParseTutorialHint);
+        RegisterHandler((byte)GameServerPacket.AutomapFlag,       ParseAutomapFlag);
+        RegisterHandler((byte)GameServerPacket.ChannelEvent,      ParseChannelEvent);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────
