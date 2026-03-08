@@ -173,6 +173,16 @@ public enum GameServerPacket : byte
     CreatureType    = 0x95,  // GameServerCreatureType (149)    — parseCreatureType (T45)
     FloorChangeUp   = 0xBE,  // GameServerFloorChangeUp (190)   — parseFloorChangeUp (T45)
     FloorChangeDown = 0xBF,  // GameServerFloorChangeDown (191) — parseFloorChangeDown (T45)
+
+    // T46 opcodes
+    Blessings          = 0x9C,  // GameServerBlessings (156)        — parseBlessings (T46)
+    SpellCooldown      = 0xA4,  // GameServerSpellDelay (164)       — parseSpellCooldown (T46)
+    SpellGroupCooldown = 0xA5,  // GameServerSpellGroupDelay (165)  — parseSpellGroupCooldown (T46)
+    MultiUseCooldown   = 0xA6,  // GameServerMultiUseDelay (166)    — parseMultiUseCooldown (T46)
+    OpenOwnChannel     = 0xB2,  // GameServerOpenOwnChannel (178)   — parseOpenOwnPrivateChannel (T46)
+    PvpSituations      = 0xB8,  // GameServerPvpSituations (184)    — parsePvpSituations (T46)
+    ResourceBalance    = 0xEE,  // GameServerResourceBalance (238)  — parseResourceBalance (T46)
+    WorldTime          = 0xEF,  // GameServerWorldTime (239)        — parseWorldTime (T46)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -745,6 +755,72 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<Game.Position, Game.Position>? FloorChanged;
 
+    // ─── Player-state events (T46) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends a <c>Blessings</c> (0x9C) packet.
+    /// Parameters: blessings bitmask, visual state (0=hidden, 1=disabled, 2=normal, 3=green).
+    /// Maps to <c>ProtocolGame::parseBlessings</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<uint, byte>? BlessingsChanged;
+
+    /// <summary>
+    /// Raised when the server sends a <c>SpellCooldown</c> (0xA4) packet.
+    /// Parameters: spellId, delayMs.
+    /// Maps to <c>ProtocolGame::parseSpellCooldown</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<ushort, uint>? SpellCooldownReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>SpellGroupCooldown</c> (0xA5) packet.
+    /// Parameters: groupId, delayMs.
+    /// Maps to <c>ProtocolGame::parseSpellGroupCooldown</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<byte, uint>? SpellGroupCooldownReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>MultiUseCooldown</c> (0xA6) packet.
+    /// Parameter: delayMs.
+    /// Maps to <c>ProtocolGame::parseMultiUseCooldown</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<uint>? MultiUseCooldownReceived;
+
+    /// <summary>
+    /// Raised when the server sends an <c>OpenOwnChannel</c> (0xB2) packet.
+    /// Parameters: channelId, channelName.
+    /// Maps to <c>ProtocolGame::parseOpenOwnPrivateChannel</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<ushort, string>? OwnPrivateChannelOpened;
+
+    /// <summary>
+    /// Raised when the server sends a <c>PvpSituations</c> (0xB8) packet.
+    /// Parameter: open PvP situation count.
+    /// Maps to <c>ProtocolGame::parsePvpSituations</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<byte>? PvpSituationsChanged;
+
+    /// <summary>
+    /// Raised when the server sends a <c>ResourceBalance</c> (0xEE) packet.
+    /// Parameters: resource type byte, value.
+    /// Maps to <c>ProtocolGame::parseResourceBalance</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<byte, ulong>? ResourceBalanceChanged;
+
+    /// <summary>
+    /// Raised when the server sends a <c>WorldTime</c> (0xEF) packet.
+    /// Parameters: hour, minute.
+    /// Maps to <c>ProtocolGame::parseWorldTime</c>.
+    /// Task T46.
+    /// </summary>
+    public event Action<byte, byte>? WorldTimeChanged;
+
     // ─── NPC trade events (T15) ───────────────────────────────────────────────
 
     /// <summary>
@@ -899,6 +975,16 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.CreatureType,    ParseCreatureType);
         RegisterHandler((byte)GameServerPacket.FloorChangeUp,   ParseFloorChangeUp);
         RegisterHandler((byte)GameServerPacket.FloorChangeDown, ParseFloorChangeDown);
+
+        // T46 handlers
+        RegisterHandler((byte)GameServerPacket.Blessings,          ParseBlessings);
+        RegisterHandler((byte)GameServerPacket.SpellCooldown,      ParseSpellCooldown);
+        RegisterHandler((byte)GameServerPacket.SpellGroupCooldown, ParseSpellGroupCooldown);
+        RegisterHandler((byte)GameServerPacket.MultiUseCooldown,   ParseMultiUseCooldown);
+        RegisterHandler((byte)GameServerPacket.OpenOwnChannel,     ParseOpenOwnPrivateChannel);
+        RegisterHandler((byte)GameServerPacket.PvpSituations,      ParsePvpSituations);
+        RegisterHandler((byte)GameServerPacket.ResourceBalance,    ParseResourceBalance);
+        RegisterHandler((byte)GameServerPacket.WorldTime,          ParseWorldTime);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

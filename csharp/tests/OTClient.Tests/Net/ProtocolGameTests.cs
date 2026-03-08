@@ -3230,4 +3230,262 @@ public sealed class ProtocolGameTests
         Assert.Equal(new OTClient.Framework.Game.Position(200, 200, 7), gotOld);
         Assert.Equal(new OTClient.Framework.Game.Position(199, 199, 8), pg.Map.CentralPosition);
     }
+
+    // ─── T46: GameServerPacket enum values ────────────────────────────────────
+
+    [Fact]
+    public void GameServerPacket_Blessings_Is0x9C()
+        => Assert.Equal(0x9C, (byte)GameServerPacket.Blessings);
+
+    [Fact]
+    public void GameServerPacket_SpellCooldown_Is0xA4()
+        => Assert.Equal(0xA4, (byte)GameServerPacket.SpellCooldown);
+
+    [Fact]
+    public void GameServerPacket_SpellGroupCooldown_Is0xA5()
+        => Assert.Equal(0xA5, (byte)GameServerPacket.SpellGroupCooldown);
+
+    [Fact]
+    public void GameServerPacket_MultiUseCooldown_Is0xA6()
+        => Assert.Equal(0xA6, (byte)GameServerPacket.MultiUseCooldown);
+
+    [Fact]
+    public void GameServerPacket_OpenOwnChannel_Is0xB2()
+        => Assert.Equal(0xB2, (byte)GameServerPacket.OpenOwnChannel);
+
+    [Fact]
+    public void GameServerPacket_PvpSituations_Is0xB8()
+        => Assert.Equal(0xB8, (byte)GameServerPacket.PvpSituations);
+
+    [Fact]
+    public void GameServerPacket_ResourceBalance_Is0xEE()
+        => Assert.Equal(0xEE, (byte)GameServerPacket.ResourceBalance);
+
+    [Fact]
+    public void GameServerPacket_WorldTime_Is0xEF()
+        => Assert.Equal(0xEF, (byte)GameServerPacket.WorldTime);
+
+    // ─── T46: ParseBlessings ──────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseBlessings_FiresBlessingsChangedWithBitmaskAndVisualState()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotBlessings = null; byte? gotVisual = null;
+        pg.BlessingsChanged += (b, v) => { gotBlessings = b; gotVisual = v; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Blessings);
+        out_.WriteU16(0b0101_0101_0101_0101);  // blessings bitmask
+        out_.WriteU8(3);                        // visual state = green
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0b0101_0101_0101_0101u, gotBlessings);
+        Assert.Equal(3, (int)gotVisual!.Value);
+    }
+
+    [Fact]
+    public void ParseBlessings_ZeroBlessings_FiresWithZero()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotBlessings = null;
+        pg.BlessingsChanged += (b, _) => gotBlessings = b;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Blessings);
+        out_.WriteU16(0);
+        out_.WriteU8(1);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0u, gotBlessings);
+    }
+
+    // ─── T46: ParseSpellCooldown ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParseSpellCooldown_FiresSpellCooldownReceivedWithIdAndDelay()
+    {
+        using var pg = new ProtocolGame();
+        ushort? gotId = null; uint? gotDelay = null;
+        pg.SpellCooldownReceived += (id, delay) => { gotId = id; gotDelay = delay; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SpellCooldown);
+        out_.WriteU16(42);     // spellId
+        out_.WriteU32(30000);  // 30 seconds in ms
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(42, (int)gotId!.Value);
+        Assert.Equal(30000u, gotDelay);
+    }
+
+    // ─── T46: ParseSpellGroupCooldown ─────────────────────────────────────────
+
+    [Fact]
+    public void ParseSpellGroupCooldown_FiresSpellGroupCooldownReceived()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotGroup = null; uint? gotDelay = null;
+        pg.SpellGroupCooldownReceived += (g, d) => { gotGroup = g; gotDelay = d; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SpellGroupCooldown);
+        out_.WriteU8(2);       // groupId
+        out_.WriteU32(2000);   // 2 seconds
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(2, (int)gotGroup!.Value);
+        Assert.Equal(2000u, gotDelay);
+    }
+
+    // ─── T46: ParseMultiUseCooldown ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseMultiUseCooldown_FiresMultiUseCooldownReceived()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotDelay = null;
+        pg.MultiUseCooldownReceived += delay => gotDelay = delay;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MultiUseCooldown);
+        out_.WriteU32(1000);   // 1 second
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1000u, gotDelay);
+    }
+
+    // ─── T46: ParseOpenOwnPrivateChannel ──────────────────────────────────────
+
+    [Fact]
+    public void ParseOpenOwnPrivateChannel_FiresOwnPrivateChannelOpened()
+    {
+        using var pg = new ProtocolGame();
+        ushort? gotId = null; string? gotName = null;
+        pg.OwnPrivateChannelOpened += (id, name) => { gotId = id; gotName = name; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.OpenOwnChannel);
+        out_.WriteU16(9999);             // channelId
+        out_.WriteString("My Channel"); // channelName
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(9999, (int)gotId!.Value);
+        Assert.Equal("My Channel", gotName);
+    }
+
+    // ─── T46: ParsePvpSituations ──────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePvpSituations_FiresPvpSituationsChanged()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotCount = null;
+        pg.PvpSituationsChanged += count => gotCount = count;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PvpSituations);
+        out_.WriteU8(3);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(3, (int)gotCount!.Value);
+    }
+
+    [Fact]
+    public void ParsePvpSituations_ZeroCount_FiresZero()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotCount = null;
+        pg.PvpSituationsChanged += count => gotCount = count;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PvpSituations);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotCount!.Value);
+    }
+
+    // ─── T46: ParseResourceBalance ────────────────────────────────────────────
+
+    [Fact]
+    public void ParseResourceBalance_FiresResourceBalanceChanged()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotType = null; ulong? gotValue = null;
+        pg.ResourceBalanceChanged += (t, v) => { gotType = t; gotValue = v; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ResourceBalance);
+        out_.WriteU8(1);              // resource type = bank balance
+        out_.WriteU64(9_999_999UL);   // value
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, (int)gotType!.Value);
+        Assert.Equal(9_999_999UL, gotValue);
+    }
+
+    [Fact]
+    public void ParseResourceBalance_MaxValue_RoundTrips()
+    {
+        using var pg = new ProtocolGame();
+        ulong? gotValue = null;
+        pg.ResourceBalanceChanged += (_, v) => gotValue = v;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ResourceBalance);
+        out_.WriteU8(0);
+        out_.WriteU64(ulong.MaxValue);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(ulong.MaxValue, gotValue);
+    }
+
+    // ─── T46: ParseWorldTime ──────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseWorldTime_FiresWorldTimeChangedWithHourAndMinute()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotHour = null; byte? gotMin = null;
+        pg.WorldTimeChanged += (h, m) => { gotHour = h; gotMin = m; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WorldTime);
+        out_.WriteU8(14);  // 14:37
+        out_.WriteU8(37);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(14, (int)gotHour!.Value);
+        Assert.Equal(37, (int)gotMin!.Value);
+    }
+
+    [Fact]
+    public void ParseWorldTime_MidnightZero_Parses()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotHour = null; byte? gotMin = null;
+        pg.WorldTimeChanged += (h, m) => { gotHour = h; gotMin = m; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WorldTime);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotHour!.Value);
+        Assert.Equal(0, (int)gotMin!.Value);
+    }
 }

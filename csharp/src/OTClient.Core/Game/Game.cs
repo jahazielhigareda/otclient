@@ -96,6 +96,15 @@ public sealed class Game
     /// </summary>
     public IReadOnlyList<byte> GmActions { get; private set; } = Array.Empty<byte>();
 
+    // ─── PvP state (T46) ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Number of currently open PvP situations, as last received from the server.
+    /// Maps to <c>Game::setOpenPvpSituations</c>.
+    /// Task T46.
+    /// </summary>
+    public byte OpenPvpSituations { get; private set; }
+
     // ─── Login-flow events (T44) ──────────────────────────────────────────────
 
     /// <summary>Raised when <c>ParseLoginSuccess</c> has been processed.</summary>
@@ -1201,5 +1210,16 @@ public sealed class Game
         protocol.GMActionsUpdated += ProcessGMActions;
 
         protocol.UpdateNeededReceived += ProcessUpdateNeeded;
+
+        // T46: wire spell-cooldown, blessings, world-time, PvP, resource-balance, own-channel events
+        protocol.BlessingsChanged += (blessings, _) =>
+        {
+            LocalPlayer.Blessings = blessings;
+        };
+
+        protocol.PvpSituationsChanged += count =>
+        {
+            OpenPvpSituations = count;
+        };
     }
 }

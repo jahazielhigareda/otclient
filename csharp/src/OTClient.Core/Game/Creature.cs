@@ -368,6 +368,15 @@ public sealed class LocalPlayer : Player
     public int OfflineTrainingTime { get; set; }
     public int RegenerationTime    { get; set; }
 
+    // ─── Blessings ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Active blessings bitmask as received from the server.
+    /// Maps to <c>LocalPlayer::setBlessings / getBlessings</c>.
+    /// Task T46.
+    /// </summary>
+    public uint Blessings { get; set; }
+
     // ─── Lua accessor methods (T41) ───────────────────────────────────────────
 
     public int   getSoul()                => Soul;

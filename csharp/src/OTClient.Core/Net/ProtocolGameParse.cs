@@ -2561,4 +2561,116 @@ public sealed partial class ProtocolGame
         _map.CentralPosition = newPos;
         FloorChanged?.Invoke(newPos, oldPos);
     }
+
+    // ─── T46: Blessings / cooldowns / world-time / PvP ───────────────────────
+
+    /// <summary>
+    /// Parses <c>Blessings</c> (0x9C).
+    /// Reads blessings bitmask (U16) and, for protocol ≥ 1200, visual state (U8).
+    /// Fires <see cref="BlessingsChanged"/>.
+    /// Maps to <c>ProtocolGame::parseBlessings</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseBlessings(InputMessage msg)
+    {
+        ushort blessings    = msg.ReadU16();
+        byte visualState    = msg.ReadU8();   // protocol 1281 always sends this byte
+        BlessingsChanged?.Invoke(blessings, visualState);
+    }
+
+    /// <summary>
+    /// Parses <c>SpellCooldown</c> (0xA4).
+    /// Reads spellId (U16 for protocol 1281 which has GameUshortSpell) and delay (U32).
+    /// Fires <see cref="SpellCooldownReceived"/>.
+    /// Maps to <c>ProtocolGame::parseSpellCooldown</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseSpellCooldown(InputMessage msg)
+    {
+        ushort spellId = msg.ReadU16();
+        uint   delay   = msg.ReadU32();
+        SpellCooldownReceived?.Invoke(spellId, delay);
+    }
+
+    /// <summary>
+    /// Parses <c>SpellGroupCooldown</c> (0xA5).
+    /// Reads groupId (U8) and delay (U32).
+    /// Fires <see cref="SpellGroupCooldownReceived"/>.
+    /// Maps to <c>ProtocolGame::parseSpellGroupCooldown</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseSpellGroupCooldown(InputMessage msg)
+    {
+        byte groupId = msg.ReadU8();
+        uint delay   = msg.ReadU32();
+        SpellGroupCooldownReceived?.Invoke(groupId, delay);
+    }
+
+    /// <summary>
+    /// Parses <c>MultiUseCooldown</c> (0xA6).
+    /// Reads delay (U32).
+    /// Fires <see cref="MultiUseCooldownReceived"/>.
+    /// Maps to <c>ProtocolGame::parseMultiUseCooldown</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseMultiUseCooldown(InputMessage msg)
+    {
+        uint delay = msg.ReadU32();
+        MultiUseCooldownReceived?.Invoke(delay);
+    }
+
+    /// <summary>
+    /// Parses <c>OpenOwnChannel</c> (0xB2).
+    /// Reads channelId (U16) and channel name (string).
+    /// Fires <see cref="OwnPrivateChannelOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenOwnPrivateChannel</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseOpenOwnPrivateChannel(InputMessage msg)
+    {
+        ushort channelId   = msg.ReadU16();
+        string channelName = msg.ReadString();
+        OwnPrivateChannelOpened?.Invoke(channelId, channelName);
+    }
+
+    /// <summary>
+    /// Parses <c>PvpSituations</c> (0xB8).
+    /// Reads the number of open PvP situations (U8).
+    /// Fires <see cref="PvpSituationsChanged"/>.
+    /// Maps to <c>ProtocolGame::parsePvpSituations</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParsePvpSituations(InputMessage msg)
+    {
+        byte openPvpSituations = msg.ReadU8();
+        PvpSituationsChanged?.Invoke(openPvpSituations);
+    }
+
+    /// <summary>
+    /// Parses <c>ResourceBalance</c> (0xEE).
+    /// Reads resource type (U8) and value (U64).
+    /// Fires <see cref="ResourceBalanceChanged"/>.
+    /// Maps to <c>ProtocolGame::parseResourceBalance</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseResourceBalance(InputMessage msg)
+    {
+        byte  type  = msg.ReadU8();
+        ulong value = msg.ReadU64();
+        ResourceBalanceChanged?.Invoke(type, value);
+    }
+
+    /// <summary>
+    /// Parses <c>WorldTime</c> (0xEF).
+    /// Reads hour (U8) and minute (U8).
+    /// Fires <see cref="WorldTimeChanged"/>.
+    /// Maps to <c>ProtocolGame::parseWorldTime</c>.
+    /// Task T46.
+    /// </summary>
+    private void ParseWorldTime(InputMessage msg)
+    {
+        byte hour   = msg.ReadU8();
+        byte minute = msg.ReadU8();
+        WorldTimeChanged?.Invoke(hour, minute);
+    }
 }
