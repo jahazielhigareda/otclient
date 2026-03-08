@@ -212,6 +212,17 @@ public enum GameServerPacket : byte
     OpenRewardWall               = 0xE2,  // GameServerSendOpenRewardWall (226)              — parseOpenRewardWall (T49)
     DailyReward                  = 0xE4,  // GameServerSendDailyReward (228)                 — parseDailyReward (T49)
     RewardHistory                = 0xE5,  // GameServerSendRewardHistory (229)               — parseRewardHistory (T49)
+
+    // T50 opcodes
+    ExtendedOpcode          = 0x32,  // GameServerExtendedOpcode (50)            — parseExtendedOpcode (T50)
+    TakeScreenshot          = 0x75,  // GameServerTakeScreenshot (117)           — parseTakeScreenshot (T50)
+    SendGameNews            = 0x98,  // GameServerSendGameNews (152)             — parseGameNews (T50)
+    Preset                  = 0x9D,  // GameServerPreset (157)                   — parsePreset (T50)
+    PremiumTrigger          = 0x9E,  // GameServerPremiumTrigger (158)           — parsePremiumTrigger (T50)
+    RuleViolationChannel    = 0xAE,  // GameServerRuleViolationChannel (174)     — parseRuleViolationChannel (T50)
+    RuleViolationRemove     = 0xAF,  // GameServerRuleViolationRemove (175) / ExperienceTracker at proto≥1200 (T50)
+    RuleViolationCancel     = 0xB0,  // GameServerRuleViolationCancel (176)      — parseRuleViolationCancel (T50)
+    RuleViolationLock       = 0xB1,  // GameServerRuleViolationLock (177) at proto<1310 (T50)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -1047,6 +1058,82 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<bool, IReadOnlyList<(byte CategoryType, ushort LootContainerId, ushort ObtainerContainerId)>>? LootContainersReceived;
 
+    // ─── T50 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends an <c>ExtendedOpcode</c> (0x32) packet.
+    /// Parameters: (opcode, buffer). OTClient extension — opcode 0 enables
+    /// extended-opcode send, opcode 2 is a ping-back.
+    /// Maps to <c>ProtocolGame::parseExtendedOpcode</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<byte, string>? ExtendedOpcodeReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>TakeScreenshot</c> (0x75) packet.
+    /// Parameter: screenshotType byte.
+    /// Maps to <c>ProtocolGame::parseTakeScreenshot</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<byte>? TakeScreenshotReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>SendGameNews</c> (0x98) packet.
+    /// Parameters: (categoryId, pageNumber).
+    /// Maps to <c>ProtocolGame::parseGameNews</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<uint, byte>? GameNewsReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>Preset</c> (0x9D) packet.
+    /// Parameter: preset value (U32).
+    /// Maps to <c>ProtocolGame::parsePreset</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<uint>? PresetReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>PremiumTrigger</c> (0x9E) packet.
+    /// Parameter: array of trigger-type bytes.
+    /// Maps to <c>ProtocolGame::parsePremiumTrigger</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<IReadOnlyList<byte>>? PremiumTriggerReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>RuleViolationChannel</c> (0xAE) packet.
+    /// Parameter: channelId.
+    /// Maps to <c>ProtocolGame::parseRuleViolationChannel</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<ushort>? RuleViolationChannelReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>RuleViolationRemove</c> (0xAF) packet.
+    /// At protocol 1281 (≥1200) this carries experience-tracker data:
+    /// (rawExp, finalExp).
+    /// Maps to <c>ProtocolGame::parseExperienceTracker</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<long, long>? ExperienceTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>RuleViolationCancel</c> (0xB0) packet.
+    /// Parameter: reporter name.
+    /// Maps to <c>ProtocolGame::parseRuleViolationCancel</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action<string>? RuleViolationCancelReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>RuleViolationLock</c> (0xB1) packet.
+    /// No payload at protocol 1281 (&lt;1310).
+    /// Maps to <c>ProtocolGame::parseRuleViolationLock</c>.
+    /// Task T50.
+    /// </summary>
+    public event Action? RuleViolationLockReceived;
+
     /// <summary>
     /// Raised when the server opens the NPC trade window.
     /// Parameters: list of <see cref="Game.NpcTradeItem"/> entries.
@@ -1238,6 +1325,17 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.OpenRewardWall,             ParseOpenRewardWall);
         RegisterHandler((byte)GameServerPacket.DailyReward,               ParseDailyReward);
         RegisterHandler((byte)GameServerPacket.RewardHistory,             ParseRewardHistory);
+
+        // T50
+        RegisterHandler((byte)GameServerPacket.ExtendedOpcode,         ParseExtendedOpcode);
+        RegisterHandler((byte)GameServerPacket.TakeScreenshot,         ParseTakeScreenshot);
+        RegisterHandler((byte)GameServerPacket.SendGameNews,           ParseGameNews);
+        RegisterHandler((byte)GameServerPacket.Preset,                 ParsePreset);
+        RegisterHandler((byte)GameServerPacket.PremiumTrigger,         ParsePremiumTrigger);
+        RegisterHandler((byte)GameServerPacket.RuleViolationChannel,   ParseRuleViolationChannel);
+        RegisterHandler((byte)GameServerPacket.RuleViolationRemove,    ParseExperienceTracker);
+        RegisterHandler((byte)GameServerPacket.RuleViolationCancel,    ParseRuleViolationCancel);
+        RegisterHandler((byte)GameServerPacket.RuleViolationLock,      ParseRuleViolationLock);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

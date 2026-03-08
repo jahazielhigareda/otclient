@@ -4559,4 +4559,322 @@ public sealed class ProtocolGameTests
         Assert.Empty(got.Bonuses);
         Assert.Equal(0, (int)got.MaxUnlockableDragons);
     }
+
+    // ─── T50: ParseExtendedOpcode ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseExtendedOpcode_FiresWithOpcodeAndBuffer()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotOpcode = null; string? gotBuffer = null;
+        pg.ExtendedOpcodeReceived += (op, buf) => { gotOpcode = op; gotBuffer = buf; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ExtendedOpcode);
+        out_.WriteU8(5);
+        out_.WriteString("hello");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(5, (int)gotOpcode!.Value);
+        Assert.Equal("hello", gotBuffer);
+    }
+
+    [Fact]
+    public void ParseExtendedOpcode_OpcodeZero_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotOpcode = null; string? gotBuffer = null;
+        pg.ExtendedOpcodeReceived += (op, buf) => { gotOpcode = op; gotBuffer = buf; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ExtendedOpcode);
+        out_.WriteU8(0);
+        out_.WriteString("");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotOpcode!.Value);
+        Assert.Equal("", gotBuffer);
+    }
+
+    // ─── T50: ParseTakeScreenshot ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseTakeScreenshot_FiresWithType()
+    {
+        using var pg = new ProtocolGame();
+        byte? got = null;
+        pg.TakeScreenshotReceived += t => got = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.TakeScreenshot);
+        out_.WriteU8(2);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(2, (int)got!.Value);
+    }
+
+    [Fact]
+    public void ParseTakeScreenshot_TypeZero_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? got = null;
+        pg.TakeScreenshotReceived += t => got = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.TakeScreenshot);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)got!.Value);
+    }
+
+    // ─── T50: ParseGameNews ───────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseGameNews_FiresWithCategoryAndPage()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotCat = null; byte? gotPage = null;
+        pg.GameNewsReceived += (cat, pg2) => { gotCat = cat; gotPage = pg2; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SendGameNews);
+        out_.WriteU32(42);
+        out_.WriteU8(7);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(42u, gotCat);
+        Assert.Equal(7, (int)gotPage!.Value);
+    }
+
+    [Fact]
+    public void ParseGameNews_ZeroValues_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotCat = null; byte? gotPage = null;
+        pg.GameNewsReceived += (cat, pg2) => { gotCat = cat; gotPage = pg2; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.SendGameNews);
+        out_.WriteU32(0);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0u, gotCat);
+        Assert.Equal(0, (int)gotPage!.Value);
+    }
+
+    // ─── T50: ParsePreset ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePreset_FiresWithValue()
+    {
+        using var pg = new ProtocolGame();
+        uint? got = null;
+        pg.PresetReceived += v => got = v;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Preset);
+        out_.WriteU32(0xDEADBEEF);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0xDEADBEEF, got);
+    }
+
+    [Fact]
+    public void ParsePreset_ZeroValue_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint? got = null;
+        pg.PresetReceived += v => got = v;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Preset);
+        out_.WriteU32(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0u, got);
+    }
+
+    // ─── T50: ParsePremiumTrigger ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParsePremiumTrigger_TwoTriggers_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<byte>? got = null;
+        pg.PremiumTriggerReceived += t => got = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PremiumTrigger);
+        out_.WriteU8(2);
+        out_.WriteU8(10);
+        out_.WriteU8(20);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got.Count);
+        Assert.Equal(10, (int)got[0]);
+        Assert.Equal(20, (int)got[1]);
+    }
+
+    [Fact]
+    public void ParsePremiumTrigger_ZeroTriggers_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<byte>? got = null;
+        pg.PremiumTriggerReceived += t => got = t;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PremiumTrigger);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got);
+    }
+
+    // ─── T50: ParseRuleViolationChannel ──────────────────────────────────────
+
+    [Fact]
+    public void ParseRuleViolationChannel_FiresWithChannelId()
+    {
+        using var pg = new ProtocolGame();
+        ushort? got = null;
+        pg.RuleViolationChannelReceived += id => got = id;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationChannel);
+        out_.WriteU16(0x00FF);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0x00FF, (int)got!.Value);
+    }
+
+    [Fact]
+    public void ParseRuleViolationChannel_ChannelIdZero_Fires()
+    {
+        using var pg = new ProtocolGame();
+        ushort? got = null;
+        pg.RuleViolationChannelReceived += id => got = id;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationChannel);
+        out_.WriteU16(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)got!.Value);
+    }
+
+    // ─── T50: ParseExperienceTracker (RuleViolationRemove at proto 1281) ──────
+
+    [Fact]
+    public void ParseExperienceTracker_FiresWithRawAndFinalExp()
+    {
+        using var pg = new ProtocolGame();
+        long? gotRaw = null; long? gotFinal = null;
+        pg.ExperienceTrackerReceived += (r, f) => { gotRaw = r; gotFinal = f; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationRemove);
+        out_.WriteS64(1_000_000L);
+        out_.WriteS64(950_000L);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1_000_000L, gotRaw);
+        Assert.Equal(950_000L, gotFinal);
+    }
+
+    [Fact]
+    public void ParseExperienceTracker_NegativeValues_Fires()
+    {
+        using var pg = new ProtocolGame();
+        long? gotRaw = null; long? gotFinal = null;
+        pg.ExperienceTrackerReceived += (r, f) => { gotRaw = r; gotFinal = f; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationRemove);
+        out_.WriteS64(-1L);
+        out_.WriteS64(-2L);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(-1L, gotRaw);
+        Assert.Equal(-2L, gotFinal);
+    }
+
+    // ─── T50: ParseRuleViolationCancel ───────────────────────────────────────
+
+    [Fact]
+    public void ParseRuleViolationCancel_FiresWithReporterName()
+    {
+        using var pg = new ProtocolGame();
+        string? got = null;
+        pg.RuleViolationCancelReceived += n => got = n;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationCancel);
+        out_.WriteString("ReporterName");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("ReporterName", got);
+    }
+
+    [Fact]
+    public void ParseRuleViolationCancel_EmptyName_Fires()
+    {
+        using var pg = new ProtocolGame();
+        string? got = null;
+        pg.RuleViolationCancelReceived += n => got = n;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationCancel);
+        out_.WriteString("");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("", got);
+    }
+
+    // ─── T50: ParseRuleViolationLock ─────────────────────────────────────────
+
+    [Fact]
+    public void ParseRuleViolationLock_FiresEvent()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.RuleViolationLockReceived += () => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationLock);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void ParseRuleViolationLock_NotFiredWithoutPacket()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.RuleViolationLockReceived += () => fired = true;
+
+        // Don't send the packet — event should not fire
+        Assert.False(fired);
+    }
 }

@@ -3195,4 +3195,129 @@ public sealed partial class ProtocolGame
         }
         LootContainersReceived?.Invoke(quickLootFallback, list);
     }
+
+    // ─── T50 parsers ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>ExtendedOpcode</c> (0x32 / GameServerExtendedOpcode).
+    /// Wire: U8 opcode, string buffer.
+    /// Fires <see cref="ExtendedOpcodeReceived"/>.
+    /// Maps to <c>ProtocolGame::parseExtendedOpcode</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseExtendedOpcode(InputMessage msg)
+    {
+        byte   opcode = msg.ReadU8();
+        string buffer = msg.ReadString();
+        ExtendedOpcodeReceived?.Invoke(opcode, buffer);
+    }
+
+    /// <summary>
+    /// Parses <c>TakeScreenshot</c> (0x75 / GameServerTakeScreenshot).
+    /// Wire: U8 screenshotType.
+    /// Fires <see cref="TakeScreenshotReceived"/>.
+    /// Maps to <c>ProtocolGame::parseTakeScreenshot</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseTakeScreenshot(InputMessage msg)
+    {
+        byte screenshotType = msg.ReadU8();
+        TakeScreenshotReceived?.Invoke(screenshotType);
+    }
+
+    /// <summary>
+    /// Parses <c>SendGameNews</c> (0x98 / GameServerSendGameNews).
+    /// Wire: U32 categoryId, U8 pageNumber.
+    /// Fires <see cref="GameNewsReceived"/>.
+    /// Maps to <c>ProtocolGame::parseGameNews</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseGameNews(InputMessage msg)
+    {
+        uint categoryId  = msg.ReadU32();
+        byte pageNumber  = msg.ReadU8();
+        GameNewsReceived?.Invoke(categoryId, pageNumber);
+    }
+
+    /// <summary>
+    /// Parses <c>Preset</c> (0x9D / GameServerPreset).
+    /// Wire: U32 preset value (discarded by C++ reference impl; we expose it).
+    /// Fires <see cref="PresetReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePreset</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParsePreset(InputMessage msg)
+    {
+        uint preset = msg.ReadU32();
+        PresetReceived?.Invoke(preset);
+    }
+
+    /// <summary>
+    /// Parses <c>PremiumTrigger</c> (0x9E / GameServerPremiumTrigger).
+    /// Wire: U8 count, then count × U8 trigger type bytes.
+    /// Fires <see cref="PremiumTriggerReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePremiumTrigger</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParsePremiumTrigger(InputMessage msg)
+    {
+        byte count    = msg.ReadU8();
+        var  triggers = new List<byte>(count);
+        for (int i = 0; i < count; i++)
+            triggers.Add(msg.ReadU8());
+        PremiumTriggerReceived?.Invoke(triggers);
+    }
+
+    /// <summary>
+    /// Parses <c>RuleViolationChannel</c> (0xAE / GameServerRuleViolationChannel).
+    /// Wire: U16 channelId.
+    /// Fires <see cref="RuleViolationChannelReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRuleViolationChannel</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseRuleViolationChannel(InputMessage msg)
+    {
+        ushort channelId = msg.ReadU16();
+        RuleViolationChannelReceived?.Invoke(channelId);
+    }
+
+    /// <summary>
+    /// Parses the <c>RuleViolationRemove</c> (0xAF) packet as an
+    /// <em>experience-tracker</em> update (protocol ≥ 1200 path).
+    /// Wire: I64 rawExp, I64 finalExp.
+    /// Fires <see cref="ExperienceTrackerReceived"/>.
+    /// Maps to <c>ProtocolGame::parseExperienceTracker</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseExperienceTracker(InputMessage msg)
+    {
+        long rawExp   = msg.ReadS64();
+        long finalExp = msg.ReadS64();
+        ExperienceTrackerReceived?.Invoke(rawExp, finalExp);
+    }
+
+    /// <summary>
+    /// Parses <c>RuleViolationCancel</c> (0xB0 / GameServerRuleViolationCancel).
+    /// Wire: string reporterName.
+    /// Fires <see cref="RuleViolationCancelReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRuleViolationCancel</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseRuleViolationCancel(InputMessage msg)
+    {
+        string reporterName = msg.ReadString();
+        RuleViolationCancelReceived?.Invoke(reporterName);
+    }
+
+    /// <summary>
+    /// Parses <c>RuleViolationLock</c> (0xB1 / GameServerRuleViolationLock).
+    /// No payload at protocol 1281 (&lt;1310 branch).
+    /// Fires <see cref="RuleViolationLockReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRuleViolationLock</c>.
+    /// Task T50.
+    /// </summary>
+    private void ParseRuleViolationLock(InputMessage _)
+    {
+        RuleViolationLockReceived?.Invoke();
+    }
 }
