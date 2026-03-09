@@ -7546,4 +7546,118 @@ public sealed class ProtocolGameTests
         var pos = new OTClient.Framework.Game.Position(100, 200, 7);
         Assert.Throws<InvalidOperationException>(() => pg.SendWrapItem(pos, 1234, 0));
     }
+
+    // ─── T59: VIP edit / misc utility / bug-report send methods ──────────────
+
+    [Fact]
+    public void SendGmTeleport_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(
+            () => pg.SendGmTeleport(new OTClient.Framework.Game.Position(100, 200, 7)));
+    }
+
+    [Fact]
+    public void SendEquipItemWithTier_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendEquipItemWithTier(2400, 3));
+    }
+
+    [Fact]
+    public void SendEquipItemWithCountOrSubType_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendEquipItemWithCountOrSubType(2400, 1));
+    }
+
+    [Fact]
+    public void SendRefreshContainer_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRefreshContainer(0));
+    }
+
+    [Fact]
+    public void SendRequestBless_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestBless());
+    }
+
+    [Fact]
+    public void SendRequestTrackerQuestLog_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        var quests = new List<(ushort Id, string Name)> { (1, "A Quest") };
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestTrackerQuestLog(quests));
+    }
+
+    [Fact]
+    public void SendEditVip_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendEditVip(999u, "desc", 1u, true));
+    }
+
+    [Fact]
+    public void SendEditVipGroups_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendEditVipGroups(1, 0, "Healers"));
+    }
+
+    [Fact]
+    public void SendBugReport_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendBugReport("stuck in wall"));
+    }
+
+    [Fact]
+    public void SendDebugReport_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendDebugReport("a", "b", "c", "d"));
+    }
+
+    [Fact]
+    public void OutputMessage_BugReport_Proto1100_HasCategoryByte()
+    {
+        // proto > 1000 → category byte 3 is written before comment
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BugReport);
+        msg.WriteU8(3);                  // category
+        msg.WriteString("stuck in wall");
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xE6, payload[0]);  // BugReport opcode
+        Assert.Equal(3,    payload[1]);  // category
+    }
+
+    [Fact]
+    public void OutputMessage_EditVipGroups_Add_WritesNameOnly()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditVipGroups);
+        msg.WriteU8(1);                  // action = VIP_GROUP_ADD
+        msg.WriteString("Allies");
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xDF, payload[0]);  // EditVipGroups opcode
+        Assert.Equal(1,    payload[1]);  // action
+    }
+
+    [Fact]
+    public void OutputMessage_GmTeleport_OpcodePresentInPayload()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.GmTeleport);
+        msg.WriteU16(100);
+        msg.WriteU16(200);
+        msg.WriteU8(7);
+
+        var payload = msg.ToArray();
+        Assert.Equal(0x73, payload[0]);  // GmTeleport opcode
+    }
 }

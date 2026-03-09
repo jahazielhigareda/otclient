@@ -1098,4 +1098,193 @@ public sealed partial class ProtocolGame
         msg.WriteU8(typing ? (byte)1 : (byte)0);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── VIP edit / misc utility / bug-report (T59) ───────────────────────────
+
+    /// <summary>
+    /// Teleports the GM character to the given position (GM-only command).
+    /// Wire: U8 0x73, U16 x, U16 y, U8 z.
+    /// Maps to <c>ProtocolGame::sendGmTeleport</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendGmTeleport(Game.Position pos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.GmTeleport);
+        msg.WriteU16((ushort)pos.X);
+        msg.WriteU16((ushort)pos.Y);
+        msg.WriteU8((byte)pos.Z);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Equips an item by server ID and tier.
+    /// Wire: U8 0x77, U16 itemId, U8 tier.
+    /// Maps to <c>ProtocolGame::sendEquipItemWithTier</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEquipItemWithTier(ushort itemId, byte tier)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EquipItem);
+        msg.WriteU16(itemId);
+        msg.WriteU8(tier);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Equips an item by server ID and count/subType.
+    /// Wire: U8 0x77, U16 itemId, U16 countOrSubType (feature GameCountU16=104)
+    ///        or U8 countOrSubType for older protocols.
+    /// Maps to <c>ProtocolGame::sendEquipItemWithCountOrSubType</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEquipItemWithCountOrSubType(ushort itemId, ushort countOrSubType)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EquipItem);
+        msg.WriteU16(itemId);
+        if (HasFeature(104))   // GameCountU16 = 104
+            msg.WriteU16(countOrSubType);
+        else
+            msg.WriteU8((byte)countOrSubType);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Asks the server to resend the full contents of a container.
+    /// Wire: U8 0xCA, U8 containerId.
+    /// Maps to <c>ProtocolGame::sendRefreshContainer</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendRefreshContainer(byte containerId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RefreshContainer);
+        msg.WriteU8(containerId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the server to send the blessing list for the player.
+    /// Wire: U8 0xCF (no payload).
+    /// Maps to <c>ProtocolGame::sendRequestBless</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendRequestBless()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestBless);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a quest-tracker subscription list to the server.
+    /// Wire: U8 0xD0, U8 count, then per-entry: U16 questId [+ str name if proto ≥ 1410].
+    /// Maps to <c>ProtocolGame::sendRequestTrackerQuestLog</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendRequestTrackerQuestLog(IReadOnlyList<(ushort Id, string Name)> quests)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestTrackerQuestLog);
+        msg.WriteU8((byte)quests.Count);
+        foreach (var (id, name) in quests)
+        {
+            msg.WriteU16(id);
+            if (ProtocolVersion >= 1410)
+                msg.WriteString(name);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Edits a VIP entry (description, icon, notify-login flag, and optional group list).
+    /// Wire: U8 0xDE, U32 playerId, str description, U32 iconId, U8 notifyLogin,
+    ///        [feature GameVipGroups(96): U8 groupCount + U8[] groupIds].
+    /// Maps to <c>ProtocolGame::sendEditVip</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEditVip(uint playerId, string description, uint iconId, bool notifyLogin, IReadOnlyList<byte>? groupIds = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditVip);
+        msg.WriteU32(playerId);
+        msg.WriteString(description);
+        msg.WriteU32(iconId);
+        msg.WriteU8(notifyLogin ? (byte)1 : (byte)0);
+        if (HasFeature(96))   // GameVipGroups = 96
+        {
+            var ids = groupIds ?? Array.Empty<byte>();
+            msg.WriteU8((byte)ids.Count);
+            foreach (var g in ids)
+                msg.WriteU8(g);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Adds, edits, or removes a VIP group.
+    /// Wire: U8 0xDF, U8 action (1=Add, 2=Edit, 3=Remove), then per action:
+    ///   Add:    str groupName
+    ///   Edit:   U8 groupId, str groupName
+    ///   Remove: U8 groupId
+    /// Maps to <c>ProtocolGame::sendEditVipGroups</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEditVipGroups(byte action, byte groupId = 0, string groupName = "")
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditVipGroups);
+        msg.WriteU8(action);
+        switch (action)
+        {
+            case 1: // VIP_GROUP_ADD
+                msg.WriteString(groupName);
+                break;
+            case 2: // VIP_GROUP_EDIT
+                msg.WriteU8(groupId);
+                msg.WriteString(groupName);
+                break;
+            case 3: // VIP_GROUP_REMOVE
+                msg.WriteU8(groupId);
+                break;
+            default:
+                return; // unknown action — do not send
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a bug report to the server.
+    /// Wire: U8 0xE6, [U8 category=3 if proto > 1000], str comment.
+    /// Maps to <c>ProtocolGame::sendBugReport</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendBugReport(string comment)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BugReport);
+        if (ProtocolVersion > 1000)
+            msg.WriteU8(3); // category
+        msg.WriteString(comment);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a debug report to the server with four string fields.
+    /// Wire: U8 0xE8, str a, str b, str c, str d.
+    /// Maps to <c>ProtocolGame::sendDebugReport</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendDebugReport(string a, string b, string c, string d)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.DebugReport);
+        msg.WriteString(a);
+        msg.WriteString(b);
+        msg.WriteString(c);
+        msg.WriteString(d);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

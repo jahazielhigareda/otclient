@@ -84,6 +84,16 @@ public enum GameClientPacket : byte
     RequestOutfit  = 0xD2,  // ClientRequestOutfit (210)                       — T57
     ChangeOutfit   = 0xD3,  // ClientChangeOutfit (211)                        — T57
     MountToggle    = 0xD4,  // ClientMount (212)                               — T57
+    // VIP edit, misc utility, bug/debug reporting (T59)
+    GmTeleport               = 0x73,  // ClientGmTeleport (115)                — T59
+    EquipItem                = 0x77,  // ClientEquipItem (119)                 — T59
+    RefreshContainer         = 0xCA,  // ClientRefreshContainer (202)          — T59
+    RequestBless             = 0xCF,  // ClientRequestBless (207)              — T59
+    RequestTrackerQuestLog   = 0xD0,  // ClientRequestTrackerQuestLog (208)    — T59
+    EditVip                  = 0xDE,  // ClientEditVip (222)                   — T59
+    EditVipGroups            = 0xDF,  // ClientEditVipGroups (223)             — T59
+    BugReport                = 0xE6,  // ClientBugReport (230)                 — T59
+    DebugReport              = 0xE8,  // ClientDebugReport (232)               — T59
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
