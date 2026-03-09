@@ -19,6 +19,9 @@ public sealed class Outfit
     /// <summary>Mount creature ID (0 = not mounted).</summary>
     public int MountId { get; set; }
 
+    /// <summary>Familiar look type (0 = none; feature GamePlayerFamiliars).</summary>
+    public int FamiliarId { get; set; }
+
     // ─── Colour layers ────────────────────────────────────────────────────────
 
     /// <summary>Head colour index.</summary>

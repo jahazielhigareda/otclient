@@ -7435,4 +7435,105 @@ public sealed class ProtocolGameTests
         Assert.Equal("Knight", got.Vocations[0].Name);
         Assert.Equal(123456789u, got.LastUpdateTs);
     }
+
+    // ─── T57: Party / own-channel / outfit / typing send methods ─────────────
+
+    [Fact]
+    public void SendInviteToParty_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendInviteToParty(12345u));
+    }
+
+    [Fact]
+    public void SendJoinParty_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendJoinParty(12345u));
+    }
+
+    [Fact]
+    public void SendRevokeInvitation_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRevokeInvitation(12345u));
+    }
+
+    [Fact]
+    public void SendPassLeadership_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendPassLeadership(12345u));
+    }
+
+    [Fact]
+    public void SendLeaveParty_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendLeaveParty());
+    }
+
+    [Fact]
+    public void SendShareExperience_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendShareExperience(true));
+    }
+
+    [Fact]
+    public void SendPartyAnalyzerAction_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendPartyAnalyzerAction(1));
+    }
+
+    [Fact]
+    public void SendOpenOwnChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendOpenOwnChannel());
+    }
+
+    [Fact]
+    public void SendInviteToOwnChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendInviteToOwnChannel("PlayerName"));
+    }
+
+    [Fact]
+    public void SendExcludeFromOwnChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendExcludeFromOwnChannel("PlayerName"));
+    }
+
+    [Fact]
+    public void SendRequestOutfit_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestOutfit());
+    }
+
+    [Fact]
+    public void SendChangeOutfit_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        var outfit = new OTClient.Framework.Game.Outfit { Id = 128, Head = 1, Body = 2, Legs = 3, Feet = 4, Addons = 1 };
+        Assert.Throws<InvalidOperationException>(() => pg.SendChangeOutfit(outfit));
+    }
+
+    [Fact]
+    public void SendMountStatus_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendMountStatus(true));
+    }
+
+    [Fact]
+    public void SendTyping_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendTyping(true));
+    }
 }

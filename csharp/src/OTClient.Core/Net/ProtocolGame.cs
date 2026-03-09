@@ -67,6 +67,23 @@ public enum GameClientPacket : byte
     LookCreature       = 0x8D,   // ClientLookCreature (141)       — T39
     BrowseField        = 0xCB,   // ClientBrowseField (203)        — T39
     SeekInContainer    = 0xCC,   // ClientSeekInContainer (204)    — T39
+    // Party management (T57)
+    PartyAnalyzerAction  = 0x2B,  // ClientPartyAnalyzerAction (43)      — T57
+    InviteToParty        = 0xA3,  // ClientInviteToParty (163)           — T57
+    JoinParty            = 0xA4,  // ClientJoinParty (164)               — T57
+    RevokeInvitation     = 0xA5,  // ClientRevokeInvitation (165)        — T57
+    PassLeadership       = 0xA6,  // ClientPassLeadership (166)          — T57
+    LeaveParty           = 0xA7,  // ClientLeaveParty (167)              — T57
+    ShareExperience      = 0xA8,  // ClientShareExperience (168)         — T57
+    // Own channel management (T57)
+    OpenOwnChannel          = 0xAA, // ClientOpenOwnChannel (170)          — T57
+    InviteToOwnChannel      = 0xAB, // ClientInviteToOwnChannel (171)      — T57
+    ExcludeFromOwnChannel   = 0xAC, // ClientExcludeFromOwnChannel (172)   — T57
+    // Outfit / mount / typing (T57)
+    Typing         = 0x38,  // GameServerCreatureTyping (56) — bidirectional   — T57
+    RequestOutfit  = 0xD2,  // ClientRequestOutfit (210)                       — T57
+    ChangeOutfit   = 0xD3,  // ClientChangeOutfit (211)                        — T57
+    MountToggle    = 0xD4,  // ClientMount (212)                               — T57
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>

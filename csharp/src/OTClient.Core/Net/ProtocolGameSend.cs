@@ -838,4 +838,248 @@ public sealed partial class ProtocolGame
         msg.WriteU16((ushort)index);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── Party management (T57) ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Invites <paramref name="creatureId"/> to the player's party.
+    /// Wire: U8 0xA3, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendInviteToParty</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendInviteToParty(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InviteToParty);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Joins the party of <paramref name="creatureId"/>.
+    /// Wire: U8 0xA4, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendJoinParty</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendJoinParty(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.JoinParty);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Revokes the party invitation sent to <paramref name="creatureId"/>.
+    /// Wire: U8 0xA5, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendRevokeInvitation</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendRevokeInvitation(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RevokeInvitation);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Passes party leadership to <paramref name="creatureId"/>.
+    /// Wire: U8 0xA6, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendPassLeadership</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendPassLeadership(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PassLeadership);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Leaves the current party.
+    /// Wire: U8 0xA7.
+    /// Maps to <c>ProtocolGame::sendLeaveParty</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendLeaveParty()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LeaveParty);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Toggles experience sharing within the party.
+    /// Wire: U8 0xA8, U8 active.
+    /// Maps to <c>ProtocolGame::sendShareExperience</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendShareExperience(bool active)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ShareExperience);
+        msg.WriteU8(active ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a party analyzer action.
+    /// Wire: U8 0x2B, U8 action; if action==3 (set price values): U16 count + loop{U16 itemId, U64 price}.
+    /// Maps to <c>ProtocolGame::sendPartyAnalyzerAction</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendPartyAnalyzerAction(byte action,
+        IReadOnlyList<(ushort ItemId, ulong Price)>? priceValues = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PartyAnalyzerAction);
+        msg.WriteU8(action);
+        if (action == 3 && priceValues != null)
+        {
+            msg.WriteU16((ushort)priceValues.Count);
+            foreach (var (itemId, price) in priceValues)
+            {
+                msg.WriteU16(itemId);
+                msg.WriteU64(price);
+            }
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Own-channel management (T57) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Opens the player's own private channel.
+    /// Wire: U8 0xAA.
+    /// Maps to <c>ProtocolGame::sendOpenOwnChannel</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendOpenOwnChannel()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenOwnChannel);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Invites <paramref name="name"/> to the player's own private channel.
+    /// Wire: U8 0xAB, str name.
+    /// Maps to <c>ProtocolGame::sendInviteToOwnChannel</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendInviteToOwnChannel(string name)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InviteToOwnChannel);
+        msg.WriteString(name);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Excludes <paramref name="name"/> from the player's own private channel.
+    /// Wire: U8 0xAC, str name.
+    /// Maps to <c>ProtocolGame::sendExcludeFromOwnChannel</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendExcludeFromOwnChannel(string name)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ExcludeFromOwnChannel);
+        msg.WriteString(name);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Outfit / mount / typing (T57) ────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the server to open the outfit-selection window.
+    /// Wire: U8 0xD2.
+    /// Maps to <c>ProtocolGame::sendRequestOutfit</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendRequestOutfit()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestOutfit);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends the player's chosen outfit to the server.
+    /// Wire (protocol ≥ 1281):
+    ///   U8 0xD3, U8 0x00 (normal window), U16 outfitId,
+    ///   U8 head/body/legs/feet/addons,
+    ///   U16 mountId + 4×U8 zeros (mount colours),
+    ///   [U8 hasMountBool if proto ≥ 1334],
+    ///   [U16 familiarId if feature GamePlayerFamiliars (123)],
+    ///   U8 0x00 (randomizeMount),
+    ///   [U16 wing + U16 aura + U16 effect + str shader if feature GameWingsAurasEffectsShader (118)].
+    /// Maps to <c>ProtocolGame::sendChangeOutfit</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendChangeOutfit(Game.Outfit outfit)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ChangeOutfit);
+        if (ProtocolVersion >= 1281)
+            msg.WriteU8(0x00);   // normal outfit window
+        msg.WriteU16((ushort)outfit.Id);
+        msg.WriteU8(outfit.Head);
+        msg.WriteU8(outfit.Body);
+        msg.WriteU8(outfit.Legs);
+        msg.WriteU8(outfit.Feet);
+        msg.WriteU8(outfit.Addons);
+        // Mount
+        msg.WriteU16((ushort)outfit.MountId);
+        if (ProtocolVersion >= 1281)
+        {
+            msg.WriteU8(0); msg.WriteU8(0); msg.WriteU8(0); msg.WriteU8(0); // mount colour bytes
+        }
+        if (ProtocolVersion >= 1334)
+            msg.WriteU8(outfit.IsMounted ? (byte)1 : (byte)0);
+        // Familiar
+        if (HasFeature(123))   // GamePlayerFamiliars
+            msg.WriteU16((ushort)outfit.FamiliarId);
+        if (ProtocolVersion >= 1281)
+            msg.WriteU8(0);  // randomizeMount
+        // Wings / auras / effects / shader
+        if (HasFeature(118))  // GameWingsAurasEffectsShader
+        {
+            msg.WriteU16(0); // wing
+            msg.WriteU16(0); // aura
+            msg.WriteU16(0); // effect
+            msg.WriteString(string.Empty); // shader
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Toggles mount state.
+    /// Wire: U8 0xD4, U8 mount.
+    /// Maps to <c>ProtocolGame::sendMountStatus</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendMountStatus(bool mount)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MountToggle);
+        msg.WriteU8(mount ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Informs the server whether the player is currently typing.
+    /// Wire: U8 0x38 (reuses GameServerCreatureTyping opcode), U8 typing.
+    /// Maps to <c>ProtocolGame::sendTyping</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendTyping(bool typing)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Typing);
+        msg.WriteU8(typing ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
 }
