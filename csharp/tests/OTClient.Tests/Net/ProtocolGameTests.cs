@@ -3952,7 +3952,7 @@ public sealed class ProtocolGameTests
     [Fact]
     public void ParseTrappers_TwoCreatures_FiresWithIds()
     {
-        using var pg = new ProtocolGame();
+        using var pg = new ProtocolGame { ProtocolVersion = 1200 }; // <1281 → trappers path
         IReadOnlyList<uint>? got = null;
         pg.TrappersReceived += ids => got = ids;
 
@@ -3973,7 +3973,7 @@ public sealed class ProtocolGameTests
     [Fact]
     public void ParseTrappers_ZeroCount_FiresEmptyList()
     {
-        using var pg = new ProtocolGame();
+        using var pg = new ProtocolGame { ProtocolVersion = 1200 }; // <1281 → trappers path
         IReadOnlyList<uint>? got = null;
         pg.TrappersReceived += ids => got = ids;
 
@@ -7155,5 +7155,284 @@ public sealed class ProtocolGameTests
         Assert.Single(got.Concoctions);
         Assert.Equal(500, got.Concoctions[0].Id);
         Assert.Equal(3600u, got.Concoctions[0].Duration);
+    }
+
+    // ─── T56: ParseRemoveMagicEffect (AnimatedText opcode, proto ≥ 1320) ──────
+
+    [Fact]
+    public void ParseAnimatedText_Proto1320_RoutesToRemoveMagicEffect()
+    {
+        using var pg = new ProtocolGame { ProtocolVersion = 1320 };
+        OTClient.Framework.Game.Position? gotPos = null;
+        ushort gotEffectId = 0;
+        pg.MagicEffectRemoved += (p, id) => { gotPos = p; gotEffectId = id; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.AnimatedText);
+        out_.WriteU16(100); out_.WriteU16(7); out_.WriteU8(8); // position x=100,y=7,z=8
+        out_.WriteU16(42);                                      // effectId
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotPos);
+        Assert.Equal(100, gotPos!.Value.X);
+        Assert.Equal(42, gotEffectId);
+    }
+
+    [Fact]
+    public void ParseRemoveMagicEffect_ProtoBefore1320_DoesNotFire()
+    {
+        // default ProtocolVersion = 1281, so AnimatedText path is taken
+        using var pg = new ProtocolGame();
+        bool removed = false;
+        pg.MagicEffectRemoved += (_, _) => removed = true;
+        bool animated = false;
+        pg.AnimatedTextReceived += (_, _, _) => animated = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.AnimatedText);
+        out_.WriteU16(5); out_.WriteU16(3); out_.WriteU8(7); // position x=5,y=3,z=7
+        out_.WriteU8(0xAA);                                   // color
+        out_.WriteString("hello");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.False(removed);
+        Assert.True(animated);
+    }
+
+    // ─── T56: ParseAnthem (DistanceMissile opcode, GameAnthem feature=95) ─────
+
+    [Fact]
+    public void ParseDistanceMissile_AnthemFeatureEnabled_ConsumesBytes()
+    {
+        using var pg = new ProtocolGame();
+        // Enable GameAnthem feature (id 95) via ParseFeatures packet.
+        var feat = new OutputMessage();
+        feat.WriteU8((byte)GameServerPacket.Features);
+        feat.WriteU16(1);   // 1 feature
+        feat.WriteU8(95);   // GameAnthem id
+        feat.WriteU8(1);    // enabled
+        InvokeHandleRawData(pg, feat.ToArray());
+
+        bool missileReceived = false;
+        pg.DistanceMissileReceived += (_, _, _) => missileReceived = true;
+
+        // Anthem payload: type=1 (≤2), so U16 anthem id follows.
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DistanceMissile);
+        out_.WriteU8(1);     // type ≤ 2 → anthem id
+        out_.WriteU16(999);  // anthem id (discarded)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        // No missile event should fire; packet consumed without exception.
+        Assert.False(missileReceived);
+    }
+
+    [Fact]
+    public void ParseDistanceMissile_AnthemFeatureDisabled_FiresMissile()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Position? from = null;
+        pg.DistanceMissileReceived += (f, _, _) => from = f;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.DistanceMissile);
+        out_.WriteU16(10); out_.WriteU16(20); out_.WriteU8(7); // fromPos x=10,y=20,z=7
+        out_.WriteU16(11); out_.WriteU16(21); out_.WriteU8(7); // toPos
+        out_.WriteU16(5);                                       // shotId
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(from);
+        Assert.Equal(10, from!.Value.X);
+    }
+
+    // ─── T56: ParseCreatureMark (ItemClasses opcode, proto < 1281) ────────────
+
+    [Fact]
+    public void ParseItemClasses_Proto1200_RoutesToCreatureMark()
+    {
+        using var pg = new ProtocolGame { ProtocolVersion = 1200 };
+        uint gotCreatureId = 0;
+        byte gotColor = 0;
+        pg.CreatureMarkReceived += (id, c) => { gotCreatureId = id; gotColor = c; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ItemClasses);
+        out_.WriteU32(77777u); // creatureId
+        out_.WriteU8(0xFF);    // color
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(77777u, gotCreatureId);
+        Assert.Equal(0xFF, gotColor);
+    }
+
+    // ─── T56: ParseOpenForge (Trappers opcode, proto ≥ 1281) ─────────────────
+
+    [Fact]
+    public void ParseOpenForge_NoItems_FiresWithEmptyData()
+    {
+        using var pg = new ProtocolGame(); // default 1281 ≥ 1281 → OpenForge
+        OTClient.Framework.Game.ForgeOpenData? got = null;
+        pg.ForgeWindowOpened += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Trappers);
+        out_.WriteU16(0); // fusionCount
+        out_.WriteU16(0); // convergenceFusionCount
+        out_.WriteU8(0);  // transferCount
+        out_.WriteU8(0);  // convergenceTransferCount
+        out_.WriteU16(50); // dustLevel
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!.FusionItems);
+        Assert.Empty(got.Transfers);
+        Assert.Equal(50, got.DustLevel);
+    }
+
+    [Fact]
+    public void ParseOpenForge_WithFusionItems_FiresData()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.ForgeOpenData? got = null;
+        pg.ForgeWindowOpened += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Trappers);
+        out_.WriteU16(2);  // 2 fusion items
+        out_.WriteU8(0);   // skip (friend count)
+        out_.WriteU16(100); out_.WriteU8(1); out_.WriteU16(3); // item1 id=100,tier=1,count=3
+        out_.WriteU8(0);   // skip
+        out_.WriteU16(200); out_.WriteU8(2); out_.WriteU16(1); // item2 id=200,tier=2,count=1
+        out_.WriteU16(0);  // convergenceFusionCount
+        out_.WriteU8(0);   // transferCount
+        out_.WriteU8(0);   // convergenceTransferCount
+        out_.WriteU16(100); // dustLevel
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.FusionItems.Count);
+        Assert.Equal(100, got.FusionItems[0].Id);
+        Assert.Equal(1, got.FusionItems[0].Tier);
+        Assert.Equal(3, got.FusionItems[0].Count);
+        Assert.Equal(200, got.FusionItems[1].Id);
+    }
+
+    [Fact]
+    public void ParseOpenForge_WithTransfer_FiresData()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.ForgeOpenData? got = null;
+        pg.ForgeWindowOpened += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Trappers);
+        out_.WriteU16(0);  // no fusion
+        out_.WriteU16(0);  // no convergence fusion
+        out_.WriteU8(1);   // 1 transfer
+        // donor list
+        out_.WriteU16(1);              // 1 donor
+        out_.WriteU16(10); out_.WriteU8(3); out_.WriteU16(5);  // id=10,tier=3,count=5
+        // receiver list
+        out_.WriteU16(1);              // 1 receiver
+        out_.WriteU16(20); out_.WriteU16(2);                   // id=20,count=2 (tier=0)
+        out_.WriteU8(0);   // 0 convergenceTransfers
+        out_.WriteU16(0);  // dustLevel
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!.Transfers);
+        Assert.Single(got.Transfers[0].Donors);
+        Assert.Equal(10, got.Transfers[0].Donors[0].Id);
+        Assert.Equal(3, got.Transfers[0].Donors[0].Tier);
+        Assert.Single(got.Transfers[0].Receivers);
+        Assert.Equal(20, got.Transfers[0].Receivers[0].Id);
+    }
+
+    // ─── T56: ParseHighscores (RuleViolationLock opcode, proto ≥ 1310) ────────
+
+    [Fact]
+    public void ParseRuleViolationLock_Proto1310_RoutesToHighscores_WhenEmpty()
+    {
+        using var pg = new ProtocolGame { ProtocolVersion = 1310 };
+        bool lockFired = false;
+        pg.RuleViolationLockReceived += () => lockFired = true;
+        OTClient.Framework.Game.HighscoresData? got = null;
+        bool highscoresFired = false;
+        pg.HighscoresReceived += d => { highscoresFired = true; got = d; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationLock);
+        out_.WriteU8(1); // isEmpty = true → returns immediately
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.False(lockFired);
+        Assert.True(highscoresFired);
+        Assert.Null(got); // null when empty
+    }
+
+    [Fact]
+    public void ParseHighscores_Proto1310_WithEntries_Fires()
+    {
+        using var pg = new ProtocolGame { ProtocolVersion = 1310 };
+        OTClient.Framework.Game.HighscoresData? got = null;
+        pg.HighscoresReceived += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RuleViolationLock);
+        out_.WriteU8(0);             // isEmpty = false
+        out_.WriteU8(1);             // skip
+        out_.WriteString("Antica");  // serverName
+        out_.WriteString("Antica");  // world
+        out_.WriteU8(1);             // worldType
+        out_.WriteU8(1);             // battlEye
+        // vocations: count=2 → 1 real voc after skipping "all vocations"
+        out_.WriteU8(2);             // vocCount
+        out_.WriteU32(0xFFFFFFFF);   // skip id
+        out_.WriteString("All vocations"); // skip name
+        out_.WriteU32(1);            // voc1 id
+        out_.WriteString("Knight");  // voc1 name
+        out_.WriteU32(0);            // skip vocation param
+        // categories: 1
+        out_.WriteU8(1);
+        out_.WriteU8(1); out_.WriteString("Experience"); // cat1
+        out_.WriteU8(0); // skip category param
+        out_.WriteU16(1);            // page
+        out_.WriteU16(10);           // totalPages
+        // entries: 1
+        out_.WriteU8(1);
+        out_.WriteU32(1);            // rank
+        out_.WriteString("Ryzom");   // name
+        out_.WriteString("Champion"); // title
+        out_.WriteU8(1);             // vocation
+        out_.WriteString("Antica");  // world
+        out_.WriteU16(500);          // level
+        out_.WriteU8(1);             // isPlayer
+        out_.WriteU64(9999999UL);    // points
+        // trailing
+        out_.WriteU8(0xFF); out_.WriteU8(0); out_.WriteU8(0);
+        out_.WriteU32(123456789u);   // lastUpdateTs
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal("Antica", got!.ServerName);
+        Assert.Equal(1, got.Page);
+        Assert.Equal(10, got.TotalPages);
+        Assert.Single(got.Entries);
+        Assert.Equal("Ryzom", got.Entries[0].Name);
+        Assert.Equal(500u, got.Entries[0].Level);
+        Assert.Equal(9999999UL, got.Entries[0].Points);
+        Assert.Single(got.Vocations);
+        Assert.Equal("Knight", got.Vocations[0].Name);
+        Assert.Equal(123456789u, got.LastUpdateTs);
     }
 }

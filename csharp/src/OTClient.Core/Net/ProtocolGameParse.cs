@@ -2756,32 +2756,74 @@ public sealed partial class ProtocolGame
 
     /// <summary>
     /// Parses <c>AnimatedText</c> (0x84 / GameServerTextEffect).
-    /// Reads the tile position, text color (U8), and text string.
-    /// Fires <see cref="AnimatedTextReceived"/>.
-    /// Maps to <c>ProtocolGame::parseAnimatedText</c>.
-    /// Task T47.
+    /// At proto≥1320 the opcode carries a <em>remove</em> magic-effect payload instead;
+    /// delegates to <see cref="ParseRemoveMagicEffect"/> in that case.
+    /// Otherwise reads position, color (U8), and text string.
+    /// Fires <see cref="AnimatedTextReceived"/> or <see cref="MagicEffectRemoved"/>.
+    /// Maps to <c>ProtocolGame::parseAnimatedText</c> / <c>parseRemoveMagicEffect</c>.
+    /// Task T47/T56.
     /// </summary>
     private void ParseAnimatedText(InputMessage msg)
     {
-        var    pos   = ReadPosition(msg);
-        byte   color = msg.ReadU8();
-        string text  = msg.ReadString();
-        AnimatedTextReceived?.Invoke(pos, color, text);
+        if (ProtocolVersion < 1320)
+        {
+            var    pos   = ReadPosition(msg);
+            byte   color = msg.ReadU8();
+            string text  = msg.ReadString();
+            AnimatedTextReceived?.Invoke(pos, color, text);
+            return;
+        }
+        ParseRemoveMagicEffect(msg);
+    }
+
+    /// <summary>
+    /// Parses a <em>remove magic-effect</em> packet (proto≥1320 path of opcode 0x84).
+    /// Wire: position (3 bytes), effectId (U16).
+    /// Fires <see cref="MagicEffectRemoved"/>.
+    /// Maps to <c>ProtocolGame::parseRemoveMagicEffect</c>.
+    /// Task T56.
+    /// </summary>
+    private void ParseRemoveMagicEffect(InputMessage msg)
+    {
+        var    pos      = ReadPosition(msg);
+        ushort effectId = msg.ReadU16();
+        MagicEffectRemoved?.Invoke(pos, effectId);
     }
 
     /// <summary>
     /// Parses <c>DistanceMissile</c> (0x85 / GameServerMissileEffect).
-    /// Reads fromPosition, toPosition, and shotId (U16).
+    /// When the <c>GameAnthem</c> feature (id 95) is active the opcode carries anthem data
+    /// instead; delegates to <see cref="ParseAnthem"/> in that case.
+    /// Otherwise reads fromPosition, toPosition, and shotId (U16).
     /// Fires <see cref="DistanceMissileReceived"/>.
-    /// Maps to <c>ProtocolGame::parseDistanceMissile</c>.
-    /// Task T47.
+    /// Maps to <c>ProtocolGame::parseDistanceMissile</c> / <c>parseAnthem</c>.
+    /// Task T47/T56.
     /// </summary>
     private void ParseDistanceMissile(InputMessage msg)
     {
+        if (HasFeature(95)) // Otc::GameAnthem
+        {
+            ParseAnthem(msg);
+            return;
+        }
         var    fromPos = ReadPosition(msg);
         var    toPos   = ReadPosition(msg);
         ushort shotId  = msg.ReadU16();
         DistanceMissileReceived?.Invoke(fromPos, toPos, shotId);
+    }
+
+    /// <summary>
+    /// Parses the <c>Anthem</c> packet (GameAnthem-feature path of opcode 0x85).
+    /// Wire: U8 type; if type ≤ 2: skip U16 anthem id.
+    /// No event — data is discarded (matches C++ behaviour).
+    /// Maps to <c>ProtocolGame::parseAnthem</c>.
+    /// Task T56.
+    /// </summary>
+    private static void ParseAnthem(InputMessage msg)
+    {
+        byte type = msg.ReadU8();
+        if (type <= 2)
+            msg.ReadU16(); // anthem id — discarded
     }
 
     /// <summary>
@@ -2871,18 +2913,114 @@ public sealed partial class ProtocolGame
 
     /// <summary>
     /// Parses <c>Trappers</c> (0x87 / GameServerTrappers).
-    /// Reads U8 count followed by one U32 creature ID per entry.
-    /// Fires <see cref="TrappersReceived"/>.
-    /// Maps to <c>ProtocolGame::parseTrappers</c>.
-    /// Task T48.
+    /// At proto≥1281 the opcode carries <em>open forge window</em> data instead;
+    /// delegates to <see cref="ParseOpenForge"/> in that case.
+    /// Otherwise reads U8 count followed by one U32 creature ID per entry.
+    /// Fires <see cref="TrappersReceived"/> or <see cref="ForgeWindowOpened"/>.
+    /// Maps to <c>ProtocolGame::parseTrappers</c> / <c>parseOpenForge</c>.
+    /// Task T48/T56.
     /// </summary>
     private void ParseTrappers(InputMessage msg)
     {
-        byte count = msg.ReadU8();
-        var  ids   = new List<uint>(count);
-        for (int i = 0; i < count; i++)
-            ids.Add(msg.ReadU32());
-        TrappersReceived?.Invoke(ids);
+        if (ProtocolVersion < 1281)
+        {
+            byte count = msg.ReadU8();
+            var  ids   = new List<uint>(count);
+            for (int i = 0; i < count; i++)
+                ids.Add(msg.ReadU32());
+            TrappersReceived?.Invoke(ids);
+            return;
+        }
+        ParseOpenForge(msg);
+    }
+
+    /// <summary>
+    /// Parses an <em>open forge window</em> packet (proto≥1281 path of opcode 0x87).
+    /// Wire:
+    ///   U16 fusionCount; fusionCount × {U8 skip; U16 id; U8 tier; U16 count};
+    ///   U16 convergenceFusionCount; convergenceFusionCount × {U8 items; items × {U16 id; U8 tier; U16 count}};
+    ///   U8 transferCount; transferCount × {U16 donors; donors × {U16 id; U8 tier; U16 count}; U16 receivers; receivers × {U16 id; U16 count}};
+    ///   U8 convergenceTransferCount; same shape as above;
+    ///   U16 dustLevel.
+    /// Fires <see cref="ForgeWindowOpened"/>.
+    /// Maps to <c>ProtocolGame::parseOpenForge</c>.
+    /// Task T56.
+    /// </summary>
+    private void ParseOpenForge(InputMessage msg)
+    {
+        ushort fusionCount = msg.ReadU16();
+        var fusionItems = new List<ForgeItemInfo>(fusionCount);
+        for (int i = 0; i < fusionCount; i++)
+        {
+            msg.ReadU8();              // unknown friend-item count
+            ushort id    = msg.ReadU16();
+            byte   tier  = msg.ReadU8();
+            ushort count = msg.ReadU16();
+            fusionItems.Add(new ForgeItemInfo(id, tier, count));
+        }
+
+        ushort convergenceFusionCount = msg.ReadU16();
+        var convergenceFusion = new List<IReadOnlyList<ForgeItemInfo>>(convergenceFusionCount);
+        for (int i = 0; i < convergenceFusionCount; i++)
+        {
+            byte items     = msg.ReadU8();
+            var  slotItems = new List<ForgeItemInfo>(items);
+            for (int j = 0; j < items; j++)
+            {
+                ushort id    = msg.ReadU16();
+                byte   tier  = msg.ReadU8();
+                ushort count = msg.ReadU16();
+                slotItems.Add(new ForgeItemInfo(id, tier, count));
+            }
+            convergenceFusion.Add(slotItems);
+        }
+
+        static List<ForgeItemInfo> ReadDonors(InputMessage m)
+        {
+            ushort donorCount = m.ReadU16();
+            var donors = new List<ForgeItemInfo>(donorCount);
+            for (int j = 0; j < donorCount; j++)
+            {
+                ushort id    = m.ReadU16();
+                byte   tier  = m.ReadU8();
+                ushort count = m.ReadU16();
+                donors.Add(new ForgeItemInfo(id, tier, count));
+            }
+            return donors;
+        }
+        static List<ForgeItemInfo> ReadReceivers(InputMessage m)
+        {
+            ushort receiverCount = m.ReadU16();
+            var receivers = new List<ForgeItemInfo>(receiverCount);
+            for (int j = 0; j < receiverCount; j++)
+            {
+                ushort id    = m.ReadU16();
+                ushort count = m.ReadU16();
+                receivers.Add(new ForgeItemInfo(id, 0, count));
+            }
+            return receivers;
+        }
+
+        byte transferTotalCount = msg.ReadU8();
+        var transfers = new List<ForgeTransferData>(transferTotalCount);
+        for (int i = 0; i < transferTotalCount; i++)
+            transfers.Add(new ForgeTransferData(ReadDonors(msg), ReadReceivers(msg)));
+
+        byte convergenceTransferCount = msg.ReadU8();
+        var convergenceTransfers = new List<ForgeTransferData>(convergenceTransferCount);
+        for (int i = 0; i < convergenceTransferCount; i++)
+            convergenceTransfers.Add(new ForgeTransferData(ReadDonors(msg), ReadReceivers(msg)));
+
+        ushort dustLevel = msg.ReadU16();
+
+        ForgeWindowOpened?.Invoke(new ForgeOpenData
+        {
+            FusionItems          = fusionItems,
+            ConvergenceFusion    = convergenceFusion,
+            Transfers            = transfers,
+            ConvergenceTransfers = convergenceTransfers,
+            DustLevel            = dustLevel,
+        });
     }
 
     /// <summary>
@@ -3315,14 +3453,94 @@ public sealed partial class ProtocolGame
 
     /// <summary>
     /// Parses <c>RuleViolationLock</c> (0xB1 / GameServerRuleViolationLock).
-    /// No payload at protocol 1281 (&lt;1310 branch).
-    /// Fires <see cref="RuleViolationLockReceived"/>.
-    /// Maps to <c>ProtocolGame::parseRuleViolationLock</c>.
-    /// Task T50.
+    /// At proto≥1310 the opcode carries highscores data instead;
+    /// delegates to <see cref="ParseHighscores"/> in that case.
+    /// Otherwise no payload — fires <see cref="RuleViolationLockReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRuleViolationLock</c> / <c>parseHighscores</c>.
+    /// Task T50/T56.
     /// </summary>
-    private void ParseRuleViolationLock(InputMessage _)
+    private void ParseRuleViolationLock(InputMessage msg)
     {
-        RuleViolationLockReceived?.Invoke();
+        if (ProtocolVersion < 1310)
+        {
+            RuleViolationLockReceived?.Invoke();
+            return;
+        }
+        ParseHighscores(msg);
+    }
+
+    /// <summary>
+    /// Parses a highscores packet (proto≥1310 path of opcode 0xB1).
+    /// Wire: U8 isEmpty (returns immediately when non-zero);
+    ///   U8 skip; str serverName; str world; U8 worldType; U8 battlEye;
+    ///   U8 vocCount; skip U32+str (all-vocations entry);
+    ///   (vocCount-1) × {U32 id; str name}; skip U32 (vocation param);
+    ///   U8 catCount; catCount × {U8 id; str name}; skip U8 (category param);
+    ///   U16 page; U16 totalPages;
+    ///   U8 entryCount; entryCount × {U32 rank; str name; str title; U8 voc; str world; U16 level; U8 isPlayer; U64 points};
+    ///   U8 skip; U8 skip; U8 skip; U32 lastUpdateTs.
+    /// Fires <see cref="HighscoresReceived"/>.
+    /// Maps to <c>ProtocolGame::parseHighscores</c>.
+    /// Task T56.
+    /// </summary>
+    private void ParseHighscores(InputMessage msg)
+    {
+        bool isEmpty = msg.ReadU8() != 0;
+        if (isEmpty) { HighscoresReceived?.Invoke(null); return; } // null signals empty list to consumers
+
+        msg.ReadU8();                   // skip 0x01
+        string serverName = msg.ReadString();
+        string world      = msg.ReadString();
+        byte   worldType  = msg.ReadU8();
+        byte   battlEye   = msg.ReadU8();
+
+        byte vocCount = msg.ReadU8();
+        msg.ReadU32(); msg.ReadString(); // skip all-vocations entry
+        var vocations = new List<(uint Id, string Name)>(Math.Max(0, vocCount - 1));
+        for (int i = 0; i < vocCount - 1; i++)
+            vocations.Add((msg.ReadU32(), msg.ReadString()));
+        msg.ReadU32(); // skip current vocation param
+
+        byte catCount = msg.ReadU8();
+        var categories = new List<(byte Id, string Name)>(catCount);
+        for (int i = 0; i < catCount; i++)
+            categories.Add((msg.ReadU8(), msg.ReadString()));
+        msg.ReadU8(); // skip current category param
+
+        ushort page       = msg.ReadU16();
+        ushort totalPages = msg.ReadU16();
+
+        byte entryCount = msg.ReadU8();
+        var entries = new List<HighscoreEntry>(entryCount);
+        for (int i = 0; i < entryCount; i++)
+        {
+            uint   rank       = msg.ReadU32();
+            string name       = msg.ReadString();
+            string title      = msg.ReadString();
+            byte   vocation   = msg.ReadU8();
+            string entryWorld = msg.ReadString();
+            ushort level      = msg.ReadU16();
+            bool   isPlayer   = msg.ReadU8() != 0;
+            ulong  points     = msg.ReadU64();
+            entries.Add(new HighscoreEntry(rank, name, title, vocation, entryWorld, level, isPlayer, points));
+        }
+
+        msg.ReadU8(); msg.ReadU8(); msg.ReadU8(); // skip trailing bytes
+        uint lastUpdateTs = msg.ReadU32();
+
+        HighscoresReceived?.Invoke(new HighscoresData
+        {
+            ServerName   = serverName,
+            World        = world,
+            WorldType    = worldType,
+            BattlEye     = battlEye,
+            Vocations    = vocations,
+            Categories   = categories,
+            Page         = page,
+            TotalPages   = totalPages,
+            Entries      = entries,
+            LastUpdateTs = lastUpdateTs,
+        });
     }
 
     // ─── T51 parsers ──────────────────────────────────────────────────────────
@@ -3469,6 +3687,9 @@ public sealed partial class ProtocolGame
             byte featureId = msg.ReadU8();
             bool enabled   = msg.ReadU8() != 0;
             features.Add((featureId, enabled));
+            // Track feature state for version-branch parsers (T56).
+            if (enabled) _enabledFeatures.Add(featureId);
+            else         _enabledFeatures.Remove(featureId);
         }
         FeaturesReceived?.Invoke(features);
     }
@@ -4362,14 +4583,20 @@ public sealed partial class ProtocolGame
 
     /// <summary>
     /// Parses <c>ItemClasses</c> (0x86 / GameServerItemClasses).
-    /// Wire (proto ≥ 1281, no optional feature sections):
-    ///   U8 classSize; classSize × {U8 classId; U8 tiersSize; tiersSize × {U8 tier; U64 price}}.
-    /// Fires <see cref="ItemClassesReceived"/>.
-    /// Maps to <c>ProtocolGame::parseItemClasses</c>.
-    /// Task T54.
+    /// At proto&lt;1281 the opcode carries a creature-mark (timed square) payload instead;
+    /// delegates to <see cref="ParseCreatureMark"/> in that case.
+    /// Wire (proto≥1281): U8 classSize; classSize × {U8 classId; U8 tiersSize; tiersSize × {U8 tier; U64 price}}.
+    /// Fires <see cref="ItemClassesReceived"/> or <see cref="CreatureMarkReceived"/>.
+    /// Maps to <c>ProtocolGame::parseItemClasses</c> / <c>parseCreatureMark</c>.
+    /// Task T54/T56.
     /// </summary>
     private void ParseItemClasses(InputMessage msg)
     {
+        if (ProtocolVersion < 1281)
+        {
+            ParseCreatureMark(msg);
+            return;
+        }
         byte classSize = msg.ReadU8();
         var classes = new List<ForgeClassEntry>(classSize);
         for (int i = 0; i < classSize; i++)
@@ -4387,6 +4614,20 @@ public sealed partial class ProtocolGame
         }
 
         ItemClassesReceived?.Invoke(classes);
+    }
+
+    /// <summary>
+    /// Parses a creature mark (timed square) packet (proto&lt;1281 path of opcode 0x86).
+    /// Wire: U32 creatureId, U8 color.
+    /// Fires <see cref="CreatureMarkReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCreatureMark</c>.
+    /// Task T56.
+    /// </summary>
+    private void ParseCreatureMark(InputMessage msg)
+    {
+        uint creatureId = msg.ReadU32();
+        byte color      = msg.ReadU8();
+        CreatureMarkReceived?.Invoke(creatureId, color);
     }
 
     /// <summary>

@@ -1644,6 +1644,43 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<Game.CharacterMiscStats>? CharacterMiscStatsReceived;
 
+    // ─── T56 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when a magic effect is removed from the map (proto≥1320 path of opcode 0x84).
+    /// Carries: tile position, effect id.
+    /// Task T56.
+    /// </summary>
+    public event Action<Game.Position, ushort>? MagicEffectRemoved;
+
+    /// <summary>
+    /// Raised when a timed creature-mark (square) is received (proto&lt;1281 path of opcode 0x86).
+    /// Carries: creatureId, color.
+    /// Task T56.
+    /// </summary>
+    public event Action<uint, byte>? CreatureMarkReceived;
+
+    /// <summary>
+    /// Raised when the forge window is opened (proto≥1281 path of opcode 0x87).
+    /// Carries the full <see cref="Game.ForgeOpenData"/> payload.
+    /// Task T56.
+    /// </summary>
+    public event Action<Game.ForgeOpenData>? ForgeWindowOpened;
+
+    /// <summary>
+    /// Raised when highscores data is received (proto≥1310 path of opcode 0xB1).
+    /// Carries <see cref="Game.HighscoresData"/> or <c>null</c> when the list is empty.
+    /// Task T56.
+    /// </summary>
+    public event Action<Game.HighscoresData?>? HighscoresReceived;
+
+    // ─── Feature state (T56) ──────────────────────────────────────────────────
+
+    private readonly HashSet<byte> _enabledFeatures = [];
+
+    /// <summary>Returns <c>true</c> if the given feature id is currently enabled.</summary>
+    internal bool HasFeature(byte featureId) => _enabledFeatures.Contains(featureId);
+
     /// <summary>
     /// Initialises the dispatch table with handlers for all supported server packets.
     /// </summary>

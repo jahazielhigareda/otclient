@@ -1958,3 +1958,60 @@ public sealed class CharacterMiscStats
     public byte   TotalBlesses            { get; init; }
     public IReadOnlyList<(ushort Id, uint Duration)> Concoctions { get; init; } = [];
 }
+
+// ─── T56: Open-forge window data ──────────────────────────────────────────────
+
+/// <summary>Single item slot used in forge operations. Task T56.</summary>
+public sealed record ForgeItemInfo(ushort Id, byte Tier, ushort Count);
+
+/// <summary>
+/// Donor/receiver pair used in forge transfer operations. Task T56.
+/// Donors are the items consumed; receivers are the items produced.
+/// </summary>
+public sealed record ForgeTransferData(
+    IReadOnlyList<ForgeItemInfo> Donors,
+    IReadOnlyList<ForgeItemInfo> Receivers);
+
+/// <summary>
+/// Full payload of the <c>OpenForge</c> window packet (opcode 0x87 when proto≥1281).
+/// Maps to <c>ProtocolGame::parseOpenForge</c>. Task T56.
+/// </summary>
+public sealed class ForgeOpenData
+{
+    public IReadOnlyList<ForgeItemInfo>               FusionItems           { get; init; } = [];
+    public IReadOnlyList<IReadOnlyList<ForgeItemInfo>> ConvergenceFusion    { get; init; } = [];
+    public IReadOnlyList<ForgeTransferData>            Transfers             { get; init; } = [];
+    public IReadOnlyList<ForgeTransferData>            ConvergenceTransfers  { get; init; } = [];
+    public ushort                                      DustLevel             { get; init; }
+}
+
+// ─── T56: Highscores data ─────────────────────────────────────────────────────
+
+/// <summary>One row in the highscores table. Task T56.</summary>
+public sealed record HighscoreEntry(
+    uint   Rank,
+    string Name,
+    string Title,
+    byte   Vocation,
+    string World,
+    ushort Level,
+    bool   IsPlayer,
+    ulong  Points);
+
+/// <summary>
+/// Full highscores payload (opcode 0xB1 when proto≥1310).
+/// Maps to <c>ProtocolGame::parseHighscores</c>. Task T56.
+/// </summary>
+public sealed class HighscoresData
+{
+    public string                               ServerName    { get; init; } = "";
+    public string                               World         { get; init; } = "";
+    public byte                                 WorldType     { get; init; }
+    public byte                                 BattlEye      { get; init; }
+    public IReadOnlyList<(uint Id, string Name)> Vocations    { get; init; } = [];
+    public IReadOnlyList<(byte Id, string Name)> Categories   { get; init; } = [];
+    public ushort                               Page          { get; init; }
+    public ushort                               TotalPages    { get; init; }
+    public IReadOnlyList<HighscoreEntry>        Entries       { get; init; } = [];
+    public uint                                 LastUpdateTs  { get; init; }
+}
