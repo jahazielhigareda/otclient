@@ -271,6 +271,10 @@ public enum GameServerPacket : byte
     ShowDescription       = 0xEA,  // GameServerSendShowDescription (234)             — parseShowDescription (T54)
     CloseImbuementWindow  = 0xEC,  // GameServerSendCloseImbuementWindow (236)        — parseCloseImbuementWindow (T54)
     ServerError           = 0xED,  // GameServerSendError (237)                       — parseServerError (T54)
+
+    // T55 opcodes
+    Challenge               = 0x1F,  // GameServerChallenge (31)                         — parseLoginChallenge (T55)
+    CyclopediaCharacterInfo = 0xDA,  // GameServerCyclopediaCharacterInfoData (218)       — parseCyclopediaCharacterInfo (T55)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -1530,6 +1534,116 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<byte, string>? ServerErrorReceived;
 
+    // ─── T55 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends a login challenge (0x1F).
+    /// Carries the XTEA timestamp and the random byte; the receiver should send
+    /// the login packet in response.
+    /// Maps to <c>ProtocolGame::parseLoginChallenge</c>.
+    /// Task T55.
+    /// </summary>
+    public event Action<uint, byte>? LoginChallengeReceived;
+
+    /// <summary>
+    /// Raised when the server sends a CyclopediaCharacterInfo packet (0xDA) with a
+    /// non-zero error code (no character data follows).
+    /// Task T55.
+    /// </summary>
+    public event Action<byte, byte>? CharacterInfoErrorReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_BASEINFORMATION</c> (type 0).
+    /// Carries: name, vocationName, level, outfit, titleName.
+    /// Task T55.
+    /// </summary>
+    public event Action<string, string, ushort, Game.Outfit, string>? CharacterBaseInfoReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_GENERALSTATS</c> (type 1).
+    /// Carries: stats object, skill list, specialized-magic-level list.
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterGeneralStats, IReadOnlyList<Game.CharacterSkill>, IReadOnlyList<(byte Element, ushort Level)>>? CharacterGeneralStatsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_RECENTDEATHS</c> (type 3).
+    /// Carries a list of (timestamp, cause) tuples.
+    /// Task T55.
+    /// </summary>
+    public event Action<IReadOnlyList<(uint Timestamp, string Cause)>>? CharacterRecentDeathsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_RECENTPVPKILLS</c> (type 4).
+    /// Carries a list of (timestamp, description, status) tuples.
+    /// Task T55.
+    /// </summary>
+    public event Action<IReadOnlyList<(uint Timestamp, string Description, byte Status)>>? CharacterRecentPvPKillsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_ACHIEVEMENTS</c> (type 5).
+    /// No payload.
+    /// Task T55.
+    /// </summary>
+    public event Action? CharacterAchievementsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_ITEMSUMMARY</c> (type 6).
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterItemSummary>? CharacterItemSummaryReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_OUTFITSMOUNTS</c> (type 7).
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterOutfitsMounts>? CharacterOutfitsMountsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_STORESUMMARY</c> (type 8).
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterStoreSummary>? CharacterStoreSummaryReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_INSPECTION</c> (type 9).
+    /// No payload.
+    /// Task T55.
+    /// </summary>
+    public event Action? CharacterInspectionReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_BADGES</c> (type 10).
+    /// Carries: showAccountInfo, isOnline, isPremium, loyaltyTitle, badges list.
+    /// Task T55.
+    /// </summary>
+    public event Action<bool, bool, bool, string, IReadOnlyList<Game.CharacterBadge>>? CharacterBadgesReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_TITLES</c> (type 11).
+    /// Carries: current title index, titles list.
+    /// Task T55.
+    /// </summary>
+    public event Action<byte, IReadOnlyList<Game.CharacterTitle>>? CharacterTitlesReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_OFFENCESTATS</c> (type 13).
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterOffenceStats>? CharacterOffenceStatsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_DEFENCESTATS</c> (type 14).
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterDefenceStats>? CharacterDefenceStatsReceived;
+
+    /// <summary>
+    /// Raised for <c>CYCLOPEDIA_CHARACTERINFO_MISCSTATS</c> (type 15).
+    /// Task T55.
+    /// </summary>
+    public event Action<Game.CharacterMiscStats>? CharacterMiscStatsReceived;
+
     /// <summary>
     /// Initialises the dispatch table with handlers for all supported server packets.
     /// </summary>
@@ -1736,6 +1850,10 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.ShowDescription,      ParseShowDescription);
         RegisterHandler((byte)GameServerPacket.CloseImbuementWindow, ParseCloseImbuementWindow);
         RegisterHandler((byte)GameServerPacket.ServerError,          ParseServerError);
+
+        // T55
+        RegisterHandler((byte)GameServerPacket.Challenge,               ParseLoginChallenge);
+        RegisterHandler((byte)GameServerPacket.CyclopediaCharacterInfo, ParseCyclopediaCharacterInfo);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

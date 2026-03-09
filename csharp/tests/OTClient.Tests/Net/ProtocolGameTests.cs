@@ -6721,4 +6721,439 @@ public sealed class ProtocolGameTests
         Assert.NotNull(got);
         Assert.Empty(got!);
     }
+
+    // ─── T55: ParseLoginChallenge ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseLoginChallenge_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint gotTimestamp = 0; byte gotRandom = 0; bool fired = false;
+        pg.LoginChallengeReceived += (ts, rnd) => { gotTimestamp = ts; gotRandom = rnd; fired = true; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.Challenge);
+        out_.WriteU32(0xDEADBEEF); // timestamp
+        out_.WriteU8(0x42);        // random
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+        Assert.Equal(0xDEADBEEFu, gotTimestamp);
+        Assert.Equal(0x42, gotRandom);
+    }
+
+    // ─── T55: ParseCyclopediaCharacterInfo ────────────────────────────────────
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_ErrorCode_FiresError()
+    {
+        using var pg = new ProtocolGame();
+        byte gotType = 0; byte gotError = 0; bool fired = false;
+        pg.CharacterInfoErrorReceived += (t, e) => { gotType = t; gotError = e; fired = true; };
+        bool baseFired = false;
+        pg.CharacterBaseInfoReceived += (_, _, _, _, _) => baseFired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(0);  // type = BASEINFORMATION
+        out_.WriteU8(1);  // errorCode = 1 (no data available)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+        Assert.Equal(0, gotType);
+        Assert.Equal(1, gotError);
+        Assert.False(baseFired, "Should not fire sub-type event when errorCode > 0");
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_BaseInformation_Fires()
+    {
+        using var pg = new ProtocolGame();
+        string? gotName = null; string? gotVoc = null; ushort gotLevel = 0; string? gotTitle = null;
+        pg.CharacterBaseInfoReceived += (name, voc, lv, _, title) =>
+            { gotName = name; gotVoc = voc; gotLevel = lv; gotTitle = title; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(0);              // type = BASEINFORMATION
+        out_.WriteU8(0);              // errorCode = 0
+        out_.WriteString("Tibia Char");
+        out_.WriteString("Knight");
+        out_.WriteU16(250);           // level
+        // outfit: lookType=0 → ReadOutfit reads lookTypeEx U16 as well
+        out_.WriteU16(0);             // lookType = 0
+        out_.WriteU16(0);             // lookTypeEx = 0
+        out_.WriteU8(7);              // unknown byte
+        out_.WriteString("Sir");      // title
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Tibia Char", gotName);
+        Assert.Equal("Knight", gotVoc);
+        Assert.Equal(250, gotLevel);
+        Assert.Equal("Sir", gotTitle);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_GeneralStats_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.CharacterGeneralStats? gotStats = null;
+        IReadOnlyList<OTClient.Framework.Game.CharacterSkill>? gotSkills = null;
+        IReadOnlyList<(byte, ushort)>? gotCombats = null;
+        pg.CharacterGeneralStatsReceived += (stats, skills, combats) =>
+            { gotStats = stats; gotSkills = skills; gotCombats = combats; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(1);  // type = GENERALSTATS
+        out_.WriteU8(0);  // errorCode
+        out_.WriteU64(1_000_000); // experience
+        out_.WriteU16(100);       // level
+        out_.WriteU8(50);         // levelPercent
+        out_.WriteU16(100);       // baseExpGain
+        out_.WriteU16(10);        // lowLevelExpBonus
+        out_.WriteU16(5);         // xpBoostPercent
+        out_.WriteU16(0);         // staminaExpBonus
+        out_.WriteU16(0);         // xpBoostRemainingTime
+        out_.WriteU8(1);          // canBuyXpBoost
+        out_.WriteU32(1000);      // health
+        out_.WriteU32(1000);      // maxHealth
+        out_.WriteU32(500);       // mana
+        out_.WriteU32(500);       // maxMana
+        out_.WriteU8(100);        // soul
+        out_.WriteU16(2400);      // staminaMinutes
+        out_.WriteU16(60);        // regenCondition
+        out_.WriteU16(720);       // offlineTrainingTime
+        out_.WriteU16(300);       // speed
+        out_.WriteU16(220);       // baseSpeed
+        out_.WriteU32(50000);     // capacity
+        out_.WriteU32(40000);     // baseCapacity
+        out_.WriteU32(30000);     // freeCapacity
+        out_.WriteU8(0);          // unknown
+        out_.WriteU8(0);          // unknown
+        out_.WriteU16(10);        // magicLevel
+        out_.WriteU16(9);         // baseMagicLevel
+        out_.WriteU16(1);         // loyaltyMagicLevel
+        out_.WriteU16(6000);      // magicLevelPercent (will be divided by 100 → 60)
+        // 8 skills
+        for (int i = 0; i < 8; i++)
+        {
+            out_.WriteU8((byte)i);   // skillId
+            out_.WriteU16(80);       // level
+            out_.WriteU16(70);       // base
+            out_.WriteU16(5);        // loyaltyBonus
+            out_.WriteU16(5000);     // percent (÷100 → 50)
+        }
+        out_.WriteU8(1);   // 1 combat element
+        out_.WriteU8(2);   // element = fire
+        out_.WriteU16(15); // specialized magic level
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotStats);
+        Assert.Equal(1_000_000UL, gotStats!.Experience);
+        Assert.Equal(100, gotStats.Level);
+        Assert.Equal(10, gotStats.MagicLevel);
+        Assert.Equal(8, gotSkills!.Count);
+        Assert.Equal(0, gotSkills[0].SkillId);
+        Assert.Equal(80, gotSkills[0].Level);
+        Assert.Equal(50, gotSkills[0].Percent);
+        Assert.Single(gotCombats!);
+        Assert.Equal(2, gotCombats![0].Item1);
+        Assert.Equal(15, gotCombats![0].Item2);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_RecentDeaths_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(uint Timestamp, string Cause)>? got = null;
+        pg.CharacterRecentDeathsReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(3);  // RECENTDEATHS
+        out_.WriteU8(0);  // errorCode
+        out_.WriteU16(1); // page
+        out_.WriteU16(1); // totalPages
+        out_.WriteU16(2); // count
+        out_.WriteU32(1700000000); out_.WriteString("Killed by a Dragon.");
+        out_.WriteU32(1700000001); out_.WriteString("Killed by a Demon.");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(1700000000u, got[0].Timestamp);
+        Assert.Equal("Killed by a Dragon.", got[0].Cause);
+        Assert.Equal("Killed by a Demon.", got[1].Cause);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_RecentPvPKills_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(uint Timestamp, string Description, byte Status)>? got = null;
+        pg.CharacterRecentPvPKillsReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(4);  // RECENTPVPKILLS
+        out_.WriteU8(0);
+        out_.WriteU16(0); // page
+        out_.WriteU16(0); // totalPages
+        out_.WriteU16(1); // count
+        out_.WriteU32(1700000002); out_.WriteString("You killed Player2."); out_.WriteU8(2);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!);
+        Assert.Equal("You killed Player2.", got[0].Description);
+        Assert.Equal(2, got[0].Status);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_Achievements_Fires()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.CharacterAchievementsReceived += () => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(5);  // ACHIEVEMENTS
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_ItemSummary_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.CharacterItemSummary? got = null;
+        pg.CharacterItemSummaryReceived += s => got = s;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(6);  // ITEMSUMMARY
+        out_.WriteU8(0);
+        // inventory: 1 item
+        out_.WriteU16(1); out_.WriteU16(2160); out_.WriteU32(10);
+        // store: 0 items
+        out_.WriteU16(0);
+        // stash: 0 items
+        out_.WriteU16(0);
+        // depot: 0 items
+        out_.WriteU16(0);
+        // inbox: 0 items
+        out_.WriteU16(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!.Inventory);
+        Assert.Equal(2160, got.Inventory[0].ItemId);
+        Assert.Equal(10u, got.Inventory[0].Amount);
+        Assert.Empty(got.Store);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_OutfitsMounts_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.CharacterOutfitsMounts? got = null;
+        pg.CharacterOutfitsMountsReceived += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(7);  // OUTFITSMOUNTS
+        out_.WriteU8(0);
+        // 1 outfit
+        out_.WriteU16(1);
+        out_.WriteU16(128); out_.WriteString("Citizen"); out_.WriteU8(0); out_.WriteU8(0); out_.WriteU32(1000);
+        // colour components (outfitsSize > 0)
+        out_.WriteU8(1); out_.WriteU8(2); out_.WriteU8(3); out_.WriteU8(4);
+        // 0 mounts
+        out_.WriteU16(0);
+        // 0 familiars
+        out_.WriteU16(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!.Outfits);
+        Assert.Equal(128, got.Outfits[0].LookType);
+        Assert.Equal("Citizen", got.Outfits[0].Name);
+        Assert.Equal(1, got.HeadColour);
+        Assert.Equal(4, got.FeetColour);
+        Assert.Empty(got.Mounts);
+        Assert.Empty(got.Familiars);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_StoreSummary_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.CharacterStoreSummary? got = null;
+        pg.CharacterStoreSummaryReceived += s => got = s;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(8);  // STORESUMMARY
+        out_.WriteU8(0);
+        out_.WriteU32(3600);   // xpBoostTime
+        out_.WriteU32(1800);   // dailyRewardXpBoostTime
+        out_.WriteU8(1);       // 1 blessing
+        out_.WriteString("The Spiritual Shielding"); out_.WriteU8(1);
+        out_.WriteU8(3);       // preySlotsUnlocked
+        out_.WriteU8(5);       // preyWildcards
+        out_.WriteU8(1);       // instantRewards
+        out_.WriteU8(1);       // hasCharmExpansion = true
+        out_.WriteU8(2);       // hirelingsObtained
+        out_.WriteU8(0);       // hirelingSkillsCount = 0
+        out_.WriteU8(0);       // unknown
+        out_.WriteU16(0);      // houseItemsCount = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(3600u, got!.XpBoostTime);
+        Assert.Equal(1800u, got.DailyRewardXpBoostTime);
+        Assert.Single(got.Blessings);
+        Assert.Equal("The Spiritual Shielding", got.Blessings[0].Name);
+        Assert.True(got.HasCharmExpansion);
+        Assert.Equal(3, got.PreySlotsUnlocked);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_Inspection_Fires()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.CharacterInspectionReceived += () => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(9);  // INSPECTION
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_Badges_Fires()
+    {
+        using var pg = new ProtocolGame();
+        bool? gotShowAccount = null; bool? gotOnline = null; bool? gotPremium = null;
+        string? gotTitle = null;
+        IReadOnlyList<OTClient.Framework.Game.CharacterBadge>? gotBadges = null;
+        pg.CharacterBadgesReceived += (show, online, prem, title, badges) =>
+            { gotShowAccount = show; gotOnline = online; gotPremium = prem; gotTitle = title; gotBadges = badges; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(10); // BADGES
+        out_.WriteU8(0);
+        out_.WriteU8(1);  // showAccountInfo = true
+        out_.WriteU8(1);  // isOnline = true
+        out_.WriteU8(0);  // isPremium = false
+        out_.WriteString("Champion");
+        out_.WriteU8(2);  // 2 badges
+        out_.WriteU32(101); out_.WriteString("Veteran");
+        out_.WriteU32(202); out_.WriteString("Explorer");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(gotShowAccount);
+        Assert.True(gotOnline);
+        Assert.False(gotPremium);
+        Assert.Equal("Champion", gotTitle);
+        Assert.NotNull(gotBadges);
+        Assert.Equal(2, gotBadges!.Count);
+        Assert.Equal(101u, gotBadges[0].BadgeId);
+        Assert.Equal("Veteran", gotBadges[0].BadgeName);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_Titles_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte gotCurrentTitle = 0;
+        IReadOnlyList<OTClient.Framework.Game.CharacterTitle>? gotTitles = null;
+        pg.CharacterTitlesReceived += (cur, titles) => { gotCurrentTitle = cur; gotTitles = titles; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(11); // TITLES
+        out_.WriteU8(0);
+        out_.WriteU8(1);  // currentTitle = 1
+        out_.WriteU8(2);  // titlesSize = 2
+        out_.WriteString("Knight"); out_.WriteString("Wielder of a sword."); out_.WriteU8(0); out_.WriteU8(1);
+        out_.WriteString("Champion"); out_.WriteString("Best of the best."); out_.WriteU8(1); out_.WriteU8(1);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, gotCurrentTitle);
+        Assert.NotNull(gotTitles);
+        Assert.Equal(2, gotTitles!.Count);
+        Assert.Equal("Knight", gotTitles[0].Name);
+        Assert.False(gotTitles[0].IsPermanent);
+        Assert.True(gotTitles[0].IsUnlocked);
+        Assert.True(gotTitles[1].IsPermanent);
+    }
+
+    [Fact]
+    public void ParseCyclopediaCharacterInfo_MiscStats_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.CharacterMiscStats? got = null;
+        pg.CharacterMiscStatsReceived += s => got = s;
+
+        static void WriteDoubleVal(OutputMessage m, double v, byte prec = 2)
+            => m.WriteDouble(v, prec);
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaCharacterInfo);
+        out_.WriteU8(15); // MISCSTATS
+        out_.WriteU8(0);
+        WriteDoubleVal(out_, 10.5);  // momentumTotal
+        WriteDoubleVal(out_, 9.0);   // momentumBase
+        WriteDoubleVal(out_, 1.5);   // momentumBonus
+        WriteDoubleVal(out_, 0.0);   // momentumWheel
+        WriteDoubleVal(out_, 0.0);   // unused
+        WriteDoubleVal(out_, 5.0);   // dodgeTotal
+        WriteDoubleVal(out_, 4.0);   // dodgeBase
+        WriteDoubleVal(out_, 1.0);   // dodgeBonus
+        WriteDoubleVal(out_, 0.0);   // dodgeWheel
+        WriteDoubleVal(out_, 3.0);   // damageReflectionTotal
+        WriteDoubleVal(out_, 2.5);   // damageReflectionBase
+        WriteDoubleVal(out_, 0.5);   // damageReflectionBonus
+        out_.WriteU8(5);             // haveBlesses
+        out_.WriteU8(9);             // totalBlesses
+        out_.WriteU8(1);             // concoctionsCount = 1
+        out_.WriteU16(500);          // concoction id
+        out_.WriteU8(0);             // unused
+        out_.WriteU8(0);             // unused
+        out_.WriteU32(3600);         // duration
+        out_.WriteU8(0);             // unused trailing byte
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(10.5, got!.MomentumTotal, precision: 1);
+        Assert.Equal(5, got.HaveBlesses);
+        Assert.Equal(9, got.TotalBlesses);
+        Assert.Single(got.Concoctions);
+        Assert.Equal(500, got.Concoctions[0].Id);
+        Assert.Equal(3600u, got.Concoctions[0].Duration);
+    }
 }

@@ -1733,3 +1733,228 @@ public sealed record class CyclopediaHouseEntry
     // MoveOut-specific
     public bool                  IsOwnerMoveOut  { get; init; }
 }
+
+// ─── T55 data objects: CyclopediaCharacterInfo sub-types ─────────────────────
+
+/// <summary>
+/// One skill entry inside <c>CYCLOPEDIA_CHARACTERINFO_GENERALSTATS</c>.
+/// Task T55.
+/// </summary>
+public sealed record CharacterSkill(byte SkillId, ushort Level, ushort BaseLevel, ushort LoyaltyBonus, ushort Percent);
+
+/// <summary>
+/// Compact general statistics from <c>CYCLOPEDIA_CHARACTERINFO_GENERALSTATS</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterGeneralStats
+{
+    public ulong  Experience             { get; init; }
+    public ushort Level                  { get; init; }
+    public byte   LevelPercent           { get; init; }
+    public ushort BaseExpGain            { get; init; }
+    public ushort LowLevelExpBonus       { get; init; }
+    public ushort XpBoostPercent         { get; init; }
+    public ushort StaminaExpBonus        { get; init; }
+    public ushort XpBoostRemainingTime   { get; init; }
+    public byte   CanBuyXpBoostFlag     { get; init; }
+    public uint   Health                 { get; init; }
+    public uint   MaxHealth              { get; init; }
+    public uint   Mana                   { get; init; }
+    public uint   MaxMana                { get; init; }
+    public byte   Soul                   { get; init; }
+    public ushort StaminaMinutes         { get; init; }
+    public ushort RegenerationCondition  { get; init; }
+    public ushort OfflineTrainingTime    { get; init; }
+    public ushort Speed                  { get; init; }
+    public ushort BaseSpeed              { get; init; }
+    public uint   Capacity               { get; init; }
+    public uint   BaseCapacity           { get; init; }
+    public uint   FreeCapacity           { get; init; }
+    public ushort MagicLevel             { get; init; }
+    public ushort BaseMagicLevel         { get; init; }
+    public ushort LoyaltyMagicLevel      { get; init; }
+    public ushort MagicLevelPercent      { get; init; }
+}
+
+/// <summary>
+/// One item in a Cyclopedia character item summary list.
+/// Task T55.
+/// </summary>
+public sealed record CharacterSummaryItem(ushort ItemId, byte Tier, uint Amount);
+
+/// <summary>
+/// All five item-summary lists from <c>CYCLOPEDIA_CHARACTERINFO_ITEMSUMMARY</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterItemSummary
+{
+    public IReadOnlyList<CharacterSummaryItem> Inventory { get; init; } = [];
+    public IReadOnlyList<CharacterSummaryItem> Store     { get; init; } = [];
+    public IReadOnlyList<CharacterSummaryItem> Stash     { get; init; } = [];
+    public IReadOnlyList<CharacterSummaryItem> Depot     { get; init; } = [];
+    public IReadOnlyList<CharacterSummaryItem> Inbox     { get; init; } = [];
+}
+
+/// <summary>
+/// One outfit entry inside <c>CYCLOPEDIA_CHARACTERINFO_OUTFITSMOUNTS</c>.
+/// Task T55.
+/// </summary>
+public sealed record CharacterOutfitInfo(ushort LookType, string Name, byte Addons, byte Type, uint CurrentStatus);
+
+/// <summary>
+/// One mount entry inside <c>CYCLOPEDIA_CHARACTERINFO_OUTFITSMOUNTS</c>.
+/// Task T55.
+/// </summary>
+public sealed record CharacterMountInfo(ushort MountId, string Name, byte Type, uint CurrentStatus);
+
+/// <summary>
+/// One familiar entry inside <c>CYCLOPEDIA_CHARACTERINFO_OUTFITSMOUNTS</c>.
+/// Task T55.
+/// </summary>
+public sealed record CharacterFamiliarInfo(ushort LookType, string Name, byte Type, uint CurrentStatus);
+
+/// <summary>
+/// Aggregated appearances from <c>CYCLOPEDIA_CHARACTERINFO_OUTFITSMOUNTS</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterOutfitsMounts
+{
+    public IReadOnlyList<CharacterOutfitInfo>   Outfits   { get; init; } = [];
+    public IReadOnlyList<CharacterMountInfo>    Mounts    { get; init; } = [];
+    public IReadOnlyList<CharacterFamiliarInfo> Familiars { get; init; } = [];
+    // Current colour components (only present when outfits/mounts list is non-empty)
+    public byte HeadColour      { get; init; }
+    public byte BodyColour      { get; init; }
+    public byte LegsColour      { get; init; }
+    public byte FeetColour      { get; init; }
+    public byte MountHeadColour { get; init; }
+    public byte MountBodyColour { get; init; }
+    public byte MountLegsColour { get; init; }
+    public byte MountFeetColour { get; init; }
+}
+
+/// <summary>
+/// Store summary from <c>CYCLOPEDIA_CHARACTERINFO_STORESUMMARY</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterStoreSummary
+{
+    public uint   XpBoostTime              { get; init; }
+    public uint   DailyRewardXpBoostTime   { get; init; }
+    public IReadOnlyList<(string Name, byte Obtained)> Blessings { get; init; } = [];
+    public byte   PreySlotsUnlocked        { get; init; }
+    public byte   PreyWildcards            { get; init; }
+    public byte   InstantRewards           { get; init; }
+    public bool   HasCharmExpansion        { get; init; }
+    public byte   HirelingsObtained        { get; init; }
+    public IReadOnlyList<ushort> HirelingSkills { get; init; } = [];
+    public IReadOnlyList<(ushort ItemId, string Name, byte Count)> HouseItems { get; init; } = [];
+}
+
+/// <summary>
+/// One badge from <c>CYCLOPEDIA_CHARACTERINFO_BADGES</c>.
+/// Task T55.
+/// </summary>
+public sealed record CharacterBadge(uint BadgeId, string BadgeName);
+
+/// <summary>
+/// One title from <c>CYCLOPEDIA_CHARACTERINFO_TITLES</c>.
+/// Task T55.
+/// </summary>
+public sealed record CharacterTitle(string Name, string Description, bool IsPermanent, bool IsUnlocked);
+
+/// <summary>
+/// Offence statistics from <c>CYCLOPEDIA_CHARACTERINFO_OFFENCESTATS</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterOffenceStats
+{
+    public double CritChanceTotal        { get; init; }
+    public double CritChanceEquipment    { get; init; }
+    public double CritChanceImbuement    { get; init; }
+    public double CritChanceWheel        { get; init; }
+    public double CritChanceConcoction   { get; init; }
+    public double CritDamageTotal        { get; init; }
+    public double CritDamageEquipment    { get; init; }
+    public double CritDamageImbuement    { get; init; }
+    public double CritDamageWheel        { get; init; }
+    public double CritDamageConcoction   { get; init; }
+    public double LifeLeechTotal         { get; init; }
+    public double LifeLeechEquipment     { get; init; }
+    public double LifeLeechImbuement     { get; init; }
+    public double LifeLeechWheel         { get; init; }
+    public double LifeLeechEventBonus    { get; init; }
+    public double ManaLeechTotal         { get; init; }
+    public double ManaLeechEquipment     { get; init; }
+    public double ManaLeechImbuement     { get; init; }
+    public double ManaLeechWheel         { get; init; }
+    public double ManaLeechEventBonus    { get; init; }
+    public double Onslaught              { get; init; }
+    public double OnslaughtBase          { get; init; }
+    public double OnslaughtBonus         { get; init; }
+    public double CleavePercent          { get; init; }
+    public IReadOnlyList<ushort> PerfectShotDamage { get; init; } = [];
+    public ushort FlatDamage             { get; init; }
+    public ushort FlatDamageBase         { get; init; }
+    public ushort WeaponAttack           { get; init; }
+    public ushort WeaponFlatModifier     { get; init; }
+    public ushort WeaponDamage           { get; init; }
+    public byte   WeaponSkillType        { get; init; }
+    public ushort WeaponSkillLevel       { get; init; }
+    public ushort WeaponSkillModifier    { get; init; }
+    public byte   WeaponElement          { get; init; }
+    public double WeaponElementDamage    { get; init; }
+    public byte   WeaponElementType      { get; init; }
+    public IReadOnlyList<(byte Range, double Accuracy)> WeaponAccuracy { get; init; } = [];
+}
+
+/// <summary>
+/// Defence statistics from <c>CYCLOPEDIA_CHARACTERINFO_DEFENCESTATS</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterDefenceStats
+{
+    public double DodgeTotal                  { get; init; }
+    public double DodgeBase                   { get; init; }
+    public double DodgeBonus                  { get; init; }
+    public double DodgeWheel                  { get; init; }
+    public uint   MagicShieldCapacity         { get; init; }
+    public ushort MagicShieldCapacityFlat     { get; init; }
+    public double MagicShieldCapacityPercent  { get; init; }
+    public ushort ReflectPhysical             { get; init; }
+    public ushort Armor                       { get; init; }
+    public ushort Defense                     { get; init; }
+    public ushort DefenseEquipment            { get; init; }
+    public byte   DefenseSkillType            { get; init; }
+    public ushort ShieldingSkill              { get; init; }
+    public ushort DefenseWheel                { get; init; }
+    public double Mitigation                  { get; init; }
+    public double MitigationBase              { get; init; }
+    public double MitigationEquipment         { get; init; }
+    public double MitigationShield            { get; init; }
+    public double MitigationWheel             { get; init; }
+    public double MitigationCombatTactics     { get; init; }
+    public IReadOnlyList<(byte Element, double Value)> Resistances { get; init; } = [];
+}
+
+/// <summary>
+/// Miscellaneous statistics from <c>CYCLOPEDIA_CHARACTERINFO_MISCSTATS</c>.
+/// Task T55.
+/// </summary>
+public sealed class CharacterMiscStats
+{
+    public double MomentumTotal           { get; init; }
+    public double MomentumBase            { get; init; }
+    public double MomentumBonus           { get; init; }
+    public double MomentumWheel           { get; init; }
+    public double DodgeTotal              { get; init; }
+    public double DodgeBase               { get; init; }
+    public double DodgeBonus              { get; init; }
+    public double DodgeWheel              { get; init; }
+    public double DamageReflectionTotal   { get; init; }
+    public double DamageReflectionBase    { get; init; }
+    public double DamageReflectionBonus   { get; init; }
+    public byte   HaveBlesses             { get; init; }
+    public byte   TotalBlesses            { get; init; }
+    public IReadOnlyList<(ushort Id, uint Duration)> Concoctions { get; init; } = [];
+}

@@ -4608,4 +4608,533 @@ public sealed partial class ProtocolGame
         string message = msg.ReadString();
         ServerErrorReceived?.Invoke(code, message);
     }
+
+    // ─── T55 parsers ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>Challenge</c> (0x1F / GameServerChallenge).
+    /// Wire: U32 timestamp; U8 random; [U8 skip if proto≥1405].
+    /// Fires <see cref="LoginChallengeReceived"/>; the receiver should send
+    /// the login packet in response.
+    /// Maps to <c>ProtocolGame::parseLoginChallenge</c>.
+    /// Task T55.
+    /// </summary>
+    private void ParseLoginChallenge(InputMessage msg)
+    {
+        uint timestamp = msg.ReadU32();
+        byte random    = msg.ReadU8();
+        if (ProtocolVersion >= 1405)
+            msg.ReadU8(); // extra byte
+        LoginChallengeReceived?.Invoke(timestamp, random);
+    }
+
+    /// <summary>
+    /// Parses <c>CyclopediaCharacterInfo</c> (0xDA / GameServerCyclopediaCharacterInfoData).
+    /// Wire: U8 type; U8 errorCode; [type-specific payload if errorCode == 0].
+    /// Dispatches to per-subtype events.
+    /// Maps to <c>ProtocolGame::parseCyclopediaCharacterInfo</c>.
+    /// Task T55.
+    /// </summary>
+    private void ParseCyclopediaCharacterInfo(InputMessage msg)
+    {
+        byte type      = msg.ReadU8();
+        byte errorCode = msg.ReadU8();
+        if (errorCode > 0)
+        {
+            CharacterInfoErrorReceived?.Invoke(type, errorCode);
+            return;
+        }
+
+        switch (type)
+        {
+            case 0: // CYCLOPEDIA_CHARACTERINFO_BASEINFORMATION
+            {
+                string name      = msg.ReadString();
+                string vocation  = msg.ReadString();
+                ushort level     = msg.ReadU16();
+                var    outfit    = ReadOutfit(msg, false);
+                msg.ReadU8();  // unknown byte
+                string titleName = msg.ReadString();
+                CharacterBaseInfoReceived?.Invoke(name, vocation, level, outfit, titleName);
+                break;
+            }
+            case 1: // CYCLOPEDIA_CHARACTERINFO_GENERALSTATS
+            {
+                ulong  experience           = msg.ReadU64();
+                ushort level                = msg.ReadU16();
+                byte   levelPercent         = msg.ReadU8();
+                ushort baseExpGain          = msg.ReadU16();
+                ushort lowLevelExpBonus     = msg.ReadU16();
+                ushort xpBoostPercent       = msg.ReadU16();
+                ushort staminaExpBonus      = msg.ReadU16();
+                ushort xpBoostRemainingTime = msg.ReadU16();
+                byte   canBuyXpBoost        = msg.ReadU8();
+                uint   health               = msg.ReadU32();
+                uint   maxHealth            = msg.ReadU32();
+                uint   mana                 = msg.ReadU32();
+                uint   maxMana              = msg.ReadU32();
+                byte   soul                 = msg.ReadU8();
+                ushort staminaMinutes       = msg.ReadU16();
+                ushort regenCondition       = msg.ReadU16();
+                ushort offlineTrainingTime  = msg.ReadU16();
+                ushort speed                = msg.ReadU16();
+                ushort baseSpeed            = msg.ReadU16();
+                uint   capacity             = msg.ReadU32();
+                uint   baseCapacity         = msg.ReadU32();
+                uint   freeCapacity         = msg.ReadU32();
+                msg.ReadU8(); // unknown
+                msg.ReadU8(); // unknown
+                ushort magicLevel        = msg.ReadU16();
+                ushort baseMagicLevel    = msg.ReadU16();
+                ushort loyaltyMagicLevel = msg.ReadU16();
+                ushort magicLevelPercent = msg.ReadU16();
+
+                var stats = new Game.CharacterGeneralStats
+                {
+                    Experience            = experience,
+                    Level                 = level,
+                    LevelPercent          = levelPercent,
+                    BaseExpGain           = baseExpGain,
+                    LowLevelExpBonus      = lowLevelExpBonus,
+                    XpBoostPercent        = xpBoostPercent,
+                    StaminaExpBonus       = staminaExpBonus,
+                    XpBoostRemainingTime  = xpBoostRemainingTime,
+                    CanBuyXpBoostFlag     = canBuyXpBoost,
+                    Health                = health,
+                    MaxHealth             = maxHealth,
+                    Mana                  = mana,
+                    MaxMana               = maxMana,
+                    Soul                  = soul,
+                    StaminaMinutes        = staminaMinutes,
+                    RegenerationCondition = regenCondition,
+                    OfflineTrainingTime   = offlineTrainingTime,
+                    Speed                 = speed,
+                    BaseSpeed             = baseSpeed,
+                    Capacity              = capacity,
+                    BaseCapacity          = baseCapacity,
+                    FreeCapacity          = freeCapacity,
+                    MagicLevel            = magicLevel,
+                    BaseMagicLevel        = baseMagicLevel,
+                    LoyaltyMagicLevel     = loyaltyMagicLevel,
+                    MagicLevelPercent     = magicLevelPercent,
+                };
+
+                // 8 skills (Fist…Fishing): U8 id + U16 level + U16 base + U16 loyaltyBonus + U16 percent/100
+                const int SkillCount = 8;
+                var skills = new List<Game.CharacterSkill>(SkillCount);
+                for (int i = 0; i < SkillCount; i++)
+                {
+                    byte   skillId      = msg.ReadU8();
+                    ushort skillLevel   = msg.ReadU16();
+                    ushort baseLevel    = msg.ReadU16();
+                    ushort loyaltyBonus = msg.ReadU16();
+                    ushort percent      = (ushort)(msg.ReadU16() / 100);
+                    skills.Add(new Game.CharacterSkill(skillId, skillLevel, baseLevel, loyaltyBonus, percent));
+                }
+
+                // Specialized magic levels per combat element
+                byte combatCount = msg.ReadU8();
+                var combats = new List<(byte, ushort)>(combatCount);
+                for (int i = 0; i < combatCount; i++)
+                    combats.Add((msg.ReadU8(), msg.ReadU16()));
+
+                CharacterGeneralStatsReceived?.Invoke(stats, skills, combats);
+                break;
+            }
+            case 2: // CYCLOPEDIA_CHARACTERINFO_COMBATSTATS
+            {
+                // Additional skills (Critical, Life Leech, Mana Leech) – 3 pairs U16+U16
+                for (int i = 0; i < 3; i++) { msg.ReadU16(); msg.ReadU16(); }
+                // Forge skill stats (Fatal…LastSkill) – 6 pairs U16+U16
+                for (int i = 0; i < 6; i++) { msg.ReadU16(); msg.ReadU16(); }
+
+                msg.ReadU16(); // Cleave Percent
+                msg.ReadU16(); // Magic Shield Capacity Flat
+                msg.ReadU16(); // Magic Shield Capacity Percent
+
+                // 5 perfect shot damage ranges
+                for (int i = 0; i < 5; i++) msg.ReadU16();
+                msg.ReadU16(); // Damage reflection
+
+                msg.ReadU8();  // haveBlessings
+                msg.ReadU8();  // totalBlessings
+                msg.ReadU16(); // weaponMaxHitChance
+                msg.ReadU8();  // weaponElement
+                msg.ReadU8();  // weaponElementDamage
+                msg.ReadU8();  // weaponElementType
+                msg.ReadU16(); // armor
+                msg.ReadU16(); // defense
+                msg.ReadDouble(); // mitigation
+
+                byte combatCount = msg.ReadU8();
+                for (int i = 0; i < combatCount; i++) { msg.ReadU8(); msg.ReadU16(); }
+
+                byte concoctionsCount = msg.ReadU8();
+                for (int i = 0; i < concoctionsCount; i++) { msg.ReadU16(); msg.ReadU16(); }
+                // CombatStats has no dedicated event — data is discarded (complex feature-gated content)
+                break;
+            }
+            case 3: // CYCLOPEDIA_CHARACTERINFO_RECENTDEATHS
+            {
+                msg.ReadU16(); // page
+                msg.ReadU16(); // totalPages
+                ushort count = msg.ReadU16();
+                var entries = new List<(uint, string)>(count);
+                for (int i = 0; i < count; i++)
+                    entries.Add((msg.ReadU32(), msg.ReadString()));
+                CharacterRecentDeathsReceived?.Invoke(entries);
+                break;
+            }
+            case 4: // CYCLOPEDIA_CHARACTERINFO_RECENTPVPKILLS
+            {
+                msg.ReadU16(); // page
+                msg.ReadU16(); // totalPages
+                ushort count = msg.ReadU16();
+                var entries = new List<(uint, string, byte)>(count);
+                for (int i = 0; i < count; i++)
+                    entries.Add((msg.ReadU32(), msg.ReadString(), msg.ReadU8()));
+                CharacterRecentPvPKillsReceived?.Invoke(entries);
+                break;
+            }
+            case 5: // CYCLOPEDIA_CHARACTERINFO_ACHIEVEMENTS
+                CharacterAchievementsReceived?.Invoke();
+                break;
+            case 6: // CYCLOPEDIA_CHARACTERINFO_ITEMSUMMARY
+            {
+                static List<Game.CharacterSummaryItem> ReadItemList(InputMessage m)
+                {
+                    ushort cnt = m.ReadU16();
+                    var list = new List<Game.CharacterSummaryItem>(cnt);
+                    for (int i = 0; i < cnt; i++)
+                    {
+                        ushort itemId = m.ReadU16();
+                        // Tier is only present when Classification > 0.
+                        // Without ThingTypeManager, conservatively return 0 (no byte consumed).
+                        const byte tier = 0;
+                        uint amount = m.ReadU32();
+                        list.Add(new Game.CharacterSummaryItem(itemId, tier, amount));
+                    }
+                    return list;
+                }
+                var summary = new Game.CharacterItemSummary
+                {
+                    Inventory = ReadItemList(msg),
+                    Store     = ReadItemList(msg),
+                    Stash     = ReadItemList(msg),
+                    Depot     = ReadItemList(msg),
+                    Inbox     = ReadItemList(msg),
+                };
+                CharacterItemSummaryReceived?.Invoke(summary);
+                break;
+            }
+            case 7: // CYCLOPEDIA_CHARACTERINFO_OUTFITSMOUNTS
+            {
+                ushort outfitsSize = msg.ReadU16();
+                var outfits = new List<Game.CharacterOutfitInfo>(outfitsSize);
+                for (int i = 0; i < outfitsSize; i++)
+                    outfits.Add(new Game.CharacterOutfitInfo(msg.ReadU16(), msg.ReadString(), msg.ReadU8(), msg.ReadU8(), msg.ReadU32()));
+
+                byte head = 0, body = 0, legs = 0, feet = 0;
+                if (outfitsSize > 0) { head = msg.ReadU8(); body = msg.ReadU8(); legs = msg.ReadU8(); feet = msg.ReadU8(); }
+
+                ushort mountsSize = msg.ReadU16();
+                var mounts = new List<Game.CharacterMountInfo>(mountsSize);
+                for (int i = 0; i < mountsSize; i++)
+                    mounts.Add(new Game.CharacterMountInfo(msg.ReadU16(), msg.ReadString(), msg.ReadU8(), msg.ReadU32()));
+
+                byte mHead = 0, mBody = 0, mLegs = 0, mFeet = 0;
+                if (mountsSize > 0) { mHead = msg.ReadU8(); mBody = msg.ReadU8(); mLegs = msg.ReadU8(); mFeet = msg.ReadU8(); }
+
+                ushort familiarsSize = msg.ReadU16();
+                var familiars = new List<Game.CharacterFamiliarInfo>(familiarsSize);
+                for (int i = 0; i < familiarsSize; i++)
+                    familiars.Add(new Game.CharacterFamiliarInfo(msg.ReadU16(), msg.ReadString(), msg.ReadU8(), msg.ReadU32()));
+
+                var data = new Game.CharacterOutfitsMounts
+                {
+                    Outfits         = outfits,
+                    Mounts          = mounts,
+                    Familiars       = familiars,
+                    HeadColour      = head,
+                    BodyColour      = body,
+                    LegsColour      = legs,
+                    FeetColour      = feet,
+                    MountHeadColour = mHead,
+                    MountBodyColour = mBody,
+                    MountLegsColour = mLegs,
+                    MountFeetColour = mFeet,
+                };
+                CharacterOutfitsMountsReceived?.Invoke(data);
+                break;
+            }
+            case 8: // CYCLOPEDIA_CHARACTERINFO_STORESUMMARY
+            {
+                uint xpBoostTime            = msg.ReadU32();
+                uint dailyRewardXpBoostTime = msg.ReadU32();
+
+                byte blessingCount = msg.ReadU8();
+                var blessings = new List<(string, byte)>(blessingCount);
+                for (int i = 0; i < blessingCount; i++)
+                    blessings.Add((msg.ReadString(), msg.ReadU8()));
+
+                byte preySlotsUnlocked  = msg.ReadU8();
+                byte preyWildcards      = msg.ReadU8();
+                byte instantRewards     = msg.ReadU8();
+                bool hasCharmExpansion  = msg.ReadU8() != 0;
+                byte hirelingsObtained  = msg.ReadU8();
+
+                byte hirelingSkillsCount = msg.ReadU8();
+                var hirelingSkills = new List<ushort>(hirelingSkillsCount);
+                for (int i = 0; i < hirelingSkillsCount; i++)
+                    hirelingSkills.Add((ushort)(msg.ReadU8() + 1000));
+                msg.ReadU8(); // unknown
+
+                ushort houseItemsCount = msg.ReadU16();
+                var houseItems = new List<(ushort, string, byte)>(houseItemsCount);
+                for (int i = 0; i < houseItemsCount; i++)
+                    houseItems.Add((msg.ReadU16(), msg.ReadString(), msg.ReadU8()));
+
+                CharacterStoreSummaryReceived?.Invoke(new Game.CharacterStoreSummary
+                {
+                    XpBoostTime            = xpBoostTime,
+                    DailyRewardXpBoostTime = dailyRewardXpBoostTime,
+                    Blessings              = blessings,
+                    PreySlotsUnlocked      = preySlotsUnlocked,
+                    PreyWildcards          = preyWildcards,
+                    InstantRewards         = instantRewards,
+                    HasCharmExpansion      = hasCharmExpansion,
+                    HirelingsObtained      = hirelingsObtained,
+                    HirelingSkills         = hirelingSkills,
+                    HouseItems             = houseItems,
+                });
+                break;
+            }
+            case 9: // CYCLOPEDIA_CHARACTERINFO_INSPECTION
+                CharacterInspectionReceived?.Invoke();
+                break;
+            case 10: // CYCLOPEDIA_CHARACTERINFO_BADGES
+            {
+                bool showAccountInfo = msg.ReadU8() != 0;
+                bool isOnline        = msg.ReadU8() != 0;
+                bool isPremium       = msg.ReadU8() != 0;
+                string loyaltyTitle  = msg.ReadString();
+                byte badgesSize      = msg.ReadU8();
+                var badges = new List<Game.CharacterBadge>(badgesSize);
+                for (int i = 0; i < badgesSize; i++)
+                    badges.Add(new Game.CharacterBadge(msg.ReadU32(), msg.ReadString()));
+                CharacterBadgesReceived?.Invoke(showAccountInfo, isOnline, isPremium, loyaltyTitle, badges);
+                break;
+            }
+            case 11: // CYCLOPEDIA_CHARACTERINFO_TITLES
+            {
+                byte currentTitle = msg.ReadU8();
+                byte titlesSize   = msg.ReadU8();
+                var titles = new List<Game.CharacterTitle>(titlesSize);
+                for (int i = 0; i < titlesSize; i++)
+                {
+                    string tName   = msg.ReadString();
+                    string tDesc   = msg.ReadString();
+                    bool permanent = msg.ReadU8() != 0;
+                    bool unlocked  = msg.ReadU8() != 0;
+                    titles.Add(new Game.CharacterTitle(tName, tDesc, permanent, unlocked));
+                }
+                CharacterTitlesReceived?.Invoke(currentTitle, titles);
+                break;
+            }
+            case 13: // CYCLOPEDIA_CHARACTERINFO_OFFENCESTATS
+            {
+                // Read all doubles in order (crit chance × 5, crit damage × 5, life leech × 5, mana leech × 5)
+                double critChanceTotal      = msg.ReadDouble();
+                double critChanceEquipment  = msg.ReadDouble();
+                double critChanceImbuement  = msg.ReadDouble();
+                double critChanceWheel      = msg.ReadDouble();
+                double critChanceConcoction = msg.ReadDouble();
+                double critDamageTotal      = msg.ReadDouble();
+                double critDamageEquipment  = msg.ReadDouble();
+                double critDamageImbuement  = msg.ReadDouble();
+                double critDamageWheel      = msg.ReadDouble();
+                double critDamageConcoction = msg.ReadDouble();
+                double lifeLeechTotal       = msg.ReadDouble();
+                double lifeLeechEquipment   = msg.ReadDouble();
+                double lifeLeechImbuement   = msg.ReadDouble();
+                double lifeLeechWheel       = msg.ReadDouble();
+                double lifeLeechEventBonus  = msg.ReadDouble();
+                double manaLeechTotal       = msg.ReadDouble();
+                double manaLeechEquipment   = msg.ReadDouble();
+                double manaLeechImbuement   = msg.ReadDouble();
+                double manaLeechWheel       = msg.ReadDouble();
+                double manaLeechEventBonus  = msg.ReadDouble();
+                double onslaught            = msg.ReadDouble();
+                double onslaughtBase        = msg.ReadDouble();
+                double onslaughtBonus       = msg.ReadDouble();
+                msg.ReadDouble(); // unused onslaught field
+                double cleavePercent        = msg.ReadDouble();
+                // Perfect shot damage ranges (5 × U16)
+                var perfectShot = new List<ushort>(5);
+                for (int i = 0; i < 5; i++) perfectShot.Add(msg.ReadU16());
+                ushort flatDamage        = msg.ReadU16();
+                ushort flatDamageBase    = msg.ReadU16();
+                msg.ReadU16(); // unused
+                ushort weaponAttack        = msg.ReadU16();
+                ushort weaponFlatModifier  = msg.ReadU16();
+                ushort weaponDamage        = msg.ReadU16();
+                byte   weaponSkillType     = msg.ReadU8();
+                ushort weaponSkillLevel    = msg.ReadU16();
+                ushort weaponSkillModifier = msg.ReadU16();
+                byte   weaponElement       = msg.ReadU8();
+                double weaponElementDamage = msg.ReadDouble();
+                byte   weaponElementType   = msg.ReadU8();
+                byte accuracyCount = msg.ReadU8();
+                var accuracy = new List<(byte, double)>(accuracyCount);
+                for (int i = 0; i < accuracyCount; i++)
+                    accuracy.Add((msg.ReadU8(), msg.ReadDouble()));
+                CharacterOffenceStatsReceived?.Invoke(new Game.CharacterOffenceStats
+                {
+                    CritChanceTotal      = critChanceTotal,
+                    CritChanceEquipment  = critChanceEquipment,
+                    CritChanceImbuement  = critChanceImbuement,
+                    CritChanceWheel      = critChanceWheel,
+                    CritChanceConcoction = critChanceConcoction,
+                    CritDamageTotal      = critDamageTotal,
+                    CritDamageEquipment  = critDamageEquipment,
+                    CritDamageImbuement  = critDamageImbuement,
+                    CritDamageWheel      = critDamageWheel,
+                    CritDamageConcoction = critDamageConcoction,
+                    LifeLeechTotal       = lifeLeechTotal,
+                    LifeLeechEquipment   = lifeLeechEquipment,
+                    LifeLeechImbuement   = lifeLeechImbuement,
+                    LifeLeechWheel       = lifeLeechWheel,
+                    LifeLeechEventBonus  = lifeLeechEventBonus,
+                    ManaLeechTotal       = manaLeechTotal,
+                    ManaLeechEquipment   = manaLeechEquipment,
+                    ManaLeechImbuement   = manaLeechImbuement,
+                    ManaLeechWheel       = manaLeechWheel,
+                    ManaLeechEventBonus  = manaLeechEventBonus,
+                    Onslaught            = onslaught,
+                    OnslaughtBase        = onslaughtBase,
+                    OnslaughtBonus       = onslaughtBonus,
+                    CleavePercent        = cleavePercent,
+                    PerfectShotDamage    = perfectShot,
+                    FlatDamage           = flatDamage,
+                    FlatDamageBase       = flatDamageBase,
+                    WeaponAttack         = weaponAttack,
+                    WeaponFlatModifier   = weaponFlatModifier,
+                    WeaponDamage         = weaponDamage,
+                    WeaponSkillType      = weaponSkillType,
+                    WeaponSkillLevel     = weaponSkillLevel,
+                    WeaponSkillModifier  = weaponSkillModifier,
+                    WeaponElement        = weaponElement,
+                    WeaponElementDamage  = weaponElementDamage,
+                    WeaponElementType    = weaponElementType,
+                    WeaponAccuracy       = accuracy,
+                });
+                break;
+            }
+            case 14: // CYCLOPEDIA_CHARACTERINFO_DEFENCESTATS
+            {
+                double dodgeTotal      = msg.ReadDouble();
+                double dodgeBase       = msg.ReadDouble();
+                double dodgeBonus      = msg.ReadDouble();
+                msg.ReadDouble(); // unused
+                double dodgeWheel                  = msg.ReadDouble();
+                uint   magicShieldCapacity          = msg.ReadU32();
+                ushort magicShieldCapacityFlat      = msg.ReadU16();
+                double magicShieldCapacityPercent   = msg.ReadDouble();
+                ushort reflectPhysical              = msg.ReadU16();
+                ushort armor                        = msg.ReadU16();
+                ushort defense                      = msg.ReadU16();
+                ushort defenseEquipment             = msg.ReadU16();
+                byte   defenseSkillType             = msg.ReadU8();
+                ushort shieldingSkill               = msg.ReadU16();
+                ushort defenseWheel                 = msg.ReadU16();
+                msg.ReadU16(); // unused
+                double mitigation             = msg.ReadDouble();
+                double mitigationBase         = msg.ReadDouble();
+                double mitigationEquipment    = msg.ReadDouble();
+                double mitigationShield       = msg.ReadDouble();
+                double mitigationWheel        = msg.ReadDouble();
+                double mitigationCombatTactics = msg.ReadDouble();
+                byte combatsCount = msg.ReadU8();
+                var resistances = new List<(byte, double)>();
+                for (int i = 0; i < combatsCount; i++)
+                {
+                    byte elementType = msg.ReadU8();
+                    if (elementType == 0x04)
+                        resistances.Add((msg.ReadU8(), msg.ReadDouble()));
+                }
+                CharacterDefenceStatsReceived?.Invoke(new Game.CharacterDefenceStats
+                {
+                    DodgeTotal                 = dodgeTotal,
+                    DodgeBase                  = dodgeBase,
+                    DodgeBonus                 = dodgeBonus,
+                    DodgeWheel                 = dodgeWheel,
+                    MagicShieldCapacity        = magicShieldCapacity,
+                    MagicShieldCapacityFlat    = magicShieldCapacityFlat,
+                    MagicShieldCapacityPercent = magicShieldCapacityPercent,
+                    ReflectPhysical            = reflectPhysical,
+                    Armor                      = armor,
+                    Defense                    = defense,
+                    DefenseEquipment           = defenseEquipment,
+                    DefenseSkillType           = defenseSkillType,
+                    ShieldingSkill             = shieldingSkill,
+                    DefenseWheel               = defenseWheel,
+                    Mitigation                 = mitigation,
+                    MitigationBase             = mitigationBase,
+                    MitigationEquipment        = mitigationEquipment,
+                    MitigationShield           = mitigationShield,
+                    MitigationWheel            = mitigationWheel,
+                    MitigationCombatTactics    = mitigationCombatTactics,
+                    Resistances                = resistances,
+                });
+                break;
+            }
+            case 15: // CYCLOPEDIA_CHARACTERINFO_MISCSTATS
+            {
+                double momentumTotal          = msg.ReadDouble();
+                double momentumBase           = msg.ReadDouble();
+                double momentumBonus          = msg.ReadDouble();
+                double momentumWheel          = msg.ReadDouble();
+                msg.ReadDouble(); // unused
+                double dodgeTotal             = msg.ReadDouble();
+                double dodgeBase              = msg.ReadDouble();
+                double dodgeBonus             = msg.ReadDouble();
+                double dodgeWheel             = msg.ReadDouble();
+                double damageReflectionTotal  = msg.ReadDouble();
+                double damageReflectionBase   = msg.ReadDouble();
+                double damageReflectionBonus  = msg.ReadDouble();
+                byte   haveBlesses            = msg.ReadU8();
+                byte   totalBlesses           = msg.ReadU8();
+                byte concoctionsCount = msg.ReadU8();
+                var concoctions = new List<(ushort, uint)>(concoctionsCount);
+                for (int i = 0; i < concoctionsCount; i++)
+                {
+                    ushort cId = msg.ReadU16();
+                    msg.ReadU8();  // unused
+                    msg.ReadU8();  // unused
+                    uint cDur = msg.ReadU32();
+                    concoctions.Add((cId, cDur));
+                }
+                msg.ReadU8(); // unused
+                CharacterMiscStatsReceived?.Invoke(new Game.CharacterMiscStats
+                {
+                    MomentumTotal          = momentumTotal,
+                    MomentumBase           = momentumBase,
+                    MomentumBonus          = momentumBonus,
+                    MomentumWheel          = momentumWheel,
+                    DodgeTotal             = dodgeTotal,
+                    DodgeBase              = dodgeBase,
+                    DodgeBonus             = dodgeBonus,
+                    DodgeWheel             = dodgeWheel,
+                    DamageReflectionTotal  = damageReflectionTotal,
+                    DamageReflectionBase   = damageReflectionBase,
+                    DamageReflectionBonus  = damageReflectionBonus,
+                    HaveBlesses            = haveBlesses,
+                    TotalBlesses           = totalBlesses,
+                    Concoctions            = concoctions,
+                });
+                break;
+            }
+            // type 12 (WHEEL) and unrecognised types are silently ignored
+        }
+    }
 }
