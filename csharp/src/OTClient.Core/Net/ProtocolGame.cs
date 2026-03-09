@@ -112,6 +112,18 @@ public enum GameClientPacket : byte
     CyclopediaRequestCharacterInfo = 0xE5, // ClientCyclopediaRequestCharacterInfo (229) — T60
     NewRuleViolation             = 0xF2,  // ClientNewRuleViolation (242)              — T60
     RequestItemInfo              = 0xF3,  // ClientRequestItemInfo (243)               — T60
+    // Prey, forge, imbuement, reward (T61)
+    UseStash                     = 0x28,  // ClientUseStash (40)                       — T61
+    ForgeEnter                   = 0xBF,  // ClientForgeEnter (191)                    — T61
+    ForgeBrowseHistory           = 0xC0,  // ClientForgeBrowseHistory (192)            — T61
+    ApplyImbuement               = 0xD5,  // ClientApplyImbuement (213)                — T61
+    ClearImbuement               = 0xD6,  // ClientClearImbuement (214)                — T61
+    CloseImbuingWindow           = 0xD7,  // ClientCloseImbuingWindow (215)            — T61
+    OpenRewardWall               = 0xD8,  // ClientOpenRewardWall (216)                — T61
+    OpenRewardHistory            = 0xD9,  // ClientOpenRewardHistory (217)             — T61
+    GetDailyReward               = 0xDA,  // ClientGetDailyReward (218)                — T61
+    PreyAction                   = 0xEB,  // ClientPreyAction (235)                    — T61
+    PreyRequest                  = 0xED,  // ClientPreyRequest (237)                   — T61
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>

@@ -7870,4 +7870,230 @@ public sealed class ProtocolGameTests
         Assert.Equal(0x01, payload[2]);
         Assert.Equal(0x01, payload[3]);  // status
     }
+
+    // ─── T61: Prey, forge, imbuement, reward send methods ────────────────────
+
+    [Fact]
+    public void SendPreyAction_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendPreyAction(0, 0));
+    }
+
+    [Fact]
+    public void SendPreyRequest_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendPreyRequest());
+    }
+
+    [Fact]
+    public void SendForgeRequest_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendForgeRequest(0));
+    }
+
+    [Fact]
+    public void SendForgeBrowseHistoryRequest_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendForgeBrowseHistoryRequest(1));
+    }
+
+    [Fact]
+    public void SendApplyImbuement_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendApplyImbuement(0, 12345u));
+    }
+
+    [Fact]
+    public void SendClearImbuement_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendClearImbuement(2));
+    }
+
+    [Fact]
+    public void SendCloseImbuingWindow_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendCloseImbuingWindow());
+    }
+
+    [Fact]
+    public void SendOpenRewardWall_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendOpenRewardWall());
+    }
+
+    [Fact]
+    public void SendOpenRewardHistory_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendOpenRewardHistory());
+    }
+
+    [Fact]
+    public void SendGetDailyReward_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() =>
+            pg.SendGetDailyReward(0, Array.Empty<(ushort, byte)>()));
+    }
+
+    // ─── T61: Wire-format checks ──────────────────────────────────────────────
+
+    [Fact]
+    public void OutputMessage_PreyAction_SlotActionType_NoIndex()
+    {
+        // actionType 0 → no extra byte
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyAction);
+        msg.WriteU8(1);  // slot
+        msg.WriteU8(0);  // actionType 0 (no index)
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xEB, payload[0]);
+        Assert.Equal(1,    payload[1]);  // slot
+        Assert.Equal(0,    payload[2]);  // actionType
+        Assert.Equal(3,    payload.Length);
+    }
+
+    [Fact]
+    public void OutputMessage_PreyAction_ActionType2_HasByteIndex()
+    {
+        // actionType 2 → U8 index
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyAction);
+        msg.WriteU8(0);    // slot
+        msg.WriteU8(2);    // actionType
+        msg.WriteU8(7);    // index
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xEB, payload[0]);
+        Assert.Equal(7,    payload[3]);  // index byte
+        Assert.Equal(4,    payload.Length);
+    }
+
+    [Fact]
+    public void OutputMessage_PreyRequest_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyRequest);
+        Assert.Equal(0xED, msg.ToArray()[0]);
+    }
+
+    [Fact]
+    public void OutputMessage_ForgeEnter_FusionHasExtraFields()
+    {
+        // FUSION actionType=0 → extra fields
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ForgeEnter);
+        msg.WriteU8(0);     // actionType FUSION
+        msg.WriteU8(1);     // convergence true
+        msg.WriteU16(100);  // firstItemId
+        msg.WriteU8(3);     // firstItemTier
+        msg.WriteU16(200);  // secondItemId
+        msg.WriteU8(0);     // improveChance false
+        msg.WriteU8(0);     // tierLoss false
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xBF, payload[0]);  // ForgeEnter opcode
+        Assert.Equal(0,    payload[1]);  // actionType FUSION
+        Assert.Equal(1,    payload[2]);  // convergence
+        // firstItemId=100=0x0064 LE: 0x64,0x00
+        Assert.Equal(0x64, payload[3]);
+        Assert.Equal(0x00, payload[4]);
+        Assert.Equal(3,    payload[5]);  // firstItemTier
+    }
+
+    [Fact]
+    public void OutputMessage_ForgeBrowseHistory_HasPageByte()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ForgeBrowseHistory);
+        msg.WriteU8(5);  // page
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xC0, payload[0]);
+        Assert.Equal(5,    payload[1]);
+    }
+
+    [Fact]
+    public void OutputMessage_ApplyImbuement_FieldOrder()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ApplyImbuement);
+        msg.WriteU8(2);         // slot
+        msg.WriteU32(99999u);   // imbuementId
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xD5, payload[0]);
+        Assert.Equal(2,    payload[1]);   // slot
+        // 99999 = 0x0001869F LE: 0x9F,0x86,0x01,0x00
+        Assert.Equal(0x9F, payload[2]);
+        Assert.Equal(0x86, payload[3]);
+    }
+
+    [Fact]
+    public void OutputMessage_ClearImbuement_HasSlotByte()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ClearImbuement);
+        msg.WriteU8(1);   // slot
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xD6, payload[0]);
+        Assert.Equal(1,    payload[1]);
+    }
+
+    [Fact]
+    public void OutputMessage_CloseImbuingWindow_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseImbuingWindow);
+        var payload = msg.ToArray();
+        Assert.Equal(0xD7, payload[0]);
+        Assert.True(payload.Length == 1);
+    }
+
+    [Fact]
+    public void OutputMessage_OpenRewardWall_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRewardWall);
+        Assert.Equal(0xD8, msg.ToArray()[0]);
+    }
+
+    [Fact]
+    public void OutputMessage_OpenRewardHistory_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRewardHistory);
+        Assert.Equal(0xD9, msg.ToArray()[0]);
+    }
+
+    [Fact]
+    public void OutputMessage_GetDailyReward_ContainsItemList()
+    {
+        // Wire: opcode + bonusShrine + itemCount + [itemId(U16) + count(U8)]...
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.GetDailyReward);
+        msg.WriteU8(0);    // bonusShrine
+        msg.WriteU8(1);    // 1 item
+        msg.WriteU16(500); // itemId
+        msg.WriteU8(3);    // count
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xDA, payload[0]);  // GetDailyReward opcode
+        Assert.Equal(0,    payload[1]);  // bonusShrine
+        Assert.Equal(1,    payload[2]);  // itemCount
+        // itemId=500=0x01F4 LE: 0xF4,0x01
+        Assert.Equal(0xF4, payload[3]);
+        Assert.Equal(0x01, payload[4]);
+        Assert.Equal(3,    payload[5]);  // count
+    }
 }

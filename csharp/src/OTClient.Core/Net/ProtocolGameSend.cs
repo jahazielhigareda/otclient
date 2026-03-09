@@ -1602,4 +1602,179 @@ public sealed partial class ProtocolGame
         msg.WriteU8(status ? (byte)1 : (byte)0);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── T61: Prey, forge, imbuement, reward ──────────────────────────────────
+
+    /// <summary>
+    /// Sends a prey action for the given slot.
+    /// actionType 2 or 5 → U8 index; actionType 4 → U16 raceId; others → no extra data.
+    /// Wire: U8 0xEB, U8 slot, U8 actionType[, U8|U16 index].
+    /// Maps to <c>ProtocolGame::sendPreyAction</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendPreyAction(byte slot, byte actionType, ushort index = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyAction);
+        msg.WriteU8(slot);
+        msg.WriteU8(actionType);
+        if (actionType == 2 || actionType == 5)
+            msg.WriteU8((byte)index);
+        else if (actionType == 4)
+            msg.WriteU16(index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a prey request (open prey window).
+    /// Wire: U8 0xED.
+    /// Maps to <c>ProtocolGame::sendPreyRequest</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendPreyRequest()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyRequest);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends an open-portable-forge request.
+    /// Uses the same opcode as <see cref="SendPreyRequest"/> (0xED).
+    /// Wire: U8 0xED.
+    /// Maps to <c>ProtocolGame::sendOpenPortableForge</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendOpenPortableForge() => SendPreyRequest();
+
+    /// <summary>
+    /// Sends a forge action request.
+    /// actionType 0 (FUSION) or 1 (TRANSFER) carries extra fields.
+    /// Wire: U8 0xBF, U8 actionType[, U8 convergence, U16 firstItemId, U8 firstItemTier, U16 secondItemId, U8 improveChance, U8 tierLoss].
+    /// Maps to <c>ProtocolGame::sendForgeRequest</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendForgeRequest(byte actionType, bool convergence = false,
+        ushort firstItemId = 0, byte firstItemTier = 0,
+        ushort secondItemId = 0, bool improveChance = false, bool tierLoss = false)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ForgeEnter);
+        msg.WriteU8(actionType);
+        if (actionType == 0 /* FUSION */ || actionType == 1 /* TRANSFER */)
+        {
+            msg.WriteU8(convergence ? (byte)1 : (byte)0);
+            msg.WriteU16(firstItemId);
+            msg.WriteU8(firstItemTier);
+            msg.WriteU16(secondItemId);
+            msg.WriteU8(improveChance ? (byte)1 : (byte)0);
+            msg.WriteU8(tierLoss ? (byte)1 : (byte)0);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests a page of forge browse history.
+    /// Wire: U8 0xC0, U8 page.
+    /// Maps to <c>ProtocolGame::sendForgeBrowseHistoryRequest</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendForgeBrowseHistoryRequest(byte page)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ForgeBrowseHistory);
+        msg.WriteU8(page);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Applies an imbuement to an item slot.
+    /// For protocol versions &lt; 1510, <paramref name="protectionCharm"/> is also sent.
+    /// Wire: U8 0xD5, U8 slot, U32 imbuementId[, U8 protectionCharm if proto&lt;1510].
+    /// Maps to <c>ProtocolGame::sendApplyImbuement</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendApplyImbuement(byte slot, uint imbuementId, bool protectionCharm = false)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ApplyImbuement);
+        msg.WriteU8(slot);
+        msg.WriteU32(imbuementId);
+        if (ProtocolVersion < 1510)
+            msg.WriteU8(protectionCharm ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Clears the imbuement in a given item slot.
+    /// Wire: U8 0xD6, U8 slot.
+    /// Maps to <c>ProtocolGame::sendClearImbuement</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendClearImbuement(byte slot)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ClearImbuement);
+        msg.WriteU8(slot);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Closes the imbuement window.
+    /// Wire: U8 0xD7.
+    /// Maps to <c>ProtocolGame::sendCloseImbuingWindow</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendCloseImbuingWindow()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseImbuingWindow);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Opens the daily reward wall.
+    /// Wire: U8 0xD8.
+    /// Maps to <c>ProtocolGame::sendOpenRewardWall</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendOpenRewardWall()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRewardWall);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Opens the daily reward history.
+    /// Wire: U8 0xD9.
+    /// Maps to <c>ProtocolGame::sendOpenRewardHistory</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendOpenRewardHistory()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRewardHistory);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Collects the daily reward.
+    /// Wire: U8 0xDA, U8 bonusShrine, U8 itemCount, then for each item: U16 itemId, U8 count.
+    /// Maps to <c>ProtocolGame::sendGetRewardDaily</c> (opcode <c>sendGetRewardDaily</c> = 0xDA).
+    /// Task T61.
+    /// </summary>
+    public void SendGetDailyReward(byte bonusShrine, IReadOnlyList<(ushort ItemId, byte Count)> items)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.GetDailyReward);
+        msg.WriteU8(bonusShrine);
+        msg.WriteU8((byte)items.Count);
+        foreach (var (itemId, count) in items)
+        {
+            msg.WriteU16(itemId);
+            msg.WriteU8(count);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
 }
