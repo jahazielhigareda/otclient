@@ -7660,4 +7660,214 @@ public sealed class ProtocolGameTests
         var payload = msg.ToArray();
         Assert.Equal(0x73, payload[0]);  // GmTeleport opcode
     }
+
+    // ─── T60: Inspection, rule-violation, bestiary, bosstiary, cyclopedia ────
+
+    [Fact]
+    public void SendCloseNpcChannel_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendCloseNpcChannel());
+    }
+
+    [Fact]
+    public void SendOpenRuleViolation_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendOpenRuleViolation("Attacker"));
+    }
+
+    [Fact]
+    public void SendCloseRuleViolation_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendCloseRuleViolation("Attacker"));
+    }
+
+    [Fact]
+    public void SendCancelRuleViolation_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendCancelRuleViolation());
+    }
+
+    [Fact]
+    public void SendNewNewRuleViolation_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() =>
+            pg.SendNewNewRuleViolation(1, 2, "Villain", "offensive speech", ""));
+    }
+
+    [Fact]
+    public void SendRequestItemInfo_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestItemInfo(2400, 1, 0));
+    }
+
+    [Fact]
+    public void SendInspectionNormalObject_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(
+            () => pg.SendInspectionNormalObject(new OTClient.Framework.Game.Position(100, 200, 7)));
+    }
+
+    [Fact]
+    public void SendInspectionObject_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendInspectionObject(1, 2400, 1));
+    }
+
+    [Fact]
+    public void SendInspectionObject_InvalidType_DoesNotThrow()
+    {
+        // Type 0 is not NPC-trade or Cyclopedia — method returns early without sending
+        using var pg = new ProtocolGame();
+        pg.SendInspectionObject(0, 2400, 1); // should return silently
+    }
+
+    [Fact]
+    public void SendRequestBestiary_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestBestiary());
+    }
+
+    [Fact]
+    public void SendRequestBestiaryOverview_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(
+            () => pg.SendRequestBestiaryOverview("Mammals", false));
+    }
+
+    [Fact]
+    public void SendRequestBestiarySearch_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestBestiarySearch(1234));
+    }
+
+    [Fact]
+    public void SendBuyCharmRune_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendBuyCharmRune(5, 1, 1234));
+    }
+
+    [Fact]
+    public void SendCyclopediaRequestCharacterInfo_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(
+            () => pg.SendCyclopediaRequestCharacterInfo(123456u, 0));
+    }
+
+    [Fact]
+    public void SendCyclopediaHouseAuction_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(
+            () => pg.SendCyclopediaHouseAuction(0, name: "Thais"));
+    }
+
+    [Fact]
+    public void SendRequestBosstiaryInfo_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestBosstiaryInfo());
+    }
+
+    [Fact]
+    public void SendRequestBossSlootInfo_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestBossSlootInfo());
+    }
+
+    [Fact]
+    public void SendRequestBossSlotAction_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendRequestBossSlotAction(1, 9876u));
+    }
+
+    [Fact]
+    public void SendStatusTrackerBestiary_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        Assert.Throws<InvalidOperationException>(() => pg.SendStatusTrackerBestiary(1234, true));
+    }
+
+    // ─── T60: Wire-format checks ─────────────────────────────────────────────
+
+    [Fact]
+    public void OutputMessage_CloseNpcChannel_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseNpcChannel);
+        Assert.Equal(0x9E, msg.ToArray()[0]);
+    }
+
+    [Fact]
+    public void OutputMessage_NewRuleViolation_ContainsReasonAndAction()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.NewRuleViolation);
+        msg.WriteU8(1);   // reason
+        msg.WriteU8(2);   // action
+        msg.WriteString("Villain");
+        msg.WriteString("offensive speech");
+        msg.WriteString("");
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xF2, payload[0]);  // NewRuleViolation opcode
+        Assert.Equal(1, payload[1]);     // reason
+        Assert.Equal(2, payload[2]);     // action
+    }
+
+    [Fact]
+    public void OutputMessage_RequestItemInfo_FieldOrder()
+    {
+        // Wire: U8 opcode, U8 subType, U16 itemId, U8 index
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestItemInfo);
+        msg.WriteU8(5);       // subType
+        msg.WriteU16(2400);   // itemId
+        msg.WriteU8(0);       // index
+
+        var payload = msg.ToArray();
+        Assert.Equal(0xF3, payload[0]);  // RequestItemInfo opcode
+        Assert.Equal(5,    payload[1]);  // subType
+        // itemId = 2400 = 0x0960 → little-endian: 0x60, 0x09
+        Assert.Equal(0x60, payload[2]);
+        Assert.Equal(0x09, payload[3]);
+    }
+
+    [Fact]
+    public void OutputMessage_BestiaryRequest_HasCorrectOpcode()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequest);
+        Assert.Equal(0xE1, msg.ToArray()[0]);
+    }
+
+    [Fact]
+    public void OutputMessage_StatusTrackerBestiary_HasRaceIdAndStatus()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryTrackerStatus);
+        msg.WriteU16(500);    // raceId
+        msg.WriteU8(1);       // status = true
+
+        var payload = msg.ToArray();
+        Assert.Equal(0x2A, payload[0]);  // BestiaryTrackerStatus opcode
+        // raceId 500 = 0x01F4 little-endian: 0xF4, 0x01
+        Assert.Equal(0xF4, payload[1]);
+        Assert.Equal(0x01, payload[2]);
+        Assert.Equal(0x01, payload[3]);  // status
+    }
 }

@@ -1287,4 +1287,319 @@ public sealed partial class ProtocolGame
         msg.WriteString(d);
         SendEncrypted(msg, _xteaKey);
     }
+
+    // ─── T60: Channel closure, rule violations, item inspection ───────────────
+
+    /// <summary>
+    /// Closes the NPC channel (e.g. when leaving an NPC dialog).
+    /// Wire: U8 0x9E.
+    /// Maps to <c>ProtocolGame::sendCloseNpcChannel</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCloseNpcChannel()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseNpcChannel);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Opens a rule violation report for the given reporter.
+    /// Wire: U8 0x9B, str reporter.
+    /// Maps to <c>ProtocolGame::sendOpenRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendOpenRuleViolation(string reporter)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRuleViolation);
+        msg.WriteString(reporter);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Closes the rule violation report for the given reporter.
+    /// Wire: U8 0x9C, str reporter.
+    /// Maps to <c>ProtocolGame::sendCloseRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCloseRuleViolation(string reporter)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseRuleViolation);
+        msg.WriteString(reporter);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Cancels the active rule violation report.
+    /// Wire: U8 0x9D.
+    /// Maps to <c>ProtocolGame::sendCancelRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCancelRuleViolation()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CancelRuleViolation);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a new-format rule violation (report / appeal) to the server.
+    /// Wire: U8 0xF2, U8 reason, U8 action, str characterName, str comment, str translation.
+    /// Maps to <c>ProtocolGame::sendNewNewRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendNewNewRuleViolation(byte reason, byte action, string characterName, string comment, string translation)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.NewRuleViolation);
+        msg.WriteU8(reason);
+        msg.WriteU8(action);
+        msg.WriteString(characterName);
+        msg.WriteString(comment);
+        msg.WriteString(translation);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests detailed information for an item.
+    /// Wire: U8 0xF3, U8 subType, U16 itemId, U8 index.
+    /// Maps to <c>ProtocolGame::sendRequestItemInfo</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestItemInfo(ushort itemId, byte subType, byte index)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestItemInfo);
+        msg.WriteU8(subType);
+        msg.WriteU16(itemId);
+        msg.WriteU8(index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests inspection of a normal world object at a map position.
+    /// Wire: U8 0xCD, U8 0 (INSPECT_NORMALOBJECT), U16 x, U16 y, U8 z.
+    /// Maps to <c>ProtocolGame::sendInspectionNormalObject</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendInspectionNormalObject(Game.Position pos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectionObject);
+        msg.WriteU8(0); // INSPECT_NORMALOBJECT
+        msg.WriteU16((ushort)pos.X);
+        msg.WriteU16((ushort)pos.Y);
+        msg.WriteU8((byte)pos.Z);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests inspection of an NPC trade or Cyclopedia item.
+    /// <paramref name="inspectionType"/>: 1 = INSPECT_NPCTRADE, 3 = INSPECT_CYCLOPEDIA.
+    /// Wire: U8 0xCD, U8 inspectionType, U16 itemId, U8 itemCount.
+    /// Maps to <c>ProtocolGame::sendInspectionObject</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendInspectionObject(byte inspectionType, ushort itemId, byte itemCount)
+    {
+        if (inspectionType != 1 && inspectionType != 3)
+            return; // only NPC trade (1) and Cyclopedia (3) are accepted
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectionObject);
+        msg.WriteU8(inspectionType);
+        msg.WriteU16(itemId);
+        msg.WriteU8(itemCount);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── T60: Bestiary and Bosstiary ─────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the full bestiary creature list from the server.
+    /// Wire: U8 0xE1.
+    /// Maps to <c>ProtocolGame::sendRequestBestiary</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBestiary()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequest);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the bestiary overview for a category or a list of race IDs.
+    /// Wire: U8 0xE2, U8 isSearch, then [U16 count + U16[] raceIds] if search or [str catName] if browse.
+    /// Maps to <c>ProtocolGame::sendRequestBestiaryOverview</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBestiaryOverview(string catName, bool search, IReadOnlyList<ushort>? raceIds = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequestOverview);
+        msg.WriteU8(search ? (byte)0x01 : (byte)0x00);
+        if (search)
+        {
+            var ids = raceIds ?? Array.Empty<ushort>();
+            msg.WriteU16((ushort)ids.Count);
+            foreach (var id in ids)
+                msg.WriteU16(id);
+        }
+        else
+        {
+            msg.WriteString(catName);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests detailed bestiary data for a single race.
+    /// Wire: U8 0xE3, U16 raceId.
+    /// Maps to <c>ProtocolGame::sendRequestBestiarySearch</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBestiarySearch(ushort raceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequestSearch);
+        msg.WriteU16(raceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Buys or upgrades a charm rune.
+    /// Wire: U8 0xE4, U8 runeId, U8 action, U16 raceId.
+    /// Maps to <c>ProtocolGame::sendBuyCharmRune</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendBuyCharmRune(byte runeId, byte action, ushort raceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BuyCharmRune);
+        msg.WriteU8(runeId);
+        msg.WriteU8(action);
+        msg.WriteU16(raceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests Cyclopedia character information.
+    /// <paramref name="characterInfoType"/>: see <c>CyclopediaCharacterInfoType_t</c>.
+    /// For types RECENTDEATHS (3) and RECENTPVPKILLS (4), pagination fields are included.
+    /// Wire: U8 0xE5, U32 playerId, U8 infoType, [U16 entriesPerPage, U16 page] if type==3||4.
+    /// Maps to <c>ProtocolGame::sendCyclopediaRequestCharacterInfo</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCyclopediaRequestCharacterInfo(uint playerId, byte characterInfoType, ushort entriesPerPage = 0, ushort page = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CyclopediaRequestCharacterInfo);
+        msg.WriteU32(playerId);
+        msg.WriteU8(characterInfoType);
+        if (characterInfoType == 3 || characterInfoType == 4) // RECENTDEATHS / RECENTPVPKILLS
+        {
+            msg.WriteU16(entriesPerPage);
+            msg.WriteU16(page);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a Cyclopedia house auction action.
+    /// <paramref name="auctionType"/>: 0=none (townName), 1=bid (houseId+bid), 2=moveout (houseId+ts),
+    /// 3=transfer (houseId+ts+name+bid), 4=cancelMoveout, 5=cancelTransfer, 6=acceptTransfer, 7=rejectTransfer.
+    /// Maps to <c>ProtocolGame::sendCyclopediaHouseAuction</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCyclopediaHouseAuction(byte auctionType, uint houseId = 0, uint timestamp = 0, ulong bidValue = 0, string name = "")
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CyclopediaHouseAuction);
+        msg.WriteU8(auctionType);
+        switch (auctionType)
+        {
+            case 0: // CYCLOPEDIA_HOUSE_TYPE_NONE — send town name
+                msg.WriteString(name);
+                break;
+            case 1: // CYCLOPEDIA_HOUSE_TYPE_BID
+                msg.WriteU32(houseId);
+                msg.WriteU64(bidValue);
+                break;
+            case 2: // CYCLOPEDIA_HOUSE_TYPE_MOVEOUT
+                msg.WriteU32(houseId);
+                msg.WriteU32(timestamp);
+                break;
+            case 3: // CYCLOPEDIA_HOUSE_TYPE_TRANSFER
+                msg.WriteU32(houseId);
+                msg.WriteU32(timestamp);
+                msg.WriteString(name);
+                msg.WriteU64(bidValue);
+                break;
+            case 4: // CYCLOPEDIA_HOUSE_TYPE_CANCEL_MOVEOUT
+            case 5: // CYCLOPEDIA_HOUSE_TYPE_CANCEL_TRANSFER
+            case 6: // CYCLOPEDIA_HOUSE_TYPE_ACCEPT_TRANSFER
+            case 7: // CYCLOPEDIA_HOUSE_TYPE_REJECT_TRANSFER
+                msg.WriteU32(houseId);
+                break;
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests general bosstiary information (boss list and kill statistics).
+    /// Wire: U8 0xAE.
+    /// Maps to <c>ProtocolGame::sendRequestBosstiaryInfo</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBosstiaryInfo()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BosstiaryRequestInfo);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the bosstiary slot loot information (which boss drops items into the slot).
+    /// Wire: U8 0xAF.
+    /// Maps to <c>ProtocolGame::sendRequestBossSlootInfo</c> ("sloot" = slot loot).
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBossSlootInfo()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BosstiaryRequestSlotInfo);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Performs an action on a bosstiary slot (e.g. unlock, switch boss).
+    /// Wire: U8 0xB0, U8 action, U32 raceId.
+    /// Maps to <c>ProtocolGame::sendRequestBossSlotAction</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBossSlotAction(byte action, uint raceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BosstiaryRequestSlotAction);
+        msg.WriteU8(action);
+        msg.WriteU32(raceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sets the bestiary tracker status (enabled/disabled) for a creature race.
+    /// Wire: U8 0x2A, U16 raceId, U8 status.
+    /// Maps to <c>ProtocolGame::sendStatusTrackerBestiary</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendStatusTrackerBestiary(ushort raceId, bool status)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryTrackerStatus);
+        msg.WriteU16(raceId);
+        msg.WriteU8(status ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
 }

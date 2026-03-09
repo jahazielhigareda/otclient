@@ -94,6 +94,24 @@ public enum GameClientPacket : byte
     EditVipGroups            = 0xDF,  // ClientEditVipGroups (223)             — T59
     BugReport                = 0xE6,  // ClientBugReport (230)                 — T59
     DebugReport              = 0xE8,  // ClientDebugReport (232)               — T59
+    // Channel closure, rule violations, item inspection, bestiary, bosstiary (T60)
+    BestiaryTrackerStatus        = 0x2A,  // ClientBestiaryTrackerStatus (42)          — T60
+    CloseNpcChannel              = 0x9E,  // ClientCloseNpcChannel (158)               — T60
+    OpenRuleViolation            = 0x9B,  // ClientOpenRuleViolation (155)             — T60
+    CloseRuleViolation           = 0x9C,  // ClientCloseRuleViolation (156)            — T60
+    CancelRuleViolation          = 0x9D,  // ClientCancelRuleViolation (157)           — T60
+    CyclopediaHouseAuction       = 0xAD,  // ClientCyclopediaHouseAuction (173)        — T60
+    BosstiaryRequestInfo         = 0xAE,  // ClientBosstiaryRequestInfo (174)          — T60
+    BosstiaryRequestSlotInfo     = 0xAF,  // ClientBosstiaryRequestSlotInfo (175)      — T60
+    BosstiaryRequestSlotAction   = 0xB0,  // ClientBosstiaryRequestSlotAction (176)    — T60
+    InspectionObject             = 0xCD,  // ClientInspectionObject (205)              — T60
+    BestiaryRequest              = 0xE1,  // ClientBestiaryRequest (225)               — T60
+    BestiaryRequestOverview      = 0xE2,  // ClientBestiaryRequestOverview (226)       — T60
+    BestiaryRequestSearch        = 0xE3,  // ClientBestiaryRequestSearch (227)         — T60
+    BuyCharmRune                 = 0xE4,  // ClientCyclopediaSendBuyCharmRune (228)    — T60
+    CyclopediaRequestCharacterInfo = 0xE5, // ClientCyclopediaRequestCharacterInfo (229) — T60
+    NewRuleViolation             = 0xF2,  // ClientNewRuleViolation (242)              — T60
+    RequestItemInfo              = 0xF3,  // ClientRequestItemInfo (243)               — T60
 }
 
 /// <summary>Packets sent by the game server to the client (Tibia 12.x).</summary>
