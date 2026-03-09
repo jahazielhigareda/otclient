@@ -235,6 +235,20 @@ public enum GameServerPacket : byte
     PassiveCooldown         = 0x5E,  // GameServerPassiveCooldown (94)           — parsePassiveCooldown (T51)
     BosstiaryData           = 0x61,  // GameServerBosstiaryData (97)             — parseBosstiaryData (T51)
     ClientCheck             = 0x63,  // GameServerSendClientCheck (99)           — parseClientCheck (T51)
+
+    // T52 opcodes
+    BosstiarySlots          = 0x62,  // GameServerBosstiarySlots (98)            — parseBosstiarySlots (T52)
+    BosstiaryInfo           = 0x73,  // GameServerBosstiaryInfo (115)            — parseBosstiaryInfo (T52)
+    BosstiaryCooldownTimer  = 0xBD,  // GameServerBosstiaryCooldownTimer (189)   — parseBosstiaryCooldownTimer (T52)
+    UpdateImpactTracker     = 0xCC,  // GameServerSendUpdateImpactTracker (204)  — parseUpdateImpactTracker (T52)
+    ItemsPrice              = 0xCD,  // GameServerSendItemsPrice (205)           — parseItemsPrice (T52)
+    UpdateSupplyTracker     = 0xCE,  // GameServerSendUpdateSupplyTracker (206)  — parseUpdateSupplyTracker (T52)
+    UpdateLootTracker       = 0xCF,  // GameServerSendUpdateLootTracker (207)    — parseUpdateLootTracker (T52)
+    QuestTracker            = 0xD0,  // GameServerQuestTracker (208)             — parseQuestTracker (T52)
+    KillTracker             = 0xD1,  // GameServerKillTracker (209)              — parseKillTracker (T52)
+    BestiaryEntryChanged    = 0xD9,  // GameServerBestiaryEntryChanged (217)     — parseBestiaryEntryChanged (T52)
+    ItemInfo                = 0xF4,  // GameServerItemInfo (244)                 — parseItemInfo (T52)
+    PlayerInventory         = 0xF5,  // GameServerPlayerInventory (245)          — parsePlayerInventory (T52)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -350,6 +364,12 @@ public sealed partial class ProtocolGame : Protocol
 
     /// <summary><c>true</c> once the server has confirmed game entry.</summary>
     public bool IsInGame { get; private set; }
+
+    /// <summary>
+    /// The negotiated protocol version for this session.
+    /// Defaults to 1281 (Tibia 12.x baseline).
+    /// </summary>
+    public int ProtocolVersion { get; set; } = 1281;
 
     // ─── Events ───────────────────────────────────────────────────────────────
 
@@ -1219,6 +1239,95 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<BosstiaryKillThresholds>? BosstiaryDataReceived;
 
+    // ─── T52 events ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends bosstriary info entries (0x73).
+    /// Parameter: list of <see cref="BosstiaryEntry"/> records.
+    /// Maps to <c>ProtocolGame::parseBosstiaryInfo</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<IReadOnlyList<BosstiaryEntry>>? BosstiaryInfoReceived;
+
+    /// <summary>
+    /// Raised when the server sends bosstriary slot data (0x62).
+    /// Parameter: fully parsed <see cref="BosstiarySlotsData"/> object.
+    /// Maps to <c>ProtocolGame::parseBosstiarySlots</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<BosstiarySlotsData>? BosstiarySlotReceived;
+
+    /// <summary>
+    /// Raised when the server sends bosstriary cooldown timers (0xBD).
+    /// Parameter: list of (BossId, CooldownSeconds) tuples.
+    /// Maps to <c>ProtocolGame::parseBosstiaryCooldownTimer</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<IReadOnlyList<(uint BossId, ulong CooldownSeconds)>>? BosstiaryCooldownTimerReceived;
+
+    /// <summary>
+    /// Raised when the server notifies that a bestiary entry changed (0xD9).
+    /// Parameter: monster ID.
+    /// Maps to <c>ProtocolGame::parseBestiaryEntryChanged</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<ushort>? BestiaryEntryChangedReceived;
+
+    /// <summary>
+    /// Raised when the server sends impact tracker data (0xCC).
+    /// Parameters: analyzerType (0=heal,1=deal,2=recv), amount, effect, target.
+    /// Maps to <c>ProtocolGame::parseUpdateImpactTracker</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<byte, uint, byte, string>? ImpactTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends a supply tracker update (0xCE).
+    /// Parameter: item client ID.
+    /// Maps to <c>ProtocolGame::parseUpdateSupplyTracker</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<ushort>? SupplyTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends a loot tracker update (0xCF).
+    /// Parameters: the looted item and creature/monster name.
+    /// Maps to <c>ProtocolGame::parseUpdateLootTracker</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<Game.Item, string>? LootTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends a quest tracker update (0xD0).
+    /// Maps to <c>ProtocolGame::parseQuestTracker</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<byte, IReadOnlyList<(ushort QuestId, ushort MissionId, string QuestName, string MissionName, string MissionDesc)>>? QuestTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends kill tracker data (0xD1).
+    /// Parameters: monsterName, outfit, list of dropped items.
+    /// Maps to <c>ProtocolGame::parseKillTracker</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<string, Game.Outfit, IReadOnlyList<Game.Item>>? KillTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends item information (0xF4).
+    /// Parameter: list of (ItemId, SubType, Description) tuples.
+    /// Maps to <c>ProtocolGame::parseItemInfo</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<IReadOnlyList<(ushort ItemId, byte SubType, string Description)>>? ItemInfoReceived;
+
+    /// <summary>
+    /// Raised when the server sends the player's full inventory counts (0xF5).
+    /// Parameter: list of (ItemId, Tier, Amount) tuples.
+    /// Maps to <c>ProtocolGame::parsePlayerInventory</c>.
+    /// Task T52.
+    /// </summary>
+    public event Action<IReadOnlyList<(ushort ItemId, byte Tier, uint Amount)>>? PlayerInventoryReceived;
+
     /// <summary>
     /// Raised when the server opens the NPC trade window.
     /// Parameters: list of <see cref="Game.NpcTradeItem"/> entries.
@@ -1433,6 +1542,20 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.PassiveCooldown,        ParsePassiveCooldown);
         RegisterHandler((byte)GameServerPacket.BosstiaryData,          ParseBosstiaryData);
         RegisterHandler((byte)GameServerPacket.ClientCheck,            ParseClientCheck);
+
+        // T52
+        RegisterHandler((byte)GameServerPacket.BosstiarySlots,         ParseBosstiarySlots);
+        RegisterHandler((byte)GameServerPacket.BosstiaryInfo,          ParseBosstiaryInfo);
+        RegisterHandler((byte)GameServerPacket.BosstiaryCooldownTimer, ParseBosstiaryCooldownTimer);
+        RegisterHandler((byte)GameServerPacket.BestiaryEntryChanged,   ParseBestiaryEntryChanged);
+        RegisterHandler((byte)GameServerPacket.UpdateImpactTracker,    ParseUpdateImpactTracker);
+        RegisterHandler((byte)GameServerPacket.ItemsPrice,             ParseItemsPrice);
+        RegisterHandler((byte)GameServerPacket.UpdateSupplyTracker,    ParseUpdateSupplyTracker);
+        RegisterHandler((byte)GameServerPacket.UpdateLootTracker,      ParseUpdateLootTracker);
+        RegisterHandler((byte)GameServerPacket.QuestTracker,           ParseQuestTracker);
+        RegisterHandler((byte)GameServerPacket.KillTracker,            ParseKillTracker);
+        RegisterHandler((byte)GameServerPacket.ItemInfo,               ParseItemInfo);
+        RegisterHandler((byte)GameServerPacket.PlayerInventory,        ParsePlayerInventory);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

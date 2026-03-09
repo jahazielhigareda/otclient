@@ -1457,6 +1457,61 @@ public sealed record PaperdollAttachData(
 );
 
 /// <summary>
+/// One entry from a <c>GameServerBosstiaryInfo</c> (0x73) packet.
+/// Maps to <c>BosstiaryData</c> struct in <c>ProtocolGame::parseBosstiaryInfo</c>.
+/// Task T52.
+/// </summary>
+public sealed record BosstiaryEntry(
+    uint  RaceId,
+    byte  Category,
+    uint  Kills,
+    bool  IsTrackerActive
+);
+
+/// <summary>
+/// Per-slot data inside a <c>GameServerBosstiarySlots</c> (0x62) packet.
+/// Maps to <c>BosstiarySlot</c> struct in <c>ProtocolGame::parseBosstiarySlots</c>.
+/// Task T52.
+/// </summary>
+public sealed record BosstiarySlot(
+    byte   BossRace,
+    uint   KillCount,
+    ushort LootBonus,
+    byte   KillBonus,
+    byte   BossRaceRepeat,
+    uint   RemovePrice,
+    bool   Inactive
+);
+
+/// <summary>
+/// Top-level data from a <c>GameServerBosstiarySlots</c> (0x62) packet.
+/// Maps to <c>BosstiarySlotsData</c> struct in <c>ProtocolGame::parseBosstiarySlots</c>.
+/// Task T52.
+/// </summary>
+public sealed class BosstiarySlotsData
+{
+    public uint   PlayerPoints          { get; init; }
+    public uint   TotalPointsNextBonus  { get; init; }
+    public ushort CurrentBonus          { get; init; }
+    public ushort NextBonus             { get; init; }
+
+    public bool            IsSlotOneUnlocked { get; init; }
+    public uint            BossIdSlotOne     { get; init; }
+    public BosstiarySlot?  SlotOneData       { get; init; }
+
+    public bool            IsSlotTwoUnlocked { get; init; }
+    public uint            BossIdSlotTwo     { get; init; }
+    public BosstiarySlot?  SlotTwoData       { get; init; }
+
+    public bool            IsTodaySlotUnlocked { get; init; }
+    public uint            BoostedBossId       { get; init; }
+    public BosstiarySlot?  TodaySlotData       { get; init; }
+
+    public bool                              BossesUnlocked     { get; init; }
+    public IReadOnlyList<(uint BossId, byte BossRace)> BossesUnlockedData { get; init; } = [];
+}
+
+/// <summary>
 /// Kill-count thresholds and point rewards for each Bosstriary tier, parsed
 /// from a <c>GameServerBosstiaryData</c> (0x61) packet.
 /// Maps to <c>ProtocolGame::parseBosstiaryData</c>.

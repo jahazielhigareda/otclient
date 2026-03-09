@@ -5258,4 +5258,509 @@ public sealed class ProtocolGameTests
 
         InvokeHandleRawData(pg, out_.ToArray());
     }
+
+    // ─── T52: ParseBosstiaryInfo ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseBosstiaryInfo_TwoEntries_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.BosstiaryEntry>? got = null;
+        pg.BosstiaryInfoReceived += entries => got = entries;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BosstiaryInfo);
+        out_.WriteU16(2);       // count
+        // entry 1
+        out_.WriteU32(1001);    // raceId
+        out_.WriteU8(1);        // category
+        out_.WriteU32(50);      // kills
+        out_.WriteU8(0);        // padding
+        // entry 2
+        out_.WriteU32(2002);    // raceId
+        out_.WriteU8(2);        // category
+        out_.WriteU32(200);     // kills
+        out_.WriteU8(0);        // padding
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(1001u, got[0].RaceId);
+        Assert.Equal(1, (int)got[0].Category);
+        Assert.Equal(50u, got[0].Kills);
+        Assert.False(got[0].IsTrackerActive);
+        Assert.Equal(2002u, got[1].RaceId);
+        Assert.Equal(200u, got[1].Kills);
+    }
+
+    [Fact]
+    public void ParseBosstiaryInfo_ZeroEntries_FiresEmpty()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.BosstiaryEntry>? got = null;
+        pg.BosstiaryInfoReceived += entries => got = entries;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BosstiaryInfo);
+        out_.WriteU16(0);       // count = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T52: ParseBosstiarySlots ─────────────────────────────────────────────
+
+    [Fact]
+    public void ParseBosstiarySlots_AllSlotsActive_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.BosstiarySlotsData? got = null;
+        pg.BosstiarySlotReceived += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BosstiarySlots);
+        out_.WriteU32(500);     // playerPoints
+        out_.WriteU32(1000);    // totalPointsNextBonus
+        out_.WriteU16(3);       // currentBonus
+        out_.WriteU16(5);       // nextBonus
+        // slot1: unlocked, has boss
+        out_.WriteU8(1);        // isSlotOneUnlocked
+        out_.WriteU32(11);      // bossIdSlotOne
+        // slot1 data: bossRace=2, killCount=10, lootBonus=5, killBonus=1, bossRaceRepeat=1, removePrice=100, inactive=false
+        out_.WriteU8(2);        // bossRace
+        out_.WriteU32(10);      // killCount
+        out_.WriteU16(5);       // lootBonus
+        out_.WriteU8(1);        // killBonus
+        out_.WriteU8(1);        // bossRaceRepeat
+        out_.WriteU32(100);     // removePrice
+        out_.WriteU8(0);        // inactive = false
+        // slot2: unlocked, no boss (bossId=0)
+        out_.WriteU8(1);        // isSlotTwoUnlocked
+        out_.WriteU32(0);       // bossIdSlotTwo = 0 → no slot data
+        // today: not unlocked
+        out_.WriteU8(0);        // isTodaySlotUnlocked
+        out_.WriteU32(0);       // boostedBossId
+        // bossesUnlocked: false
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(500u, got!.PlayerPoints);
+        Assert.Equal(1000u, got.TotalPointsNextBonus);
+        Assert.Equal(3, (int)got.CurrentBonus);
+        Assert.Equal(5, (int)got.NextBonus);
+        Assert.True(got.IsSlotOneUnlocked);
+        Assert.Equal(11u, got.BossIdSlotOne);
+        Assert.NotNull(got.SlotOneData);
+        Assert.Equal(2, (int)got.SlotOneData!.BossRace);
+        Assert.Equal(10u, got.SlotOneData.KillCount);
+        Assert.True(got.IsSlotTwoUnlocked);
+        Assert.Equal(0u, got.BossIdSlotTwo);
+        Assert.Null(got.SlotTwoData);
+        Assert.False(got.IsTodaySlotUnlocked);
+        Assert.False(got.BossesUnlocked);
+        Assert.Empty(got.BossesUnlockedData);
+    }
+
+    [Fact]
+    public void ParseBosstiarySlots_WithBossesUnlocked_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.BosstiarySlotsData? got = null;
+        pg.BosstiarySlotReceived += d => got = d;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BosstiarySlots);
+        out_.WriteU32(0); out_.WriteU32(0); out_.WriteU16(0); out_.WriteU16(0); // points/bonus
+        out_.WriteU8(0); out_.WriteU32(0); // slot1: not unlocked
+        out_.WriteU8(0); out_.WriteU32(0); // slot2: not unlocked
+        out_.WriteU8(0); out_.WriteU32(0); // today: not unlocked
+        out_.WriteU8(1);        // bossesUnlocked = true
+        out_.WriteU16(2);       // count = 2
+        out_.WriteU32(500); out_.WriteU8(1); // boss 1
+        out_.WriteU32(600); out_.WriteU8(2); // boss 2
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.True(got!.BossesUnlocked);
+        Assert.Equal(2, got.BossesUnlockedData.Count);
+        Assert.Equal(500u, got.BossesUnlockedData[0].BossId);
+        Assert.Equal(1, (int)got.BossesUnlockedData[0].BossRace);
+        Assert.Equal(600u, got.BossesUnlockedData[1].BossId);
+    }
+
+    // ─── T52: ParseBosstiaryCooldownTimer ────────────────────────────────────
+
+    [Fact]
+    public void ParseBosstiaryCooldownTimer_TwoEntries_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(uint BossId, ulong CooldownSeconds)>? got = null;
+        pg.BosstiaryCooldownTimerReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BosstiaryCooldownTimer);
+        out_.WriteU16(2);           // count
+        out_.WriteU32(111);         // boss 1 id
+        out_.WriteU64(3600UL);      // cooldown 1h
+        out_.WriteU32(222);         // boss 2 id
+        out_.WriteU64(7200UL);      // cooldown 2h
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(111u, got[0].BossId);
+        Assert.Equal(3600UL, got[0].CooldownSeconds);
+        Assert.Equal(222u, got[1].BossId);
+        Assert.Equal(7200UL, got[1].CooldownSeconds);
+    }
+
+    [Fact]
+    public void ParseBosstiaryCooldownTimer_ZeroEntries_FiresEmpty()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(uint BossId, ulong CooldownSeconds)>? got = null;
+        pg.BosstiaryCooldownTimerReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BosstiaryCooldownTimer);
+        out_.WriteU16(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T52: ParseBestiaryEntryChanged ──────────────────────────────────────
+
+    [Fact]
+    public void ParseBestiaryEntryChanged_Fires()
+    {
+        using var pg = new ProtocolGame();
+        ushort? got = null;
+        pg.BestiaryEntryChangedReceived += id => got = id;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BestiaryEntryChanged);
+        out_.WriteU16(999);     // monsterID
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(999, (int)got!.Value);
+    }
+
+    // ─── T52: ParseUpdateImpactTracker ───────────────────────────────────────
+
+    [Fact]
+    public void ParseUpdateImpactTracker_TypeHeal_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotType = null; uint? gotAmount = null; byte? gotEffect = null; string? gotTarget = null;
+        pg.ImpactTrackerReceived += (t, a, e, tar) => { gotType = t; gotAmount = a; gotEffect = e; gotTarget = tar; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.UpdateImpactTracker);
+        out_.WriteU8(0);        // analyzerType = 0 (heal)
+        out_.WriteU32(500);     // amount
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotType!.Value);
+        Assert.Equal(500u, gotAmount!.Value);
+        Assert.Equal(0, (int)gotEffect!.Value);
+        Assert.Equal(string.Empty, gotTarget);
+    }
+
+    [Fact]
+    public void ParseUpdateImpactTracker_TypeDamageDealt_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotType = null; uint? gotAmount = null; byte? gotEffect = null;
+        pg.ImpactTrackerReceived += (t, a, e, _) => { gotType = t; gotAmount = a; gotEffect = e; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.UpdateImpactTracker);
+        out_.WriteU8(1);        // analyzerType = 1 (damage dealt)
+        out_.WriteU32(750);     // amount
+        out_.WriteU8(3);        // effect (combat type)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, (int)gotType!.Value);
+        Assert.Equal(750u, gotAmount!.Value);
+        Assert.Equal(3, (int)gotEffect!.Value);
+    }
+
+    [Fact]
+    public void ParseUpdateImpactTracker_TypeDamageReceived_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotType = null; string? gotTarget = null;
+        pg.ImpactTrackerReceived += (t, _, _, tar) => { gotType = t; gotTarget = tar; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.UpdateImpactTracker);
+        out_.WriteU8(2);        // analyzerType = 2 (damage received)
+        out_.WriteU32(200);     // amount
+        out_.WriteU8(5);        // effect
+        out_.WriteString("Boss Monster");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(2, (int)gotType!.Value);
+        Assert.Equal("Boss Monster", gotTarget);
+    }
+
+    // ─── T52: ParseUpdateSupplyTracker ───────────────────────────────────────
+
+    [Fact]
+    public void ParseUpdateSupplyTracker_Fires()
+    {
+        using var pg = new ProtocolGame();
+        ushort? got = null;
+        pg.SupplyTrackerReceived += id => got = id;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.UpdateSupplyTracker);
+        out_.WriteU16(4321);    // item client ID
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(4321, (int)got!.Value);
+    }
+
+    // ─── T52: ParseUpdateLootTracker ─────────────────────────────────────────
+
+    [Fact]
+    public void ParseUpdateLootTracker_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.Item? gotItem = null; string? gotName = null;
+        pg.LootTrackerReceived += (item, name) => { gotItem = item; gotName = name; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.UpdateLootTracker);
+        out_.WriteU16(1234);    // itemId (non-stackable → no subType byte in ReadItemById)
+        out_.WriteString("Dragon Loot");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotItem);
+        Assert.Equal(1234, gotItem!.Id);
+        Assert.Equal("Dragon Loot", gotName);
+    }
+
+    // ─── T52: ParseQuestTracker ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseQuestTracker_Type1_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotRemaining = null;
+        IReadOnlyList<(ushort QuestId, ushort MissionId, string QuestName, string MissionName, string MissionDesc)>? gotMissions = null;
+        pg.QuestTrackerReceived += (r, m) => { gotRemaining = r; gotMissions = m; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.QuestTracker);
+        out_.WriteU8(1);        // messageType = 1
+        out_.WriteU8(3);        // remainingQuests
+        out_.WriteU8(1);        // missionCount = 1
+        // mission (proto < 1410, no questId field)
+        out_.WriteU16(10);      // missionId
+        out_.WriteString("The Quest");
+        out_.WriteString("Mission Alpha");
+        out_.WriteString("Do the thing.");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(3, (int)gotRemaining!.Value);
+        Assert.NotNull(gotMissions);
+        Assert.Single(gotMissions!);
+        Assert.Equal(0, (int)gotMissions[0].QuestId);    // not proto≥1410
+        Assert.Equal(10, (int)gotMissions[0].MissionId);
+        Assert.Equal("The Quest", gotMissions[0].QuestName);
+        Assert.Equal("Mission Alpha", gotMissions[0].MissionName);
+        Assert.Equal("Do the thing.", gotMissions[0].MissionDesc);
+    }
+
+    [Fact]
+    public void ParseQuestTracker_Type0_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotRemaining = null;
+        IReadOnlyList<(ushort QuestId, ushort MissionId, string QuestName, string MissionName, string MissionDesc)>? gotMissions = null;
+        pg.QuestTrackerReceived += (r, m) => { gotRemaining = r; gotMissions = m; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.QuestTracker);
+        out_.WriteU8(0);        // messageType = 0
+        // proto < 1410: no questId, no questName
+        out_.WriteU16(20);      // missionId
+        out_.WriteString("Updated Mission");
+        out_.WriteString("Go fight.");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotRemaining!.Value);
+        Assert.NotNull(gotMissions);
+        Assert.Single(gotMissions!);
+        Assert.Equal(20, (int)gotMissions[0].MissionId);
+        Assert.Equal("Updated Mission", gotMissions[0].MissionName);
+    }
+
+    // ─── T52: ParseKillTracker ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseKillTracker_Fires()
+    {
+        using var pg = new ProtocolGame();
+        string? gotMonster = null; OTClient.Framework.Game.Outfit? gotOutfit = null;
+        IReadOnlyList<OTClient.Framework.Game.Item>? gotItems = null;
+        pg.KillTrackerReceived += (name, outfit, items) => { gotMonster = name; gotOutfit = outfit; gotItems = items; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.KillTracker);
+        out_.WriteString("Dragon");
+        // Outfit (no mount): lookType, head, body, legs, feet, addons → lookTypeEx skipped since lookType != 0
+        out_.WriteU16(350);     // lookType
+        out_.WriteU8(10);       // head
+        out_.WriteU8(20);       // body
+        out_.WriteU8(30);       // legs
+        out_.WriteU8(40);       // feet
+        out_.WriteU8(3);        // addons
+        // Note: parseMount=false → no mount U16 read
+        out_.WriteU8(2);        // corpseItemsSize = 2
+        out_.WriteU16(555);     // item 1
+        out_.WriteU16(666);     // item 2
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Dragon", gotMonster);
+        Assert.NotNull(gotOutfit);
+        Assert.Equal(350, gotOutfit!.Id);
+        Assert.Equal(10, (int)gotOutfit.Head);
+        Assert.NotNull(gotItems);
+        Assert.Equal(2, gotItems!.Count);
+        Assert.Equal(555, gotItems[0].Id);
+        Assert.Equal(666, gotItems[1].Id);
+    }
+
+    // ─── T52: ParseItemInfo ───────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseItemInfo_OneEntry_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(ushort ItemId, byte SubType, string Description)>? got = null;
+        pg.ItemInfoReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ItemInfo);
+        out_.WriteU8(1);            // listCount = 1
+        out_.WriteU16(999);         // itemId
+        // proto 1281 < 1220? No, 1281 >= 1220, so reads U16 subType (trimmed to byte)
+        out_.WriteU16(3);           // subType (U16 since proto≥1220)
+        out_.WriteString("A magic sword");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!);
+        Assert.Equal(999, (int)got[0].ItemId);
+        Assert.Equal(3, (int)got[0].SubType);
+        Assert.Equal("A magic sword", got[0].Description);
+    }
+
+    [Fact]
+    public void ParseItemInfo_ZeroEntries_FiresEmpty()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(ushort ItemId, byte SubType, string Description)>? got = null;
+        pg.ItemInfoReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ItemInfo);
+        out_.WriteU8(0);            // listCount = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T52: ParsePlayerInventory ───────────────────────────────────────────
+
+    [Fact]
+    public void ParsePlayerInventory_TwoItems_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(ushort ItemId, byte Tier, uint Amount)>? got = null;
+        pg.PlayerInventoryReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerInventory);
+        out_.WriteU16(2);       // size = 2
+        // item 1 (proto 1281 < 1500 → U16 amount)
+        out_.WriteU16(100);     // itemId
+        out_.WriteU8(0);        // tier
+        out_.WriteU16(50);      // amount
+        // item 2
+        out_.WriteU16(200);     // itemId
+        out_.WriteU8(1);        // tier = 1
+        out_.WriteU16(10);      // amount
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(100, (int)got[0].ItemId);
+        Assert.Equal(0, (int)got[0].Tier);
+        Assert.Equal(50u, got[0].Amount);
+        Assert.Equal(200, (int)got[1].ItemId);
+        Assert.Equal(1, (int)got[1].Tier);
+        Assert.Equal(10u, got[1].Amount);
+    }
+
+    [Fact]
+    public void ParsePlayerInventory_EmptyList_FiresEmpty()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(ushort ItemId, byte Tier, uint Amount)>? got = null;
+        pg.PlayerInventoryReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.PlayerInventory);
+        out_.WriteU16(0);       // size = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T52: ParseItemsPrice (discard) ──────────────────────────────────────
+
+    [Fact]
+    public void ParseItemsPrice_TwoEntries_NoException()
+    {
+        using var pg = new ProtocolGame();
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ItemsPrice);
+        out_.WriteU16(2);           // count
+        out_.WriteU16(111);         // itemId 1
+        out_.WriteU64(5000UL);      // price 1
+        out_.WriteU16(222);         // itemId 2
+        out_.WriteU64(1500UL);      // price 2
+
+        // Should not throw
+        InvokeHandleRawData(pg, out_.ToArray());
+    }
 }
