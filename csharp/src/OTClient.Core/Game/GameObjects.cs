@@ -1388,3 +1388,98 @@ public sealed class DailyRewardData
     public byte MaxUnlockableDragons { get; init; }
 }
 
+// ─── T51 data types ───────────────────────────────────────────────────────────
+
+/// <summary>
+/// One item entry inside a supply stash packet (0x29 GameServerSupplyStash).
+/// Maps to a single iteration of the item loop in
+/// <c>ProtocolGame::parseSupplyStash</c>.
+/// Task T51.
+/// </summary>
+public sealed record SupplyStashItem(ushort ItemId, uint Amount);
+
+/// <summary>
+/// Statistics for one party member inside a <c>GameServerPartyAnalyzer</c>
+/// (0x2B) packet.
+/// Maps to one loop entry in <c>ProtocolGame::parsePartyAnalyzer</c>.
+/// Task T51.
+/// </summary>
+public sealed record PartyMemberData(
+    uint   MemberId,
+    byte   Highlight,
+    ulong  Loot,
+    ulong  Supply,
+    ulong  Damage,
+    ulong  Healing
+);
+
+/// <summary>
+/// Name entry for a party member inside a <c>GameServerPartyAnalyzer</c>
+/// (0x2B) packet (optional name list section).
+/// Task T51.
+/// </summary>
+public sealed record PartyMemberName(uint MemberId, string Name);
+
+/// <summary>
+/// Full payload of the <c>GameServerPartyAnalyzer</c> (0x2B) packet.
+/// Maps to <c>ProtocolGame::parsePartyAnalyzer</c>.
+/// Task T51.
+/// </summary>
+public sealed class PartyAnalyzerData
+{
+    /// <summary>Session start time in minutes.</summary>
+    public uint StartTime { get; init; }
+    /// <summary>Creature ID of the party leader.</summary>
+    public uint LeaderId { get; init; }
+    /// <summary>Loot price type (0 = NPC, 1 = Market).</summary>
+    public byte LootType { get; init; }
+    /// <summary>Per-member statistics.</summary>
+    public IReadOnlyList<PartyMemberData> Members { get; init; } = [];
+    /// <summary>Optional member name mapping (populated when the server sends it).</summary>
+    public IReadOnlyList<PartyMemberName> Names { get; init; } = [];
+}
+
+/// <summary>
+/// Paperdoll attach data parsed from a <c>GameServerAttachedPaperdoll</c>
+/// (0x3C) packet.
+/// Maps to <c>getPaperdoll</c> + <c>ProtocolGame::parseAttachedPaperdoll</c>.
+/// Task T51.
+/// </summary>
+public sealed record PaperdollAttachData(
+    ushort Id,
+    byte   Slot,
+    byte   Color,
+    byte   Head,
+    byte   Body,
+    byte   Legs,
+    byte   Feet,
+    string Shader
+);
+
+/// <summary>
+/// Kill-count thresholds and point rewards for each Bosstriary tier, parsed
+/// from a <c>GameServerBosstiaryData</c> (0x61) packet.
+/// Maps to <c>ProtocolGame::parseBosstiaryData</c>.
+/// Task T51.
+/// </summary>
+public sealed record BosstiaryKillThresholds(
+    ushort BaneProwessKills,
+    ushort BaneExpertiseKills,
+    ushort BaneMasteryKills,
+    ushort ArchfoeProwessKills,
+    ushort ArchfoeExpertiseKills,
+    ushort ArchfoeMasteryKills,
+    ushort NemesisProwessKills,
+    ushort NemesisExpertiseKills,
+    ushort NemesisMasteryKills,
+    ushort BaneProwessPoints,
+    ushort BaneExpertisePoints,
+    ushort BaneMasteryPoints,
+    ushort ArchfoeProwessPoints,
+    ushort ArchfoeExpertisePoints,
+    ushort ArchfoeMasteryPoints,
+    ushort NemesisProwessPoints,
+    ushort NemesisExpertisePoints,
+    ushort NemesisMasteryPoints
+);
+

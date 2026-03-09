@@ -223,6 +223,18 @@ public enum GameServerPacket : byte
     RuleViolationRemove     = 0xAF,  // GameServerRuleViolationRemove (175) / ExperienceTracker at proto≥1200 (T50)
     RuleViolationCancel     = 0xB0,  // GameServerRuleViolationCancel (176)      — parseRuleViolationCancel (T50)
     RuleViolationLock       = 0xB1,  // GameServerRuleViolationLock (177) at proto<1310 (T50)
+
+    // T51 opcodes
+    SupplyStash             = 0x29,  // GameServerSupplyStash (41)               — parseSupplyStash (T51)
+    SpecialContainer        = 0x2A,  // GameServerSpecialContainer (42)          — parseSpecialContainer (T51)
+    PartyAnalyzer           = 0x2B,  // GameServerPartyAnalyzer (43)             — parsePartyAnalyzer (T51)
+    AttachedPaperdoll       = 0x3C,  // GameServerAttachedPaperdoll (60)         — parseAttachedPaperdoll (T51)
+    DetachPaperdoll         = 0x3D,  // GameServerDetachPaperdoll (61)           — parseDetachPaperdoll (T51)
+    Features                = 0x43,  // GameServerFeatures (67)                  — parseFeatures (T51)
+    WeaponProficiencyExp    = 0x5C,  // GameServerWeaponProficiencyExperience (92)— parseWeaponProficiencyExperience (T51)
+    PassiveCooldown         = 0x5E,  // GameServerPassiveCooldown (94)           — parsePassiveCooldown (T51)
+    BosstiaryData           = 0x61,  // GameServerBosstiaryData (97)             — parseBosstiaryData (T51)
+    ClientCheck             = 0x63,  // GameServerSendClientCheck (99)           — parseClientCheck (T51)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -1134,6 +1146,79 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action? RuleViolationLockReceived;
 
+    // ─── T51 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends a <c>SupplyStash</c> (0x29) packet.
+    /// Parameters: list of stash items; free slots (only at protocol &lt;1410).
+    /// Maps to <c>ProtocolGame::parseSupplyStash</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<IReadOnlyList<SupplyStashItem>>? SupplyStashReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>SpecialContainer</c> (0x2A) packet.
+    /// Parameters: (supplyStashAvailable, isMarketAvailable).
+    /// Maps to <c>ProtocolGame::parseSpecialContainer</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<byte, byte>? SpecialContainerReceived;
+
+    /// <summary>
+    /// Raised when the server sends a <c>PartyAnalyzer</c> (0x2B) packet.
+    /// Maps to <c>ProtocolGame::parsePartyAnalyzer</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<PartyAnalyzerData>? PartyAnalyzerReceived;
+
+    /// <summary>
+    /// Raised when the server attaches a paperdoll to a creature (0x3C).
+    /// Parameters: (creatureId, paperdoll data).
+    /// Maps to <c>ProtocolGame::parseAttachedPaperdoll</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<uint, PaperdollAttachData>? PaperdollAttachedReceived;
+
+    /// <summary>
+    /// Raised when the server detaches a paperdoll from a creature (0x3D).
+    /// Parameters: (creatureId, bySlot, idOrSlot).
+    /// Maps to <c>ProtocolGame::parseDetachPaperdoll</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<uint, bool, ushort>? PaperdollDetachedReceived;
+
+    /// <summary>
+    /// Raised when the server sends feature flags (0x43).
+    /// Parameter: list of (featureId, enabled) pairs.
+    /// Maps to <c>ProtocolGame::parseFeatures</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<IReadOnlyList<(byte FeatureId, bool Enabled)>>? FeaturesReceived;
+
+    /// <summary>
+    /// Raised when the server sends weapon proficiency experience (0x5C).
+    /// Parameters: (itemId, experience).
+    /// Maps to <c>ProtocolGame::parseWeaponProficiencyExperience</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<ushort, uint>? WeaponProficiencyExpReceived;
+
+    /// <summary>
+    /// Raised when the server sends a passive cooldown update (0x5E) with type 0
+    /// (running timer).
+    /// Parameters: (currentCooldown, maxCooldown, canDecay).
+    /// Maps to <c>ProtocolGame::parsePassiveCooldown</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<uint, uint, bool>? PassiveCooldownReceived;
+
+    /// <summary>
+    /// Raised when the server sends bosstriary kill-threshold data (0x61).
+    /// Maps to <c>ProtocolGame::parseBosstiaryData</c>.
+    /// Task T51.
+    /// </summary>
+    public event Action<BosstiaryKillThresholds>? BosstiaryDataReceived;
+
     /// <summary>
     /// Raised when the server opens the NPC trade window.
     /// Parameters: list of <see cref="Game.NpcTradeItem"/> entries.
@@ -1336,6 +1421,18 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.RuleViolationRemove,    ParseExperienceTracker);
         RegisterHandler((byte)GameServerPacket.RuleViolationCancel,    ParseRuleViolationCancel);
         RegisterHandler((byte)GameServerPacket.RuleViolationLock,      ParseRuleViolationLock);
+
+        // T51
+        RegisterHandler((byte)GameServerPacket.SupplyStash,            ParseSupplyStash);
+        RegisterHandler((byte)GameServerPacket.SpecialContainer,       ParseSpecialContainer);
+        RegisterHandler((byte)GameServerPacket.PartyAnalyzer,          ParsePartyAnalyzer);
+        RegisterHandler((byte)GameServerPacket.AttachedPaperdoll,      ParseAttachedPaperdoll);
+        RegisterHandler((byte)GameServerPacket.DetachPaperdoll,        ParseDetachPaperdoll);
+        RegisterHandler((byte)GameServerPacket.Features,               ParseFeatures);
+        RegisterHandler((byte)GameServerPacket.WeaponProficiencyExp,   ParseWeaponProficiencyExperience);
+        RegisterHandler((byte)GameServerPacket.PassiveCooldown,        ParsePassiveCooldown);
+        RegisterHandler((byte)GameServerPacket.BosstiaryData,          ParseBosstiaryData);
+        RegisterHandler((byte)GameServerPacket.ClientCheck,            ParseClientCheck);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────

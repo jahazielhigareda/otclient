@@ -3320,4 +3320,244 @@ public sealed partial class ProtocolGame
     {
         RuleViolationLockReceived?.Invoke();
     }
+
+    // ─── T51 parsers ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>SupplyStash</c> (0x29 / GameServerSupplyStash).
+    /// Wire: U16 count; count × {U16 itemId, U32 amount}; U16 freeSlots
+    /// (always present at protocol 1281 &lt; 1410).
+    /// Fires <see cref="SupplyStashReceived"/>.
+    /// Maps to <c>ProtocolGame::parseSupplyStash</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseSupplyStash(InputMessage msg)
+    {
+        ushort count = msg.ReadU16();
+        var items = new List<SupplyStashItem>(count);
+        for (int i = 0; i < count; i++)
+        {
+            ushort itemId = msg.ReadU16();
+            uint   amount = msg.ReadU32();
+            items.Add(new SupplyStashItem(itemId, amount));
+        }
+        msg.ReadU16(); // free slots (proto 1281 < 1410)
+        SupplyStashReceived?.Invoke(items);
+    }
+
+    /// <summary>
+    /// Parses <c>SpecialContainer</c> (0x2A / GameServerSpecialContainer).
+    /// Wire: U8 supplyStashAvailable; U8 isMarketAvailable
+    /// (always present at protocol 1281 ≥ 1220).
+    /// Fires <see cref="SpecialContainerReceived"/>.
+    /// Maps to <c>ProtocolGame::parseSpecialContainer</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseSpecialContainer(InputMessage msg)
+    {
+        byte supplyStash = msg.ReadU8();
+        byte isMarket    = msg.ReadU8(); // proto 1281 >= 1220
+        SpecialContainerReceived?.Invoke(supplyStash, isMarket);
+    }
+
+    /// <summary>
+    /// Parses <c>PartyAnalyzer</c> (0x2B / GameServerPartyAnalyzer).
+    /// Wire: U32 startTime, U32 leaderId, U8 lootType,
+    ///       U8 memberCount, memberCount × {U32 id, U8 highlight, 4×U64 stats},
+    ///       U8 hasNames, [U8 nameCount, nameCount × {U32 id, str name}].
+    /// Fires <see cref="PartyAnalyzerReceived"/>.
+    /// Maps to <c>ProtocolGame::parsePartyAnalyzer</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParsePartyAnalyzer(InputMessage msg)
+    {
+        uint startTime  = msg.ReadU32();
+        uint leaderId   = msg.ReadU32();
+        byte lootType   = msg.ReadU8();
+
+        byte memberCount = msg.ReadU8();
+        var members = new List<PartyMemberData>(memberCount);
+        for (int i = 0; i < memberCount; i++)
+        {
+            uint  memberId  = msg.ReadU32();
+            byte  highlight = msg.ReadU8();
+            ulong loot      = msg.ReadU64();
+            ulong supply    = msg.ReadU64();
+            ulong damage    = msg.ReadU64();
+            ulong healing   = msg.ReadU64();
+            members.Add(new PartyMemberData(memberId, highlight, loot, supply, damage, healing));
+        }
+
+        bool hasNames = msg.ReadU8() != 0;
+        var names = new List<PartyMemberName>();
+        if (hasNames)
+        {
+            byte nameCount = msg.ReadU8();
+            for (int i = 0; i < nameCount; i++)
+            {
+                uint   memberId   = msg.ReadU32();
+                string memberName = msg.ReadString();
+                names.Add(new PartyMemberName(memberId, memberName));
+            }
+        }
+
+        PartyAnalyzerReceived?.Invoke(new PartyAnalyzerData
+        {
+            StartTime = startTime,
+            LeaderId  = leaderId,
+            LootType  = lootType,
+            Members   = members,
+            Names     = names,
+        });
+    }
+
+    /// <summary>
+    /// Parses <c>AttachedPaperdoll</c> (0x3C / GameServerAttachedPaperdoll).
+    /// Wire: U32 creatureId; U16 id, U8 slot, U8 color, U8 head, U8 body,
+    ///       U8 legs, U8 feet, str shader.
+    /// Fires <see cref="PaperdollAttachedReceived"/>.
+    /// Maps to <c>ProtocolGame::parseAttachedPaperdoll</c> +
+    /// <c>ProtocolGame::getPaperdoll</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseAttachedPaperdoll(InputMessage msg)
+    {
+        uint   creatureId = msg.ReadU32();
+        ushort id         = msg.ReadU16();
+        byte   slot       = msg.ReadU8();
+        byte   color      = msg.ReadU8();
+        byte   head       = msg.ReadU8();
+        byte   body       = msg.ReadU8();
+        byte   legs       = msg.ReadU8();
+        byte   feet       = msg.ReadU8();
+        string shader     = msg.ReadString();
+        PaperdollAttachedReceived?.Invoke(creatureId, new PaperdollAttachData(id, slot, color, head, body, legs, feet, shader));
+    }
+
+    /// <summary>
+    /// Parses <c>DetachPaperdoll</c> (0x3D / GameServerDetachPaperdoll).
+    /// Wire: U32 creatureId, U8 bySlot, U16 idOrSlot.
+    /// Fires <see cref="PaperdollDetachedReceived"/>.
+    /// Maps to <c>ProtocolGame::parseDetachPaperdoll</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseDetachPaperdoll(InputMessage msg)
+    {
+        uint   creatureId = msg.ReadU32();
+        bool   bySlot     = msg.ReadU8() != 0;
+        ushort idOrSlot   = msg.ReadU16();
+        PaperdollDetachedReceived?.Invoke(creatureId, bySlot, idOrSlot);
+    }
+
+    /// <summary>
+    /// Parses <c>Features</c> (0x43 / GameServerFeatures).
+    /// Wire: U16 count; count × {U8 featureId, U8 enabled}.
+    /// Fires <see cref="FeaturesReceived"/>.
+    /// Maps to <c>ProtocolGame::parseFeatures</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseFeatures(InputMessage msg)
+    {
+        ushort count = msg.ReadU16();
+        var features = new List<(byte FeatureId, bool Enabled)>(count);
+        for (int i = 0; i < count; i++)
+        {
+            byte featureId = msg.ReadU8();
+            bool enabled   = msg.ReadU8() != 0;
+            features.Add((featureId, enabled));
+        }
+        FeaturesReceived?.Invoke(features);
+    }
+
+    /// <summary>
+    /// Parses <c>WeaponProficiencyExp</c> (0x5C / GameServerWeaponProficiencyExperience).
+    /// Wire: U16 itemId, U32 experience, U8 unknown.
+    /// Fires <see cref="WeaponProficiencyExpReceived"/>.
+    /// Maps to <c>ProtocolGame::parseWeaponProficiencyExperience</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseWeaponProficiencyExperience(InputMessage msg)
+    {
+        ushort itemId     = msg.ReadU16();
+        uint   experience = msg.ReadU32();
+        msg.ReadU8();  // unused
+        WeaponProficiencyExpReceived?.Invoke(itemId, experience);
+    }
+
+    /// <summary>
+    /// Parses <c>PassiveCooldown</c> (0x5E / GameServerPassiveCooldown).
+    /// Wire: U8 (skip), U8 type;
+    ///   type 0: U32 currentCooldown, U32 maxCooldown, U8 canDecay → fires event;
+    ///   type 1: U8 unknown1, U8 unknown2 → no event.
+    /// Fires <see cref="PassiveCooldownReceived"/> for type 0.
+    /// Maps to <c>ProtocolGame::parsePassiveCooldown</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParsePassiveCooldown(InputMessage msg)
+    {
+        msg.ReadU8();  // skip first byte
+        byte type = msg.ReadU8();
+        if (type == 0)
+        {
+            uint current  = msg.ReadU32();
+            uint max      = msg.ReadU32();
+            bool canDecay = msg.ReadU8() != 0;
+            PassiveCooldownReceived?.Invoke(current, max, canDecay);
+        }
+        else if (type == 1)
+        {
+            msg.ReadU8();
+            msg.ReadU8();
+        }
+    }
+
+    /// <summary>
+    /// Parses <c>BosstiaryData</c> (0x61 / GameServerBosstiaryData).
+    /// Wire: 18 × U16 kill-count thresholds and point rewards for each tier.
+    /// Fires <see cref="BosstiaryDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBosstiaryData</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseBosstiaryData(InputMessage msg)
+    {
+        ushort baneProwessKills     = msg.ReadU16();
+        ushort baneExpertiseKills   = msg.ReadU16();
+        ushort baneMasteryKills     = msg.ReadU16();
+        ushort archfoeProwessKills  = msg.ReadU16();
+        ushort archfoeExpertiseKills= msg.ReadU16();
+        ushort archfoeMasteryKills  = msg.ReadU16();
+        ushort nemesisProwessKills  = msg.ReadU16();
+        ushort nemesisExpertiseKills= msg.ReadU16();
+        ushort nemesisMasteryKills  = msg.ReadU16();
+        ushort baneProwessPoints    = msg.ReadU16();
+        ushort baneExpertisePoints  = msg.ReadU16();
+        ushort baneMasteryPoints    = msg.ReadU16();
+        ushort archfoeProwessPoints = msg.ReadU16();
+        ushort archfoeExpertisePoints=msg.ReadU16();
+        ushort archfoeMasteryPoints = msg.ReadU16();
+        ushort nemesisProwessPoints = msg.ReadU16();
+        ushort nemesisExpertisePoints=msg.ReadU16();
+        ushort nemesisMasteryPoints = msg.ReadU16();
+        BosstiaryDataReceived?.Invoke(new BosstiaryKillThresholds(
+            baneProwessKills, baneExpertiseKills, baneMasteryKills,
+            archfoeProwessKills, archfoeExpertiseKills, archfoeMasteryKills,
+            nemesisProwessKills, nemesisExpertiseKills, nemesisMasteryKills,
+            baneProwessPoints, baneExpertisePoints, baneMasteryPoints,
+            archfoeProwessPoints, archfoeExpertisePoints, archfoeMasteryPoints,
+            nemesisProwessPoints, nemesisExpertisePoints, nemesisMasteryPoints));
+    }
+
+    /// <summary>
+    /// Parses <c>ClientCheck</c> (0x63 / GameServerSendClientCheck).
+    /// Wire: U32 size; size × U8 (unknown, anti-cheat data).
+    /// Data is consumed and discarded.
+    /// Maps to <c>ProtocolGame::parseClientCheck</c>.
+    /// Task T51.
+    /// </summary>
+    private void ParseClientCheck(InputMessage msg)
+    {
+        uint size = msg.ReadU32();
+        for (uint i = 0; i < size; i++)
+            msg.ReadU8();
+    }
 }
