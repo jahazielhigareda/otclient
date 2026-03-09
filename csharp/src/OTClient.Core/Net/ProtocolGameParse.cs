@@ -4325,4 +4325,287 @@ public sealed partial class ProtocolGame
             FinishedMonsters    = finishedMonsters,
         });
     }
+
+    // ─── T54 parsers ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>CyclopediaItemDetail</c> (0x76 / GameServerCyclopediaItemDetail).
+    /// Wire: U8 skip; U8 skip; U32 creatureId (skip); U8 skip;
+    ///   str itemName; item (read + discard); U8 skip;
+    ///   U8 descriptionsSize; descriptionsSize × {str header; str body}.
+    /// Fires <see cref="ItemDetailReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCyclopediaItemDetail</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseCyclopediaItemDetail(InputMessage msg)
+    {
+        msg.ReadU8();          // 0x00
+        msg.ReadU8();          // bool isCyclopedia
+        msg.ReadU32();         // creatureId (version 13.00)
+        msg.ReadU8();          // 0x01
+
+        string itemName = msg.ReadString();
+        ReadThing(msg);        // item – read and discard
+        msg.ReadU8();          // 0x00
+
+        byte descCount = msg.ReadU8();
+        var descriptions = new List<(string Header, string Body)>(descCount);
+        for (int i = 0; i < descCount; i++)
+        {
+            string header = msg.ReadString();
+            string body   = msg.ReadString();
+            descriptions.Add((header, body));
+        }
+
+        ItemDetailReceived?.Invoke(itemName, descriptions);
+    }
+
+    /// <summary>
+    /// Parses <c>ItemClasses</c> (0x86 / GameServerItemClasses).
+    /// Wire (proto ≥ 1281, no optional feature sections):
+    ///   U8 classSize; classSize × {U8 classId; U8 tiersSize; tiersSize × {U8 tier; U64 price}}.
+    /// Fires <see cref="ItemClassesReceived"/>.
+    /// Maps to <c>ProtocolGame::parseItemClasses</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseItemClasses(InputMessage msg)
+    {
+        byte classSize = msg.ReadU8();
+        var classes = new List<ForgeClassEntry>(classSize);
+        for (int i = 0; i < classSize; i++)
+        {
+            byte classId   = msg.ReadU8();
+            byte tiersSize = msg.ReadU8();
+            var  tiers     = new List<ForgeClassTierEntry>(tiersSize);
+            for (int j = 0; j < tiersSize; j++)
+            {
+                byte  tier  = msg.ReadU8();
+                ulong price = msg.ReadU64();
+                tiers.Add(new ForgeClassTierEntry(tier, price));
+            }
+            classes.Add(new ForgeClassEntry(classId, tiers));
+        }
+
+        ItemClassesReceived?.Invoke(classes);
+    }
+
+    /// <summary>
+    /// Parses <c>CyclopediaHousesInfo</c> (0xC6 / GameServerCyclopediaHousesInfo).
+    /// Wire: U32 houseClientId; U8; U8; U8; U8; U8; U8; U8; U32 houseClientId;
+    ///   U16 housesList; housesList × U32 clientId.
+    /// Fires <see cref="CyclopediaHousesInfoReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCyclopediaHousesInfo</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseCyclopediaHousesInfo(InputMessage msg)
+    {
+        uint houseClientId = msg.ReadU32();
+        msg.ReadU8();  // 0x00
+        msg.ReadU8();  // accountHouseCount
+        msg.ReadU8();  // 0x00
+        msg.ReadU8();  // 3
+        msg.ReadU8();  // 3
+        msg.ReadU8();  // 0x01
+        msg.ReadU8();  // 0x01
+        msg.ReadU32(); // houseClientId (duplicate)
+
+        ushort housesList = msg.ReadU16();
+        var houses = new List<uint>(housesList);
+        for (int i = 0; i < housesList; i++)
+            houses.Add(msg.ReadU32());
+
+        CyclopediaHousesInfoReceived?.Invoke(houseClientId, houses);
+    }
+
+    /// <summary>
+    /// Parses <c>CyclopediaHouseList</c> (0xC7 / GameServerCyclopediaHouseList).
+    /// Wire: U16 housesCount; housesCount × {
+    ///   U32 clientId; U8 renovationType; U8 state;
+    ///   [state=0 Available]: str bidderName; U8 isBidder; U8 disableIndex;
+    ///     [if bidderName non-empty]: U32 bidEndDate; U64 highestBid; [if isBidder]: U64 bidHolderLimit;
+    ///   [state=1 Rented]: str ownerName; U32 paidUntil; U8 isRented; [if isRented]: U8; U8;
+    ///   [state=2 Transfer]: str ownerName; U32 paidUntil; U8 isOwner; [if isOwner]: U8; U8;
+    ///     U32 bidEndDate; str bidderName; U8; U64 internalBid; U8 isNewOwner;
+    ///     [if isNewOwner]: U8 acceptErr; U8 rejectErr; [if isOwner]: U8 cancelErr;
+    ///   [state=3 MoveOut]: str ownerName; U32 paidUntil; U8 isOwner;
+    ///     [if isOwner]: U8; U8; U32 bidEndDate; U8; else: U32 bidEndDate }.
+    /// Fires <see cref="CyclopediaHouseListReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCyclopediaHouseList</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseCyclopediaHouseList(InputMessage msg)
+    {
+        ushort housesCount = msg.ReadU16();
+        var entries = new List<CyclopediaHouseEntry>(housesCount);
+
+        for (int i = 0; i < housesCount; i++)
+        {
+            uint clientId        = msg.ReadU32();
+            byte renovationType  = msg.ReadU8();
+            var  state           = (CyclopediaHouseState)msg.ReadU8();
+
+            var entry = new CyclopediaHouseEntry { ClientId = clientId, RenovationType = renovationType, State = state };
+
+            switch (state)
+            {
+                case CyclopediaHouseState.Available:
+                {
+                    string bidderName  = msg.ReadString();
+                    bool   isBidder    = msg.ReadU8() != 0;
+                    byte   disableIndex = msg.ReadU8();
+                    uint   bidEndDate  = 0;
+                    ulong  highestBid  = 0;
+                    ulong  bidHolderLimit = 0;
+                    if (!string.IsNullOrEmpty(bidderName))
+                    {
+                        bidEndDate = msg.ReadU32();
+                        highestBid = msg.ReadU64();
+                        if (isBidder)
+                            bidHolderLimit = msg.ReadU64();
+                    }
+                    entry = entry with
+                    {
+                        OwnerOrBidder  = bidderName,
+                        IsBidder       = isBidder,
+                        DisableIndex   = disableIndex,
+                        BidEndDate     = bidEndDate,
+                        HighestBid     = highestBid,
+                        BidHolderLimit = bidHolderLimit,
+                    };
+                    break;
+                }
+                case CyclopediaHouseState.Rented:
+                {
+                    string ownerName = msg.ReadString();
+                    uint   paidUntil = msg.ReadU32();
+                    bool   isOwner   = msg.ReadU8() != 0;
+                    if (isOwner)
+                    {
+                        msg.ReadU8(); // unknown
+                        msg.ReadU8(); // unknown
+                    }
+                    entry = entry with { OwnerOrBidder = ownerName, PaidUntil = paidUntil, IsOwner = isOwner };
+                    break;
+                }
+                case CyclopediaHouseState.Transfer:
+                {
+                    string ownerName  = msg.ReadString();
+                    uint   paidUntil  = msg.ReadU32();
+                    bool   isOwner    = msg.ReadU8() != 0;
+                    if (isOwner)
+                    {
+                        msg.ReadU8(); // unknown
+                        msg.ReadU8(); // unknown
+                    }
+                    uint   bidEndDate  = msg.ReadU32();
+                    string bidderName  = msg.ReadString();
+                    msg.ReadU8();       // unknown
+                    ulong  internalBid = msg.ReadU64();
+                    bool   isNewOwner  = msg.ReadU8() != 0;
+                    byte   acceptErr   = 0;
+                    byte   rejectErr   = 0;
+                    if (isNewOwner)
+                    {
+                        acceptErr = msg.ReadU8();
+                        rejectErr = msg.ReadU8();
+                    }
+                    byte cancelErr = 0;
+                    if (isOwner)
+                        cancelErr = msg.ReadU8();
+                    entry = entry with
+                    {
+                        OwnerOrBidder       = ownerName,
+                        PaidUntil           = paidUntil,
+                        IsOwner             = isOwner,
+                        BidEndDate          = bidEndDate,
+                        BidderName          = bidderName,
+                        InternalBid         = internalBid,
+                        IsNewOwner          = isNewOwner,
+                        AcceptTransferError = acceptErr,
+                        RejectTransferError = rejectErr,
+                        CancelTransferError = cancelErr,
+                    };
+                    break;
+                }
+                case CyclopediaHouseState.MoveOut:
+                {
+                    string ownerName = msg.ReadString();
+                    uint   paidUntil = msg.ReadU32();
+                    bool   isOwner   = msg.ReadU8() != 0;
+                    if (isOwner)
+                    {
+                        msg.ReadU8(); // unknown
+                        msg.ReadU8(); // unknown
+                        uint bidEndDate = msg.ReadU32();
+                        msg.ReadU8();  // unknown
+                        entry = entry with { OwnerOrBidder = ownerName, PaidUntil = paidUntil, IsOwnerMoveOut = isOwner, BidEndDate = bidEndDate };
+                    }
+                    else
+                    {
+                        uint bidEndDate = msg.ReadU32();
+                        entry = entry with { OwnerOrBidder = ownerName, PaidUntil = paidUntil, IsOwnerMoveOut = isOwner, BidEndDate = bidEndDate };
+                    }
+                    break;
+                }
+            }
+
+            entries.Add(entry);
+        }
+
+        CyclopediaHouseListReceived?.Invoke(entries);
+    }
+
+    /// <summary>
+    /// Parses <c>RequestPurchaseData</c> (0xE1 / GameServerRequestPurchaseData).
+    /// Wire: U32 transactionId; U8 productType.
+    /// Fires <see cref="RequestPurchaseDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parseRequestPurchaseData</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseRequestPurchaseData(InputMessage msg)
+    {
+        uint transactionId = msg.ReadU32();
+        byte productType   = msg.ReadU8();
+        RequestPurchaseDataReceived?.Invoke(transactionId, productType);
+    }
+
+    /// <summary>
+    /// Parses <c>ShowDescription</c> (0xEA / GameServerSendShowDescription).
+    /// Wire: U32 offerId; str description.
+    /// Fires <see cref="StoreOfferDescriptionReceived"/>.
+    /// Maps to <c>ProtocolGame::parseShowDescription</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseShowDescription(InputMessage msg)
+    {
+        uint   offerId     = msg.ReadU32();
+        string description = msg.ReadString();
+        StoreOfferDescriptionReceived?.Invoke(offerId, description);
+    }
+
+    /// <summary>
+    /// Parses <c>CloseImbuementWindow</c> (0xEC / GameServerSendCloseImbuementWindow).
+    /// Wire: no payload.
+    /// Fires <see cref="ImbuementWindowClosed"/>.
+    /// Maps to <c>ProtocolGame::parseCloseImbuementWindow</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseCloseImbuementWindow(InputMessage msg)
+    {
+        ImbuementWindowClosed?.Invoke();
+    }
+
+    /// <summary>
+    /// Parses <c>ServerError</c> (0xED / GameServerSendError).
+    /// Wire: U8 code; str message.
+    /// Fires <see cref="ServerErrorReceived"/>.
+    /// Maps to <c>ProtocolGame::parseError</c>.
+    /// Task T54.
+    /// </summary>
+    private void ParseServerError(InputMessage msg)
+    {
+        byte   code    = msg.ReadU8();
+        string message = msg.ReadString();
+        ServerErrorReceived?.Invoke(code, message);
+    }
 }

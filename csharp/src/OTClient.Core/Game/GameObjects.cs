@@ -1674,3 +1674,62 @@ public sealed class OutfitWindowData
     public bool   RandomizeMount  { get; init; }
 }
 
+
+// ─── T54 types ───────────────────────────────────────────────────────────────
+
+/// <summary>
+/// One (tier, price) entry within a forge item class, parsed from a
+/// <c>GameServerItemClasses</c> (0x86) packet.
+/// Task T54.
+/// </summary>
+public sealed record ForgeClassTierEntry(byte Tier, ulong Price);
+
+/// <summary>
+/// One class entry (with its tier prices) parsed from a
+/// <c>GameServerItemClasses</c> (0x86) packet.
+/// Task T54.
+/// </summary>
+public sealed record ForgeClassEntry(byte ClassId, IReadOnlyList<ForgeClassTierEntry> Tiers);
+
+/// <summary>
+/// State of a house in the cyclopedia house list (0xC7 packet).
+/// Task T54.
+/// </summary>
+public enum CyclopediaHouseState : byte
+{
+    Available = 0,
+    Rented    = 1,
+    Transfer  = 2,
+    MoveOut   = 3,
+}
+
+/// <summary>
+/// One house entry parsed from a <c>GameServerCyclopediaHouseList</c> (0xC7) packet.
+/// Task T54.
+/// </summary>
+public sealed record class CyclopediaHouseEntry
+{
+    public uint                  ClientId        { get; init; }
+    public byte                  RenovationType  { get; init; }
+    public CyclopediaHouseState  State           { get; init; }
+    // Common across states
+    public string                OwnerOrBidder   { get; init; } = string.Empty;
+    // Available state extras
+    public bool                  IsBidder        { get; init; }
+    public byte                  DisableIndex    { get; init; }
+    public uint                  BidEndDate      { get; init; }
+    public ulong                 HighestBid      { get; init; }
+    public ulong                 BidHolderLimit  { get; init; }
+    // Rented / Transfer / MoveOut extras
+    public uint                  PaidUntil       { get; init; }
+    public bool                  IsOwner         { get; init; }
+    // Transfer-specific
+    public string                BidderName      { get; init; } = string.Empty;
+    public ulong                 InternalBid     { get; init; }
+    public bool                  IsNewOwner      { get; init; }
+    public byte                  AcceptTransferError  { get; init; }
+    public byte                  RejectTransferError  { get; init; }
+    public byte                  CancelTransferError  { get; init; }
+    // MoveOut-specific
+    public bool                  IsOwnerMoveOut  { get; init; }
+}

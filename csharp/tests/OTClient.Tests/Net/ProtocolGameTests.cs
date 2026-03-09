@@ -6365,4 +6365,360 @@ public sealed class ProtocolGameTests
         Assert.Empty(got!.Charms);
         Assert.Empty(got.FinishedMonsters);
     }
+
+    // ─── T54: ParseRequestPurchaseData ───────────────────────────────────────
+
+    [Fact]
+    public void ParseRequestPurchaseData_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint gotTxId = 0; byte gotType = 0;
+        pg.RequestPurchaseDataReceived += (txId, type) => { gotTxId = txId; gotType = type; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.RequestPurchaseData);
+        out_.WriteU32(99999); // transactionId
+        out_.WriteU8(2);      // productType
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(99999u, gotTxId);
+        Assert.Equal(2, (int)gotType);
+    }
+
+    // ─── T54: ParseShowDescription ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseShowDescription_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint gotOffer = 0; string? gotDesc = null;
+        pg.StoreOfferDescriptionReceived += (id, desc) => { gotOffer = id; gotDesc = desc; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ShowDescription);
+        out_.WriteU32(12345);                 // offerId
+        out_.WriteString("A great offer!");   // description
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(12345u, gotOffer);
+        Assert.Equal("A great offer!", gotDesc);
+    }
+
+    [Fact]
+    public void ParseShowDescription_EmptyString_Fires()
+    {
+        using var pg = new ProtocolGame();
+        string? gotDesc = null;
+        pg.StoreOfferDescriptionReceived += (_, desc) => gotDesc = desc;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ShowDescription);
+        out_.WriteU32(0);
+        out_.WriteString("");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(string.Empty, gotDesc);
+    }
+
+    // ─── T54: ParseCloseImbuementWindow ──────────────────────────────────────
+
+    [Fact]
+    public void ParseCloseImbuementWindow_Fires()
+    {
+        using var pg = new ProtocolGame();
+        bool fired = false;
+        pg.ImbuementWindowClosed += () => fired = true;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CloseImbuementWindow);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.True(fired);
+    }
+
+    // ─── T54: ParseServerError ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseServerError_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte gotCode = 0; string? gotMsg = null;
+        pg.ServerErrorReceived += (code, msg) => { gotCode = code; gotMsg = msg; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ServerError);
+        out_.WriteU8(3);                  // error code
+        out_.WriteString("Out of sync");  // error message
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(3, (int)gotCode);
+        Assert.Equal("Out of sync", gotMsg);
+    }
+
+    // ─── T54: ParseCyclopediaItemDetail ──────────────────────────────────────
+
+    [Fact]
+    public void ParseCyclopediaItemDetail_TwoDescriptions_Fires()
+    {
+        using var pg = new ProtocolGame();
+        string? gotName = null;
+        IReadOnlyList<(string Header, string Body)>? gotDescs = null;
+        pg.ItemDetailReceived += (name, descs) => { gotName = name; gotDescs = descs; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaItemDetail);
+        out_.WriteU8(0);              // skip
+        out_.WriteU8(1);              // isCyclopedia
+        out_.WriteU32(0);             // creatureId
+        out_.WriteU8(1);              // skip
+        out_.WriteString("Dragon Scale Mail"); // itemName
+        // item wire: U16 id=2472, no extra (non-stackable, non-fluid)
+        out_.WriteU16(2472);
+        out_.WriteU8(0);              // skip after item
+        out_.WriteU8(2);              // descriptionsSize
+        out_.WriteString("Weight");   // header 1
+        out_.WriteString("80 oz");    // body 1
+        out_.WriteString("Armor");    // header 2
+        out_.WriteString("14");       // body 2
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Dragon Scale Mail", gotName);
+        Assert.NotNull(gotDescs);
+        Assert.Equal(2, gotDescs!.Count);
+        Assert.Equal("Weight", gotDescs[0].Header);
+        Assert.Equal("80 oz", gotDescs[0].Body);
+        Assert.Equal("Armor", gotDescs[1].Header);
+        Assert.Equal("14", gotDescs[1].Body);
+    }
+
+    [Fact]
+    public void ParseCyclopediaItemDetail_NoDescriptions_Fires()
+    {
+        using var pg = new ProtocolGame();
+        string? gotName = null;
+        IReadOnlyList<(string Header, string Body)>? gotDescs = null;
+        pg.ItemDetailReceived += (name, descs) => { gotName = name; gotDescs = descs; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaItemDetail);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU32(0);
+        out_.WriteU8(1);
+        out_.WriteString("Sword");
+        out_.WriteU16(3277);   // item id
+        out_.WriteU8(0);
+        out_.WriteU8(0);       // 0 descriptions
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal("Sword", gotName);
+        Assert.NotNull(gotDescs);
+        Assert.Empty(gotDescs!);
+    }
+
+    // ─── T54: ParseItemClasses ────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseItemClasses_TwoClasses_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.ForgeClassEntry>? got = null;
+        pg.ItemClassesReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ItemClasses);
+        out_.WriteU8(2);          // classSize
+        // class 1: id=1, 2 tiers
+        out_.WriteU8(1);
+        out_.WriteU8(2);
+        out_.WriteU8(1); out_.WriteU64(100_000);
+        out_.WriteU8(2); out_.WriteU64(500_000);
+        // class 2: id=2, 1 tier
+        out_.WriteU8(2);
+        out_.WriteU8(1);
+        out_.WriteU8(3); out_.WriteU64(1_000_000);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(1, (int)got[0].ClassId);
+        Assert.Equal(2, got[0].Tiers.Count);
+        Assert.Equal(1, (int)got[0].Tiers[0].Tier);
+        Assert.Equal(100_000UL, got[0].Tiers[0].Price);
+        Assert.Equal(2, (int)got[0].Tiers[1].Tier);
+        Assert.Equal(500_000UL, got[0].Tiers[1].Price);
+        Assert.Equal(2, (int)got[1].ClassId);
+        Assert.Single(got[1].Tiers);
+        Assert.Equal(3, (int)got[1].Tiers[0].Tier);
+        Assert.Equal(1_000_000UL, got[1].Tiers[0].Price);
+    }
+
+    [Fact]
+    public void ParseItemClasses_NoClasses_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.ForgeClassEntry>? got = null;
+        pg.ItemClassesReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ItemClasses);
+        out_.WriteU8(0); // classSize = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T54: ParseCyclopediaHousesInfo ──────────────────────────────────────
+
+    [Fact]
+    public void ParseCyclopediaHousesInfo_WithHouses_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint gotMainId = 0;
+        IReadOnlyList<uint>? gotHouses = null;
+        pg.CyclopediaHousesInfoReceived += (id, houses) => { gotMainId = id; gotHouses = houses; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHousesInfo);
+        out_.WriteU32(1001); // houseClientId
+        out_.WriteU8(0);     // 0x00
+        out_.WriteU8(2);     // accountHouseCount
+        out_.WriteU8(0);     // 0x00
+        out_.WriteU8(3);     // 3
+        out_.WriteU8(3);     // 3
+        out_.WriteU8(1);     // 0x01
+        out_.WriteU8(1);     // 0x01
+        out_.WriteU32(1001); // houseClientId (duplicate)
+        out_.WriteU16(3);    // housesList
+        out_.WriteU32(10);
+        out_.WriteU32(20);
+        out_.WriteU32(30);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1001u, gotMainId);
+        Assert.NotNull(gotHouses);
+        Assert.Equal(3, gotHouses!.Count);
+        Assert.Equal(10u, gotHouses[0]);
+        Assert.Equal(20u, gotHouses[1]);
+        Assert.Equal(30u, gotHouses[2]);
+    }
+
+    [Fact]
+    public void ParseCyclopediaHousesInfo_NoHouses_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<uint>? gotHouses = null;
+        pg.CyclopediaHousesInfoReceived += (_, houses) => gotHouses = houses;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHousesInfo);
+        out_.WriteU32(0);    // houseClientId
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU32(0);
+        out_.WriteU16(0);    // 0 houses
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotHouses);
+        Assert.Empty(gotHouses!);
+    }
+
+    // ─── T54: ParseCyclopediaHouseList ───────────────────────────────────────
+
+    [Fact]
+    public void ParseCyclopediaHouseList_AvailableWithBidder_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.CyclopediaHouseEntry>? got = null;
+        pg.CyclopediaHouseListReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHouseList);
+        out_.WriteU16(1);             // housesCount
+        out_.WriteU32(500);           // clientId
+        out_.WriteU8(1);              // renovationType = Available
+        out_.WriteU8(0);              // state = Available
+        out_.WriteString("PlayerX");  // bidderName (non-empty → more fields)
+        out_.WriteU8(1);              // isBidder = true
+        out_.WriteU8(0);              // disableIndex
+        out_.WriteU32(1_700_000);     // bidEndDate
+        out_.WriteU64(50_000);        // highestBid
+        out_.WriteU64(100_000);       // bidHolderLimit (isBidder=true)
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!);
+        var h = got[0];
+        Assert.Equal(500u, h.ClientId);
+        Assert.Equal(OTClient.Framework.Game.CyclopediaHouseState.Available, h.State);
+        Assert.Equal("PlayerX", h.OwnerOrBidder);
+        Assert.True(h.IsBidder);
+        Assert.Equal(1_700_000u, h.BidEndDate);
+        Assert.Equal(50_000UL, h.HighestBid);
+        Assert.Equal(100_000UL, h.BidHolderLimit);
+    }
+
+    [Fact]
+    public void ParseCyclopediaHouseList_Rented_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.CyclopediaHouseEntry>? got = null;
+        pg.CyclopediaHouseListReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHouseList);
+        out_.WriteU16(1);             // housesCount
+        out_.WriteU32(777);           // clientId
+        out_.WriteU8(0);              // renovationType
+        out_.WriteU8(1);              // state = Rented
+        out_.WriteString("Landlord"); // ownerName
+        out_.WriteU32(9_999_999);     // paidUntil
+        out_.WriteU8(0);              // isRented = false → no extra bytes
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!);
+        var h = got[0];
+        Assert.Equal(777u, h.ClientId);
+        Assert.Equal(OTClient.Framework.Game.CyclopediaHouseState.Rented, h.State);
+        Assert.Equal("Landlord", h.OwnerOrBidder);
+        Assert.Equal(9_999_999u, h.PaidUntil);
+        Assert.False(h.IsOwner);
+    }
+
+    [Fact]
+    public void ParseCyclopediaHouseList_EmptyList_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.CyclopediaHouseEntry>? got = null;
+        pg.CyclopediaHouseListReceived += list => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHouseList);
+        out_.WriteU16(0); // housesCount = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
 }

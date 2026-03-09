@@ -261,6 +261,16 @@ public enum GameServerPacket : byte
     WeaponProficiencyInfo        = 0xC4,  // GameServerWeaponProficiencyInfo (196)          — parseWeaponProficiencyInfo2 (T53)
     ChooseOutfit                 = 0xC8,  // GameServerChooseOutfit (200)                   — parseChooseOutfit (T53)
     BestiaryCharmsData           = 0xD8,  // GameServerBestiaryCharmsData (216)             — parseBestiaryCharmsData (T53)
+
+    // T54 opcodes
+    CyclopediaItemDetail  = 0x76,  // GameServerCyclopediaItemDetail (118)            — parseCyclopediaItemDetail (T54)
+    ItemClasses           = 0x86,  // GameServerItemClasses (134)                     — parseItemClasses (T54)
+    CyclopediaHousesInfo  = 0xC6,  // GameServerCyclopediaHousesInfo (198)            — parseCyclopediaHousesInfo (T54)
+    CyclopediaHouseList   = 0xC7,  // GameServerCyclopediaHouseList (199)             — parseCyclopediaHouseList (T54)
+    RequestPurchaseData   = 0xE1,  // GameServerRequestPurchaseData (225)             — parseRequestPurchaseData (T54)
+    ShowDescription       = 0xEA,  // GameServerSendShowDescription (234)             — parseShowDescription (T54)
+    CloseImbuementWindow  = 0xEC,  // GameServerSendCloseImbuementWindow (236)        — parseCloseImbuementWindow (T54)
+    ServerError           = 0xED,  // GameServerSendError (237)                       — parseServerError (T54)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -1455,7 +1465,70 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action<BestiaryCharmsData>? BestiaryCharmsDataReceived;
 
-    // ─── Construction ─────────────────────────────────────────────────────────
+    // ─── T54 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends cyclopedia item detail (0x76).
+    /// Carries the item name and a list of (header, body) description pairs.
+    /// Maps to <c>ProtocolGame::parseCyclopediaItemDetail</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<string, IReadOnlyList<(string Header, string Body)>>? ItemDetailReceived;
+
+    /// <summary>
+    /// Raised when the server sends item class / forge tier price data (0x86).
+    /// Carries a list of (ClassId, tiers) where each tier is (Tier, Price).
+    /// Maps to <c>ProtocolGame::parseItemClasses</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<IReadOnlyList<ForgeClassEntry>>? ItemClassesReceived;
+
+    /// <summary>
+    /// Raised when the server sends cyclopedia houses info (0xC6).
+    /// Carries the main house id and the list of all known house ids.
+    /// Maps to <c>ProtocolGame::parseCyclopediaHousesInfo</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<uint, IReadOnlyList<uint>>? CyclopediaHousesInfoReceived;
+
+    /// <summary>
+    /// Raised when the server sends the cyclopedia house list (0xC7).
+    /// Carries the list of house entries.
+    /// Maps to <c>ProtocolGame::parseCyclopediaHouseList</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<IReadOnlyList<CyclopediaHouseEntry>>? CyclopediaHouseListReceived;
+
+    /// <summary>
+    /// Raised when the server requests purchase data (0xE1).
+    /// Carries the transaction id and product type.
+    /// Maps to <c>ProtocolGame::parseRequestPurchaseData</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<uint, byte>? RequestPurchaseDataReceived;
+
+    /// <summary>
+    /// Raised when the server sends a store offer description (0xEA).
+    /// Carries the offer id and the description text.
+    /// Maps to <c>ProtocolGame::parseShowDescription</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<uint, string>? StoreOfferDescriptionReceived;
+
+    /// <summary>
+    /// Raised when the server closes the imbuement window (0xEC).
+    /// Maps to <c>ProtocolGame::parseCloseImbuementWindow</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action? ImbuementWindowClosed;
+
+    /// <summary>
+    /// Raised when the server sends an error message (0xED).
+    /// Carries the error code and the error message string.
+    /// Maps to <c>ProtocolGame::parseError</c>.
+    /// Task T54.
+    /// </summary>
+    public event Action<byte, string>? ServerErrorReceived;
 
     /// <summary>
     /// Initialises the dispatch table with handlers for all supported server packets.
@@ -1653,6 +1726,16 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.WeaponProficiencyInfo,         ParseWeaponProficiencyInfo2);
         RegisterHandler((byte)GameServerPacket.ChooseOutfit,                  ParseChooseOutfit);
         RegisterHandler((byte)GameServerPacket.BestiaryCharmsData,            ParseBestiaryCharmsData);
+
+        // T54
+        RegisterHandler((byte)GameServerPacket.CyclopediaItemDetail, ParseCyclopediaItemDetail);
+        RegisterHandler((byte)GameServerPacket.ItemClasses,          ParseItemClasses);
+        RegisterHandler((byte)GameServerPacket.CyclopediaHousesInfo, ParseCyclopediaHousesInfo);
+        RegisterHandler((byte)GameServerPacket.CyclopediaHouseList,  ParseCyclopediaHouseList);
+        RegisterHandler((byte)GameServerPacket.RequestPurchaseData,  ParseRequestPurchaseData);
+        RegisterHandler((byte)GameServerPacket.ShowDescription,      ParseShowDescription);
+        RegisterHandler((byte)GameServerPacket.CloseImbuementWindow, ParseCloseImbuementWindow);
+        RegisterHandler((byte)GameServerPacket.ServerError,          ParseServerError);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────
