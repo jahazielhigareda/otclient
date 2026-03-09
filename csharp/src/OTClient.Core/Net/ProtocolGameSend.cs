@@ -753,6 +753,22 @@ public sealed partial class ProtocolGame
     }
 
     /// <summary>
+    /// Wraps (or unwraps) the item at <paramref name="pos"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos.
+    /// Maps to <c>ProtocolGame::sendWrapItem</c>.
+    /// Task T58.
+    /// </summary>
+    public void SendWrapItem(Game.Position pos, int itemId, int stackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OnWrapItem);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
     /// Requests to close the container at wire slot <paramref name="containerId"/>.
     /// Wire: U8 opcode, U8 containerId.
     /// Maps to <c>ProtocolGame::sendCloseContainer</c>.

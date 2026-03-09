@@ -7536,4 +7536,14 @@ public sealed class ProtocolGameTests
         using var pg = new ProtocolGame();
         Assert.Throws<InvalidOperationException>(() => pg.SendTyping(true));
     }
+
+    // ─── T58: SendWrapItem ────────────────────────────────────────────────────
+
+    [Fact]
+    public void SendWrapItem_NotConnected_ThrowsInvalidOperation()
+    {
+        using var pg = new ProtocolGame();
+        var pos = new OTClient.Framework.Game.Position(100, 200, 7);
+        Assert.Throws<InvalidOperationException>(() => pg.SendWrapItem(pos, 1234, 0));
+    }
 }

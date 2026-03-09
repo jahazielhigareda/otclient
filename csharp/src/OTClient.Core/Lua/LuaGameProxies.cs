@@ -519,6 +519,15 @@ public sealed class LuaGameProxy
         => _game.RotateItem(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos);
 
     /// <summary>
+    /// Wraps (or unwraps) item at world position.
+    /// Lua: <c>g_game.wrapItem(x, y, z, itemId, stackPos)</c>.
+    /// Maps to <c>Game::wrapItem()</c>. Task T58.
+    /// </summary>
+    [LuaMethod]
+    public void wrapItem(int x, int y, int z, int itemId, int stackPos)
+        => _game.WrapItem(new Game.Position((ushort)x, (ushort)y, (byte)z), itemId, stackPos);
+
+    /// <summary>
     /// Closes an open container by its wire slot ID.
     /// Lua: <c>g_game.close(containerId)</c>.
     /// Maps to <c>Game::close()</c>. Task T39.

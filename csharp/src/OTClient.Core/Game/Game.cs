@@ -1004,6 +1004,9 @@ public sealed class Game
     /// <summary>Fired when Lua calls <c>g_game.rotate()</c>.</summary>
     public event Action<Position, int, int>? RotateItemRequested;
 
+    /// <summary>Fired when Lua calls <c>g_game.wrapItem()</c>.</summary>
+    public event Action<Position, int, int>? WrapItemRequested;
+
     /// <summary>Fired when Lua calls <c>g_game.close()</c> with a container ID.</summary>
     public event Action<int>? CloseContainerRequested;
 
@@ -1095,6 +1098,17 @@ public sealed class Game
     {
         if (!IsOnline) return;
         RotateItemRequested?.Invoke(pos, itemId, stackPos);
+    }
+
+    /// <summary>
+    /// Wraps (or unwraps) the item at <paramref name="pos"/>.
+    /// Only valid while <see cref="IsOnline"/>. Fires <see cref="WrapItemRequested"/>.
+    /// Maps to <c>Game::wrapItem()</c>.
+    /// </summary>
+    public void WrapItem(Position pos, int itemId, int stackPos)
+    {
+        if (!IsOnline) return;
+        WrapItemRequested?.Invoke(pos, itemId, stackPos);
     }
 
     /// <summary>
