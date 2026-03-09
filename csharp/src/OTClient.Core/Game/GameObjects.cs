@@ -1538,3 +1538,139 @@ public sealed record BosstiaryKillThresholds(
     ushort NemesisMasteryPoints
 );
 
+// ─── T53 types ────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// One entry in a forge history list, parsed from a
+/// <c>GameServerBrowseForgeHistory</c> (0x88) packet.
+/// Maps to <c>ForgeHistory</c> struct in <c>ProtocolGame::parseBrowseForgeHistory</c>.
+/// Task T53.
+/// </summary>
+public sealed record ForgeHistoryEntry(
+    uint   CreatedAt,
+    byte   ActionType,
+    string Description,
+    byte   Bonus
+);
+
+/// <summary>
+/// One bless entry inside a <c>GameServerSendBlessDialog</c> (0x9B) packet.
+/// Maps to <c>BlessData</c> struct in <c>ProtocolGame::parseBlessDialog</c>.
+/// Task T53.
+/// </summary>
+public sealed record BlessData(
+    ushort BlessBitwise,
+    byte   PlayerBlessCount,
+    byte   Store
+);
+
+/// <summary>
+/// One history log entry inside a <c>GameServerSendBlessDialog</c> (0x9B) packet.
+/// Maps to <c>LogData</c> struct in <c>ProtocolGame::parseBlessDialog</c>.
+/// Task T53.
+/// </summary>
+public sealed record BlessLogEntry(
+    uint   Timestamp,
+    byte   ColorMessage,
+    string HistoryMessage
+);
+
+/// <summary>
+/// Aggregated bless-dialog data parsed from a
+/// <c>GameServerSendBlessDialog</c> (0x9B) packet.
+/// Maps to <c>BlessDialogData</c> in <c>ProtocolGame::parseBlessDialog</c>.
+/// Task T53.
+/// </summary>
+public sealed class BlessDialogData
+{
+    public byte TotalBless       { get; init; }
+    public IReadOnlyList<BlessData>    Blesses    { get; init; } = [];
+    public byte Premium          { get; init; }
+    public byte Promotion        { get; init; }
+    public byte PvpMinXpLoss     { get; init; }
+    public byte PvpMaxXpLoss     { get; init; }
+    public byte PveExpLoss       { get; init; }
+    public byte EquipPvpLoss     { get; init; }
+    public byte EquipPveLoss     { get; init; }
+    public byte Skull            { get; init; }
+    public byte Aol              { get; init; }
+    public IReadOnlyList<BlessLogEntry> Logs { get; init; } = [];
+}
+
+/// <summary>
+/// One charm entry inside a <c>GameServerBestiaryCharmsData</c> (0xD8) packet.
+/// Maps to <c>CharmData</c> struct in <c>ProtocolGame::parseBestiaryCharmsData</c>.
+/// Task T53.
+/// </summary>
+public sealed record CharmData(
+    byte   Id,
+    string Name,
+    string Description,
+    ushort UnlockPrice,
+    bool   Unlocked,
+    byte   Tier,
+    bool   AssignedStatus,
+    ushort RaceId,
+    uint   RemoveRuneCost
+);
+
+/// <summary>
+/// Aggregated bestiary-charms data parsed from a
+/// <c>GameServerBestiaryCharmsData</c> (0xD8) packet.
+/// Maps to <c>BestiaryCharmsData</c> in <c>ProtocolGame::parseBestiaryCharmsData</c>.
+/// Task T53.
+/// </summary>
+public sealed class BestiaryCharmsData
+{
+    /// <summary>Charm points available (protocol &lt; 1410).</summary>
+    public uint   Points               { get; init; }
+    /// <summary>Cost to reset all charms (protocol ≥ 1410).</summary>
+    public ulong  ResetAllCharmsCost   { get; init; }
+    public IReadOnlyList<CharmData> Charms             { get; init; } = [];
+    public byte   AvailableCharmSlots  { get; init; }
+    public IReadOnlyList<uint> FinishedMonsters { get; init; } = [];
+}
+
+/// <summary>
+/// One outfit entry in the outfit window, from a
+/// <c>GameServerChooseOutfit</c> (0xC8) packet.
+/// Maps to the outfit list in <c>ProtocolGame::parseOpenOutfitWindow</c>.
+/// Task T53.
+/// </summary>
+public sealed record OutfitEntry(ushort Id, string Name, byte Addons, byte Mode);
+
+/// <summary>
+/// One mount entry in the outfit window, from a
+/// <c>GameServerChooseOutfit</c> (0xC8) packet.
+/// Maps to the mount list in <c>ProtocolGame::parseOpenOutfitWindow</c>.
+/// Task T53.
+/// </summary>
+public sealed record MountEntry(ushort Id, string Name, byte Mode);
+
+/// <summary>
+/// One familiar entry in the outfit window, from a
+/// <c>GameServerChooseOutfit</c> (0xC8) packet.
+/// Maps to the familiar list in <c>ProtocolGame::parseOpenOutfitWindow</c>.
+/// Task T53.
+/// </summary>
+public sealed record FamiliarEntry(ushort LookType, string Name);
+
+/// <summary>
+/// Aggregated outfit-window data parsed from a
+/// <c>GameServerChooseOutfit</c> (0xC8) packet.
+/// Maps to <c>ProtocolGame::parseOpenOutfitWindow</c>.
+/// Task T53.
+/// </summary>
+public sealed class OutfitWindowData
+{
+    public OTClient.Framework.Game.Outfit CurrentOutfit  { get; init; } = new();
+    /// <summary>Current familiar looktype (protocol ≥ 1281).</summary>
+    public ushort                         FamiliarLookType { get; init; }
+    public IReadOnlyList<OutfitEntry>     Outfits        { get; init; } = [];
+    public IReadOnlyList<MountEntry>      Mounts         { get; init; } = [];
+    public IReadOnlyList<FamiliarEntry>   Familiars      { get; init; } = [];
+    public bool   TryOutfitMode   { get; init; }
+    public bool   Mounted         { get; init; }
+    public bool   RandomizeMount  { get; init; }
+}
+

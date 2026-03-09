@@ -3918,4 +3918,411 @@ public sealed partial class ProtocolGame
         }
         PlayerInventoryReceived?.Invoke(list);
     }
+
+    // ─── T53 parsers ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Parses <c>BrowseForgeHistory</c> (0x88 / GameServerBrowseForgeHistory).
+    /// Wire: U16 pageNumber; U16 lastPage; U8 count; count × {U32 createdAt; U8 actionType; str description; U8 bonus}.
+    /// Fires <see cref="ForgeHistoryReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBrowseForgeHistory</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseBrowseForgeHistory(InputMessage msg)
+    {
+        ushort pageNumber    = msg.ReadU16();
+        ushort lastPage      = msg.ReadU16();
+        byte   historyCount  = msg.ReadU8();
+        var    list          = new List<ForgeHistoryEntry>(historyCount);
+        for (int i = 0; i < historyCount; i++)
+        {
+            uint   createdAt   = msg.ReadU32();
+            byte   actionType  = msg.ReadU8();
+            string description = msg.ReadString();
+            byte   bonus       = msg.ReadU8();
+            list.Add(new ForgeHistoryEntry(createdAt, actionType, description, bonus));
+        }
+        ForgeHistoryReceived?.Invoke(pageNumber, lastPage, list);
+    }
+
+    /// <summary>
+    /// Parses <c>BlessDialog</c> (0x9B / GameServerSendBlessDialog).
+    /// Wire: U8 totalBless; totalBless × {U16 blessBitwise; U8 playerBlessCount; U8 store};
+    ///   U8 premium; U8 promotion; U8 pvpMinXpLoss; U8 pvpMaxXpLoss; U8 pveExpLoss;
+    ///   U8 equipPvpLoss; U8 equipPveLoss; U8 skull; U8 aol;
+    ///   U8 logCount; logCount × {U32 timestamp; U8 colorMessage; str historyMessage}.
+    /// Fires <see cref="BlessDialogReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBlessDialog</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseBlessDialog(InputMessage msg)
+    {
+        byte totalBless = msg.ReadU8();
+        var  blesses    = new List<BlessData>(totalBless);
+        for (int i = 0; i < totalBless; i++)
+        {
+            ushort blessBitwise      = msg.ReadU16();
+            byte   playerBlessCount  = msg.ReadU8();
+            byte   store             = msg.ReadU8();
+            blesses.Add(new BlessData(blessBitwise, playerBlessCount, store));
+        }
+
+        byte premium       = msg.ReadU8();
+        byte promotion     = msg.ReadU8();
+        byte pvpMinXpLoss  = msg.ReadU8();
+        byte pvpMaxXpLoss  = msg.ReadU8();
+        byte pveExpLoss    = msg.ReadU8();
+        byte equipPvpLoss  = msg.ReadU8();
+        byte equipPveLoss  = msg.ReadU8();
+        byte skull         = msg.ReadU8();
+        byte aol           = msg.ReadU8();
+
+        byte logCount = msg.ReadU8();
+        var  logs     = new List<BlessLogEntry>(logCount);
+        for (int i = 0; i < logCount; i++)
+        {
+            uint   timestamp      = msg.ReadU32();
+            byte   colorMessage   = msg.ReadU8();
+            string historyMessage = msg.ReadString();
+            logs.Add(new BlessLogEntry(timestamp, colorMessage, historyMessage));
+        }
+
+        BlessDialogReceived?.Invoke(new BlessDialogData
+        {
+            TotalBless     = totalBless,
+            Blesses        = blesses,
+            Premium        = premium,
+            Promotion      = promotion,
+            PvpMinXpLoss   = pvpMinXpLoss,
+            PvpMaxXpLoss   = pvpMaxXpLoss,
+            PveExpLoss     = pveExpLoss,
+            EquipPvpLoss   = equipPvpLoss,
+            EquipPveLoss   = equipPveLoss,
+            Skull          = skull,
+            Aol            = aol,
+            Logs           = logs,
+        });
+    }
+
+    /// <summary>
+    /// Parses <c>BestiaryRefreshTracker</c> (0xB9 / GameServerBestiaryRefreshTracker).
+    /// Wire: [U8 trackerType if proto≥1320]; U8 size; size × {U16 raceId; U32 killCount;
+    ///   U16 firstUnlock; U16 secondUnlock; U16 lastUnlock; U8 status}.
+    /// Fires <see cref="BestiaryTrackerReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBestiaryTracker</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseBestiaryTracker(InputMessage msg)
+    {
+        byte trackerType = 0;
+        if (ProtocolVersion >= 1320)
+            trackerType = msg.ReadU8();
+
+        byte size = msg.ReadU8();
+        var  list = new List<(ushort RaceId, uint KillCount, ushort FirstUnlock, ushort SecondUnlock, ushort LastUnlock, byte Status)>(size);
+        for (int i = 0; i < size; i++)
+        {
+            ushort raceId       = msg.ReadU16();
+            uint   killCount    = msg.ReadU32();
+            ushort firstUnlock  = msg.ReadU16();
+            ushort secondUnlock = msg.ReadU16();
+            ushort lastUnlock   = msg.ReadU16();
+            byte   status       = msg.ReadU8();
+            list.Add((raceId, killCount, firstUnlock, secondUnlock, lastUnlock, status));
+        }
+        BestiaryTrackerReceived?.Invoke(trackerType, list);
+    }
+
+    /// <summary>
+    /// Parses <c>TaskHuntingBasicData</c> (0xBA / GameServerTaskHuntingBasicData).
+    /// Wire: U16 preyCount; preyCount × {U16 raceId; U8 difficult};
+    ///   U8 optionCount; optionCount × {U8 difficult; U8 stars; U16 firstKill; U16 firstReward;
+    ///   U16 secondKill; U16 secondReward}.
+    /// No event fired — data is consumed and discarded.
+    /// Maps to <c>ProtocolGame::parseTaskHuntingBasicData</c>.
+    /// Task T53.
+    /// </summary>
+    private static void ParseTaskHuntingBasicData(InputMessage msg)
+    {
+        ushort preyCount = msg.ReadU16();
+        for (int i = 0; i < preyCount; i++)
+        {
+            msg.ReadU16(); // raceId
+            msg.ReadU8();  // difficult
+        }
+        byte optionCount = msg.ReadU8();
+        for (int i = 0; i < optionCount; i++)
+        {
+            msg.ReadU8();  // difficult
+            msg.ReadU8();  // stars
+            msg.ReadU16(); // firstKill
+            msg.ReadU16(); // firstReward
+            msg.ReadU16(); // secondKill
+            msg.ReadU16(); // secondReward
+        }
+    }
+
+    /// <summary>
+    /// Parses <c>TaskHuntingData</c> (0xBB / GameServerTaskHuntingData).
+    /// Wire: U8 slot; U8 state; [state-dependent fields]; U32 nextFreeRoll.
+    /// States: 0=locked (U8 slotUnlocked), 1=inactive, 2/3=selection (U16+loop{U16+U8}),
+    ///   4=active (U16 raceId; U8 upgraded; U16 required; U16 current; U8 stars),
+    ///   5=completed (U16 raceId; U8 upgraded; U16 required; U16 current).
+    /// Fires <see cref="TaskHuntingDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parseTaskHuntingData</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseTaskHuntingData(InputMessage msg)
+    {
+        byte slot  = msg.ReadU8();
+        byte state = msg.ReadU8();
+
+        var    creatures    = new List<(ushort RaceId, bool Unlocked)>();
+        ushort activeRaceId = 0;
+        ushort requiredKills= 0;
+        ushort currentKills = 0;
+        byte   stars        = 0;
+        ushort slotUnlocked = 0;
+
+        switch (state)
+        {
+            case 0: // locked
+                slotUnlocked = msg.ReadU8();
+                break;
+            case 1: // inactive
+                break;
+            case 2: // selection
+            case 3: // list selection
+            {
+                ushort creatureCount = msg.ReadU16();
+                for (int i = 0; i < creatureCount; i++)
+                {
+                    ushort raceId   = msg.ReadU16();
+                    bool   unlocked = msg.ReadU8() != 0;
+                    creatures.Add((raceId, unlocked));
+                }
+                break;
+            }
+            case 4: // active
+                activeRaceId  = msg.ReadU16();
+                msg.ReadU8();            // upgraded
+                requiredKills = msg.ReadU16();
+                currentKills  = msg.ReadU16();
+                stars         = msg.ReadU8();
+                break;
+            case 5: // completed
+                activeRaceId  = msg.ReadU16();
+                msg.ReadU8();            // upgraded
+                requiredKills = msg.ReadU16();
+                currentKills  = msg.ReadU16();
+                break;
+        }
+
+        uint nextFreeRoll = msg.ReadU32();
+        TaskHuntingDataReceived?.Invoke(slot, state, nextFreeRoll, creatures,
+            activeRaceId, requiredKills, currentKills, stars, slotUnlocked);
+    }
+
+    /// <summary>
+    /// Parses <c>MonkData</c> (0xC1 / GameServerMonkData).
+    /// Wire: U8 subtype; U8 value.
+    ///   subtype 0 = harmony (value = harmonyValue),
+    ///   subtype 1 = serene (value = 0/1 bool),
+    ///   subtype 2 = virtue (value discarded).
+    /// Fires <see cref="MonkDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parseMonkData</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseMonkData(InputMessage msg)
+    {
+        byte subtype = msg.ReadU8();
+        byte value   = msg.ReadU8();
+        MonkDataReceived?.Invoke(subtype, value);
+    }
+
+    /// <summary>
+    /// Parses <c>CyclopediaHouseAuctionMessage</c> (0xC3 / GameServerCyclopediaHouseAuctionMessage).
+    /// Wire: U32 houseId; U8 type; [U8 extra if type==1]; U8 index.
+    /// Fires <see cref="HouseAuctionMessageReceived"/>.
+    /// Maps to <c>ProtocolGame::parseCyclopediaHouseAuctionMessage</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseCyclopediaHouseAuctionMessage(InputMessage msg)
+    {
+        uint houseId = msg.ReadU32();
+        byte type    = msg.ReadU8();
+        if (type == 1)
+            msg.ReadU8(); // extra byte (0x00)
+        byte index = msg.ReadU8();
+        HouseAuctionMessageReceived?.Invoke(houseId, type, index);
+    }
+
+    /// <summary>
+    /// Parses <c>WeaponProficiencyInfo</c> (0xC4 / GameServerWeaponProficiencyInfo).
+    /// Wire: U16 itemId; U32 experience; U8 count; count × {U8 proficiencyLevel; U8 perkPosition}.
+    /// Fires <see cref="WeaponProficiencyInfoReceived"/>.
+    /// Maps to <c>ProtocolGame::parseWeaponProficiencyInfo</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseWeaponProficiencyInfo2(InputMessage msg)
+    {
+        ushort itemId     = msg.ReadU16();
+        uint   experience = msg.ReadU32();
+        byte   count      = msg.ReadU8();
+        var    list       = new List<(byte ProficiencyLevel, byte PerkPosition)>(count);
+        for (int i = 0; i < count; i++)
+        {
+            byte proficiencyLevel = msg.ReadU8();
+            byte perkPosition     = msg.ReadU8();
+            list.Add((proficiencyLevel, perkPosition));
+        }
+        WeaponProficiencyInfoReceived?.Invoke(itemId, experience, list);
+    }
+
+    /// <summary>
+    /// Parses <c>ChooseOutfit</c> (0xC8 / GameServerChooseOutfit).
+    /// Wire (at protocol 1281): outfit; [if mount==0: 4×U8 mount colours]; U16 familiarLookType;
+    ///   U16 outfitCount; outfitCount × {U16 id; str name; U8 addons; U8 mode; [if mode==1: U32 storeOfferId]};
+    ///   U16 mountCount; mountCount × {U16 id; str name; U8 mode; [if mode==1: U32 storeOfferId]};
+    ///   U16 familiarCount; familiarCount × {U16 lookType; str name; U8 mode; [if mode==1: U32 storeOfferId]};
+    ///   U8 tryOutfitMode; U8 mounted; U8 randomizeMount.
+    /// Fires <see cref="OutfitWindowReceived"/>.
+    /// Maps to <c>ProtocolGame::parseOpenOutfitWindow</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseChooseOutfit(InputMessage msg)
+    {
+        // Current outfit (with mount)
+        Game.Outfit currentOutfit = ReadOutfit(msg);
+
+        // Protocol ≥ 1281: if mount == 0, read 4 mount colour bytes; then familiar looktype
+        if (currentOutfit.MountId == 0)
+        {
+            msg.ReadU8(); // mountHead
+            msg.ReadU8(); // mountBody
+            msg.ReadU8(); // mountLegs
+            msg.ReadU8(); // mountFeet
+        }
+        ushort familiarLookType = msg.ReadU16();
+
+        // Outfit list (GameNewOutfitProtocol ON, proto ≥ 1281 → U16 count)
+        ushort outfitCount = msg.ReadU16();
+        var outfits = new List<OutfitEntry>(outfitCount);
+        for (int i = 0; i < outfitCount; i++)
+        {
+            ushort outfitId    = msg.ReadU16();
+            string outfitName  = msg.ReadString();
+            byte   addons      = msg.ReadU8();
+            byte   mode        = msg.ReadU8(); // 0=available, 1=store, 2=golden
+            if (mode == 1)
+                msg.ReadU32(); // storeOfferId
+            outfits.Add(new OutfitEntry(outfitId, outfitName, addons, mode));
+        }
+
+        // Mount list (GamePlayerMounts ON, proto ≥ 1281 → U16 count)
+        ushort mountCount = msg.ReadU16();
+        var mounts = new List<MountEntry>(mountCount);
+        for (int i = 0; i < mountCount; i++)
+        {
+            ushort mountId   = msg.ReadU16();
+            string mountName = msg.ReadString();
+            byte   mode      = msg.ReadU8(); // 0=available, 1=store
+            if (mode == 1)
+                msg.ReadU32(); // storeOfferId
+            mounts.Add(new MountEntry(mountId, mountName, mode));
+        }
+
+        // Familiar list (GamePlayerFamiliars ON → U16 count)
+        ushort familiarCount = msg.ReadU16();
+        var familiars = new List<FamiliarEntry>(familiarCount);
+        for (int i = 0; i < familiarCount; i++)
+        {
+            ushort lookType  = msg.ReadU16();
+            string name      = msg.ReadString();
+            byte   mode      = msg.ReadU8(); // 0=available, 1=store
+            if (mode == 1)
+                msg.ReadU32(); // storeOfferId
+            familiars.Add(new FamiliarEntry(lookType, name));
+        }
+
+        // Protocol ≥ 1281 trailing bytes
+        bool tryOutfitMode  = msg.ReadU8() != 0;
+        bool mounted        = msg.ReadU8() != 0;
+        bool randomizeMount = msg.ReadU8() != 0;
+
+        OutfitWindowReceived?.Invoke(new OutfitWindowData
+        {
+            CurrentOutfit   = currentOutfit,
+            FamiliarLookType= familiarLookType,
+            Outfits         = outfits,
+            Mounts          = mounts,
+            Familiars       = familiars,
+            TryOutfitMode   = tryOutfitMode,
+            Mounted         = mounted,
+            RandomizeMount  = randomizeMount,
+        });
+    }
+
+    /// <summary>
+    /// Parses <c>BestiaryCharmsData</c> (0xD8 / GameServerBestiaryCharmsData).
+    /// Wire (proto 1281 &lt; 1410): U32 points; U8 charmsAmount;
+    ///   charmsAmount × {U8 id; str name; str description; U8 unk; U16 unlockPrice; U8 unlocked;
+    ///     [if unlocked: U8 assigned; [if assigned: U16 raceId; U32 removeRuneCost]] else U8 unk};
+    ///   U8 availableCharmSlots; U16 finishedMonstersSize; finishedMonstersSize × U16 raceId.
+    /// Fires <see cref="BestiaryCharmsDataReceived"/>.
+    /// Maps to <c>ProtocolGame::parseBestiaryCharmsData</c>.
+    /// Task T53.
+    /// </summary>
+    private void ParseBestiaryCharmsData(InputMessage msg)
+    {
+        // Protocol 1281 < 1410 → U32 points
+        uint  points           = msg.ReadU32();
+        byte  charmsAmount     = msg.ReadU8();
+        var   charms           = new List<CharmData>(charmsAmount);
+
+        for (int i = 0; i < charmsAmount; i++)
+        {
+            byte   id          = msg.ReadU8();
+            string name        = msg.ReadString();
+            string description = msg.ReadString();
+            msg.ReadU8();                         // unknown byte
+            ushort unlockPrice = msg.ReadU16();
+            bool   unlocked    = msg.ReadU8() == 1;
+            bool   assigned     = false;
+            ushort raceId      = 0;
+            uint   removeRuneCost = 0;
+
+            if (unlocked)
+            {
+                assigned = msg.ReadU8() != 0;
+                if (assigned)
+                {
+                    raceId        = msg.ReadU16();
+                    removeRuneCost= msg.ReadU32();
+                }
+            }
+            else
+            {
+                msg.ReadU8(); // unknown byte
+            }
+
+            charms.Add(new CharmData(id, name, description, unlockPrice, unlocked, /* tier */ (byte)(unlocked ? 1 : 0),
+                assigned, raceId, removeRuneCost));
+        }
+
+        byte availableCharmSlots    = msg.ReadU8();
+        ushort finishedMonstersSize = msg.ReadU16();
+        var    finishedMonsters     = new List<uint>(finishedMonstersSize);
+        for (int i = 0; i < finishedMonstersSize; i++)
+            finishedMonsters.Add(msg.ReadU16());
+
+        BestiaryCharmsDataReceived?.Invoke(new BestiaryCharmsData
+        {
+            Points              = points,
+            ResetAllCharmsCost  = 0,
+            Charms              = charms,
+            AvailableCharmSlots = availableCharmSlots,
+            FinishedMonsters    = finishedMonsters,
+        });
+    }
 }

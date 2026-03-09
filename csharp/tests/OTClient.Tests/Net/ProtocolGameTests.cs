@@ -5763,4 +5763,606 @@ public sealed class ProtocolGameTests
         // Should not throw
         InvokeHandleRawData(pg, out_.ToArray());
     }
+
+    // ─── T53: ParseBrowseForgeHistory ────────────────────────────────────────
+
+    [Fact]
+    public void ParseBrowseForgeHistory_TwoEntries_Fires()
+    {
+        using var pg = new ProtocolGame();
+        ushort gotPage = 0; ushort gotLast = 0;
+        IReadOnlyList<OTClient.Framework.Game.ForgeHistoryEntry>? got = null;
+        pg.ForgeHistoryReceived += (page, last, list) => { gotPage = page; gotLast = last; got = list; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BrowseForgeHistory);
+        out_.WriteU16(2);       // pageNumber
+        out_.WriteU16(5);       // lastPage
+        out_.WriteU8(2);        // historyCount
+        // entry 1
+        out_.WriteU32(1000);    // createdAt
+        out_.WriteU8(1);        // actionType
+        out_.WriteString("Fused item");
+        out_.WriteU8(3);        // bonus
+        // entry 2
+        out_.WriteU32(2000);    // createdAt
+        out_.WriteU8(2);        // actionType
+        out_.WriteString("Transferred tier");
+        out_.WriteU8(0);        // bonus
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(2, (int)gotPage);
+        Assert.Equal(5, (int)gotLast);
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(1000u, got[0].CreatedAt);
+        Assert.Equal(1, (int)got[0].ActionType);
+        Assert.Equal("Fused item", got[0].Description);
+        Assert.Equal(3, (int)got[0].Bonus);
+        Assert.Equal(2000u, got[1].CreatedAt);
+    }
+
+    [Fact]
+    public void ParseBrowseForgeHistory_ZeroEntries_FiresEmpty()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<OTClient.Framework.Game.ForgeHistoryEntry>? got = null;
+        pg.ForgeHistoryReceived += (_, _, list) => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BrowseForgeHistory);
+        out_.WriteU16(1);       // pageNumber
+        out_.WriteU16(1);       // lastPage
+        out_.WriteU8(0);        // historyCount = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T53: ParseBlessDialog ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseBlessDialog_WithBlessesAndLog_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.BlessDialogData? got = null;
+        pg.BlessDialogReceived += data => got = data;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BlessDialog);
+        out_.WriteU8(2);        // totalBless = 2
+        // bless 1
+        out_.WriteU16(0x01FF);  // blessBitwise
+        out_.WriteU8(5);        // playerBlessCount
+        out_.WriteU8(0);        // store
+        // bless 2
+        out_.WriteU16(0x0100);
+        out_.WriteU8(3);
+        out_.WriteU8(1);
+        // fixed fields
+        out_.WriteU8(1);        // premium
+        out_.WriteU8(0);        // promotion
+        out_.WriteU8(10);       // pvpMinXpLoss
+        out_.WriteU8(20);       // pvpMaxXpLoss
+        out_.WriteU8(5);        // pveExpLoss
+        out_.WriteU8(2);        // equipPvpLoss
+        out_.WriteU8(1);        // equipPveLoss
+        out_.WriteU8(0);        // skull
+        out_.WriteU8(0);        // aol
+        // logs
+        out_.WriteU8(1);        // logCount = 1
+        out_.WriteU32(99999);   // timestamp
+        out_.WriteU8(7);        // colorMessage
+        out_.WriteString("You received a bless.");
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(2, (int)got!.TotalBless);
+        Assert.Equal(2, got.Blesses.Count);
+        Assert.Equal(0x01FF, (int)got.Blesses[0].BlessBitwise);
+        Assert.Equal(5, (int)got.Blesses[0].PlayerBlessCount);
+        Assert.Equal(0, (int)got.Blesses[0].Store);
+        Assert.Equal(1, (int)got.Premium);
+        Assert.Equal(10, (int)got.PvpMinXpLoss);
+        Assert.Single(got.Logs);
+        Assert.Equal(99999u, got.Logs[0].Timestamp);
+        Assert.Equal(7, (int)got.Logs[0].ColorMessage);
+        Assert.Equal("You received a bless.", got.Logs[0].HistoryMessage);
+    }
+
+    [Fact]
+    public void ParseBlessDialog_EmptyBlessesAndNoLogs_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.BlessDialogData? got = null;
+        pg.BlessDialogReceived += data => got = data;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BlessDialog);
+        out_.WriteU8(0);        // totalBless = 0
+        // fixed fields
+        out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0);
+        out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0);
+        out_.WriteU8(0);
+        out_.WriteU8(0);        // logCount = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(0, (int)got!.TotalBless);
+        Assert.Empty(got.Blesses);
+        Assert.Empty(got.Logs);
+    }
+
+    // ─── T53: ParseBestiaryTracker ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseBestiaryTracker_TwoEntries_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte gotType = 255;
+        IReadOnlyList<(ushort RaceId, uint KillCount, ushort FirstUnlock, ushort SecondUnlock, ushort LastUnlock, byte Status)>? got = null;
+        pg.BestiaryTrackerReceived += (type, list) => { gotType = type; got = list; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BestiaryRefreshTracker);
+        // proto 1281 < 1320 → no trackerType byte
+        out_.WriteU8(2);        // size
+        // entry 1
+        out_.WriteU16(500);     // raceId
+        out_.WriteU32(100);     // killCount
+        out_.WriteU16(10);      // firstUnlock
+        out_.WriteU16(50);      // secondUnlock
+        out_.WriteU16(200);     // lastUnlock
+        out_.WriteU8(3);        // status
+        // entry 2
+        out_.WriteU16(600);
+        out_.WriteU32(0);
+        out_.WriteU16(5);
+        out_.WriteU16(25);
+        out_.WriteU16(100);
+        out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotType); // default 0 since proto < 1320
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(500, (int)got[0].RaceId);
+        Assert.Equal(100u, got[0].KillCount);
+        Assert.Equal(10, (int)got[0].FirstUnlock);
+        Assert.Equal(3, (int)got[0].Status);
+        Assert.Equal(600, (int)got[1].RaceId);
+    }
+
+    [Fact]
+    public void ParseBestiaryTracker_EmptyList_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(ushort RaceId, uint KillCount, ushort FirstUnlock, ushort SecondUnlock, ushort LastUnlock, byte Status)>? got = null;
+        pg.BestiaryTrackerReceived += (_, list) => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BestiaryRefreshTracker);
+        out_.WriteU8(0);        // size = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T53: ParseTaskHuntingBasicData ──────────────────────────────────────
+
+    [Fact]
+    public void ParseTaskHuntingBasicData_NoException()
+    {
+        using var pg = new ProtocolGame();
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.TaskHuntingBasicData);
+        out_.WriteU16(2);       // preyCount
+        out_.WriteU16(100); out_.WriteU8(1);    // raceId, difficult
+        out_.WriteU16(200); out_.WriteU8(2);
+        out_.WriteU8(1);        // optionCount
+        out_.WriteU8(1);        // difficult
+        out_.WriteU8(3);        // stars
+        out_.WriteU16(50);      // firstKill
+        out_.WriteU16(500);     // firstReward
+        out_.WriteU16(100);     // secondKill
+        out_.WriteU16(1000);    // secondReward
+
+        // Should not throw; no event
+        InvokeHandleRawData(pg, out_.ToArray());
+    }
+
+    // ─── T53: ParseTaskHuntingData ───────────────────────────────────────────
+
+    [Fact]
+    public void ParseTaskHuntingData_StateActive_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotSlot = null; byte? gotState = null;
+        pg.TaskHuntingDataReceived += (slot, state, nextFreeRoll, creatures, activeRaceId, required, current, stars, slotUnlocked) =>
+        {
+            gotSlot = slot; gotState = state;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.TaskHuntingData);
+        out_.WriteU8(0);        // slot = 0
+        out_.WriteU8(4);        // state = active
+        out_.WriteU16(300);     // raceId
+        out_.WriteU8(1);        // upgraded
+        out_.WriteU16(50);      // required kills
+        out_.WriteU16(20);      // current kills
+        out_.WriteU8(2);        // stars
+        out_.WriteU32(86400);   // nextFreeRoll
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotSlot!);
+        Assert.Equal(4, (int)gotState!);
+    }
+
+    [Fact]
+    public void ParseTaskHuntingData_StateLocked_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotSlot = null; byte? gotState = null;
+        pg.TaskHuntingDataReceived += (slot, state, _, _, _, _, _, _, _) =>
+        {
+            gotSlot = slot; gotState = state;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.TaskHuntingData);
+        out_.WriteU8(1);        // slot = 1
+        out_.WriteU8(0);        // state = locked
+        out_.WriteU8(0);        // slotUnlocked
+        out_.WriteU32(0);       // nextFreeRoll
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, (int)gotSlot!);
+        Assert.Equal(0, (int)gotState!);
+    }
+
+    [Fact]
+    public void ParseTaskHuntingData_StateSelection_WithCreatures_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(ushort RaceId, bool Unlocked)>? gotCreatures = null;
+        pg.TaskHuntingDataReceived += (_, _, _, creatures, _, _, _, _, _) => gotCreatures = creatures;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.TaskHuntingData);
+        out_.WriteU8(0);        // slot
+        out_.WriteU8(2);        // state = selection
+        out_.WriteU16(2);       // creatureCount
+        out_.WriteU16(111); out_.WriteU8(1);    // raceId, unlocked
+        out_.WriteU16(222); out_.WriteU8(0);
+        out_.WriteU32(7200);    // nextFreeRoll
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(gotCreatures);
+        Assert.Equal(2, gotCreatures!.Count);
+        Assert.Equal(111, (int)gotCreatures[0].RaceId);
+        Assert.True(gotCreatures[0].Unlocked);
+        Assert.Equal(222, (int)gotCreatures[1].RaceId);
+        Assert.False(gotCreatures[1].Unlocked);
+    }
+
+    // ─── T53: ParseMonkData ──────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseMonkData_Harmony_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotSubtype = null; byte? gotValue = null;
+        pg.MonkDataReceived += (sub, val) => { gotSubtype = sub; gotValue = val; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MonkData);
+        out_.WriteU8(0);        // subtype = harmony
+        out_.WriteU8(75);       // value
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(0, (int)gotSubtype!);
+        Assert.Equal(75, (int)gotValue!);
+    }
+
+    [Fact]
+    public void ParseMonkData_Serene_Fires()
+    {
+        using var pg = new ProtocolGame();
+        byte? gotSubtype = null; byte? gotValue = null;
+        pg.MonkDataReceived += (sub, val) => { gotSubtype = sub; gotValue = val; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.MonkData);
+        out_.WriteU8(1);        // subtype = serene
+        out_.WriteU8(1);        // value = true
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(1, (int)gotSubtype!);
+        Assert.Equal(1, (int)gotValue!);
+    }
+
+    // ─── T53: ParseCyclopediaHouseAuctionMessage ──────────────────────────────
+
+    [Fact]
+    public void ParseCyclopediaHouseAuctionMessage_Type0_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotHouseId = null; byte? gotType = null; byte? gotIndex = null;
+        pg.HouseAuctionMessageReceived += (houseId, type, index) =>
+        {
+            gotHouseId = houseId; gotType = type; gotIndex = index;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHouseAuctionMessage);
+        out_.WriteU32(12345);   // houseId
+        out_.WriteU8(0);        // type = 0 (no extra byte)
+        out_.WriteU8(2);        // index
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(12345u, gotHouseId!);
+        Assert.Equal(0, (int)gotType!);
+        Assert.Equal(2, (int)gotIndex!);
+    }
+
+    [Fact]
+    public void ParseCyclopediaHouseAuctionMessage_Type1_Fires()
+    {
+        using var pg = new ProtocolGame();
+        uint? gotHouseId = null; byte? gotType = null;
+        pg.HouseAuctionMessageReceived += (houseId, type, _) => { gotHouseId = houseId; gotType = type; };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.CyclopediaHouseAuctionMessage);
+        out_.WriteU32(99);      // houseId
+        out_.WriteU8(1);        // type = 1 → extra byte follows
+        out_.WriteU8(0);        // extra byte (0x00)
+        out_.WriteU8(3);        // index
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(99u, gotHouseId!);
+        Assert.Equal(1, (int)gotType!);
+    }
+
+    // ─── T53: ParseWeaponProficiencyInfo ─────────────────────────────────────
+
+    [Fact]
+    public void ParseWeaponProficiencyInfo2_Fires()
+    {
+        using var pg = new ProtocolGame();
+        ushort gotItemId = 0; uint gotExp = 0;
+        IReadOnlyList<(byte ProficiencyLevel, byte PerkPosition)>? got = null;
+        pg.WeaponProficiencyInfoReceived += (itemId, exp, list) =>
+        {
+            gotItemId = itemId; gotExp = exp; got = list;
+        };
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WeaponProficiencyInfo);
+        out_.WriteU16(888);     // itemId
+        out_.WriteU32(50000);   // experience
+        out_.WriteU8(2);        // count
+        out_.WriteU8(3); out_.WriteU8(1);   // proficiencyLevel, perkPosition
+        out_.WriteU8(5); out_.WriteU8(2);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.Equal(888, (int)gotItemId);
+        Assert.Equal(50000u, gotExp);
+        Assert.NotNull(got);
+        Assert.Equal(2, got!.Count);
+        Assert.Equal(3, (int)got[0].ProficiencyLevel);
+        Assert.Equal(1, (int)got[0].PerkPosition);
+        Assert.Equal(5, (int)got[1].ProficiencyLevel);
+        Assert.Equal(2, (int)got[1].PerkPosition);
+    }
+
+    [Fact]
+    public void ParseWeaponProficiencyInfo2_ZeroPerks_Fires()
+    {
+        using var pg = new ProtocolGame();
+        IReadOnlyList<(byte ProficiencyLevel, byte PerkPosition)>? got = null;
+        pg.WeaponProficiencyInfoReceived += (_, _, list) => got = list;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.WeaponProficiencyInfo);
+        out_.WriteU16(1);   // itemId
+        out_.WriteU32(0);   // experience
+        out_.WriteU8(0);    // count = 0
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!);
+    }
+
+    // ─── T53: ParseChooseOutfit ───────────────────────────────────────────────
+
+    [Fact]
+    public void ParseChooseOutfit_OneOutfitOneMount_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.OutfitWindowData? got = null;
+        pg.OutfitWindowReceived += data => got = data;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ChooseOutfit);
+        // Current outfit with mount = 0 (no mount)
+        out_.WriteU16(100);     // lookType (not 0 → creature outfit)
+        out_.WriteU8(10);       // head
+        out_.WriteU8(20);       // body
+        out_.WriteU8(30);       // legs
+        out_.WriteU8(40);       // feet
+        out_.WriteU8(3);        // addons
+        out_.WriteU16(0);       // mountId = 0 → mount colour bytes follow
+        // mount == 0 → read 4 colour bytes
+        out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0);
+        // familiar looktype
+        out_.WriteU16(5);
+        // outfit list (1 outfit)
+        out_.WriteU16(1);
+        out_.WriteU16(200);     // outfitId
+        out_.WriteString("Warrior");
+        out_.WriteU8(0);        // addons
+        out_.WriteU8(0);        // mode = 0 (available)
+        // mount list (1 mount)
+        out_.WriteU16(1);
+        out_.WriteU16(300);     // mountId
+        out_.WriteString("War Horse");
+        out_.WriteU8(0);        // mode = 0 (available)
+        // familiar list (0)
+        out_.WriteU16(0);
+        // trailing
+        out_.WriteU8(0);        // tryOutfitMode
+        out_.WriteU8(0);        // mounted
+        out_.WriteU8(1);        // randomizeMount
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(100, got!.CurrentOutfit.Id);
+        Assert.Equal(5, (int)got.FamiliarLookType);
+        Assert.Single(got.Outfits);
+        Assert.Equal(200, (int)got.Outfits[0].Id);
+        Assert.Equal("Warrior", got.Outfits[0].Name);
+        Assert.Single(got.Mounts);
+        Assert.Equal(300, (int)got.Mounts[0].Id);
+        Assert.Equal("War Horse", got.Mounts[0].Name);
+        Assert.Empty(got.Familiars);
+        Assert.False(got.TryOutfitMode);
+        Assert.False(got.Mounted);
+        Assert.True(got.RandomizeMount);
+    }
+
+    [Fact]
+    public void ParseChooseOutfit_StoreOutfit_ReadsStoreOfferId()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.OutfitWindowData? got = null;
+        pg.OutfitWindowReceived += data => got = data;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.ChooseOutfit);
+        // Current outfit (mount=0)
+        out_.WriteU16(50);      // lookType
+        out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0);
+        out_.WriteU8(0);        // addons
+        out_.WriteU16(0);       // mountId = 0 → 4 colour bytes
+        out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0); out_.WriteU8(0);
+        out_.WriteU16(0);       // familiarLookType
+        // outfit list: 1 outfit with mode=1 (store)
+        out_.WriteU16(1);
+        out_.WriteU16(999);
+        out_.WriteString("Premium Outfit");
+        out_.WriteU8(3);        // addons
+        out_.WriteU8(1);        // mode = 1 → storeOfferId follows
+        out_.WriteU32(12345);   // storeOfferId
+        // mount list empty
+        out_.WriteU16(0);
+        // familiar list empty
+        out_.WriteU16(0);
+        // trailing
+        out_.WriteU8(0); out_.WriteU8(1); out_.WriteU8(0);
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Single(got!.Outfits);
+        Assert.Equal(999, (int)got.Outfits[0].Id);
+        Assert.Equal(1, (int)got.Outfits[0].Mode);
+        Assert.True(got.Mounted);
+    }
+
+    // ─── T53: ParseBestiaryCharmsData ────────────────────────────────────────
+
+    [Fact]
+    public void ParseBestiaryCharmsData_TwoCharms_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.BestiaryCharmsData? got = null;
+        pg.BestiaryCharmsDataReceived += data => got = data;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BestiaryCharmsData);
+        out_.WriteU32(5000);    // points (proto < 1410)
+        out_.WriteU8(2);        // charmsAmount
+        // charm 1: unlocked, assigned
+        out_.WriteU8(1);        // id
+        out_.WriteString("Wound");
+        out_.WriteString("Deals wound damage.");
+        out_.WriteU8(0);        // unknown
+        out_.WriteU16(500);     // unlockPrice
+        out_.WriteU8(1);        // unlocked = true
+        out_.WriteU8(1);        // assigned = true
+        out_.WriteU16(50);      // raceId
+        out_.WriteU32(200);     // removeRuneCost
+        // charm 2: not unlocked
+        out_.WriteU8(2);        // id
+        out_.WriteString("Enflame");
+        out_.WriteString("Deals fire damage.");
+        out_.WriteU8(0);        // unknown
+        out_.WriteU16(300);     // unlockPrice
+        out_.WriteU8(0);        // unlocked = false
+        out_.WriteU8(0);        // unknown (trailing byte when not unlocked)
+        // finish
+        out_.WriteU8(3);        // availableCharmSlots
+        out_.WriteU16(1);       // finishedMonstersSize
+        out_.WriteU16(7777);    // finishedMonster raceId
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Equal(5000u, got!.Points);
+        Assert.Equal(2, got.Charms.Count);
+        Assert.Equal(1, (int)got.Charms[0].Id);
+        Assert.Equal("Wound", got.Charms[0].Name);
+        Assert.True(got.Charms[0].Unlocked);
+        Assert.True(got.Charms[0].AssignedStatus);
+        Assert.Equal(50, (int)got.Charms[0].RaceId);
+        Assert.Equal(200u, got.Charms[0].RemoveRuneCost);
+        Assert.Equal(2, (int)got.Charms[1].Id);
+        Assert.False(got.Charms[1].Unlocked);
+        Assert.False(got.Charms[1].AssignedStatus);
+        Assert.Equal(3, (int)got.AvailableCharmSlots);
+        Assert.Single(got.FinishedMonsters);
+        Assert.Equal(7777u, got.FinishedMonsters[0]);
+    }
+
+    [Fact]
+    public void ParseBestiaryCharmsData_NoCharms_Fires()
+    {
+        using var pg = new ProtocolGame();
+        OTClient.Framework.Game.BestiaryCharmsData? got = null;
+        pg.BestiaryCharmsDataReceived += data => got = data;
+
+        var out_ = new OutputMessage();
+        out_.WriteU8((byte)GameServerPacket.BestiaryCharmsData);
+        out_.WriteU32(0);       // points
+        out_.WriteU8(0);        // charmsAmount = 0
+        out_.WriteU8(0);        // availableCharmSlots
+        out_.WriteU16(0);       // finishedMonstersSize
+
+        InvokeHandleRawData(pg, out_.ToArray());
+
+        Assert.NotNull(got);
+        Assert.Empty(got!.Charms);
+        Assert.Empty(got.FinishedMonsters);
+    }
 }

@@ -249,6 +249,18 @@ public enum GameServerPacket : byte
     BestiaryEntryChanged    = 0xD9,  // GameServerBestiaryEntryChanged (217)     — parseBestiaryEntryChanged (T52)
     ItemInfo                = 0xF4,  // GameServerItemInfo (244)                 — parseItemInfo (T52)
     PlayerInventory         = 0xF5,  // GameServerPlayerInventory (245)          — parsePlayerInventory (T52)
+
+    // T53 opcodes
+    BrowseForgeHistory           = 0x88,  // GameServerBrowseForgeHistory (136)             — parseBrowseForgeHistory (T53)
+    BlessDialog                  = 0x9B,  // GameServerSendBlessDialog (155)                — parseBlessDialog (T53)
+    BestiaryRefreshTracker       = 0xB9,  // GameServerBestiaryRefreshTracker (185)         — parseBestiaryTracker (T53)
+    TaskHuntingBasicData         = 0xBA,  // GameServerTaskHuntingBasicData (186)           — parseTaskHuntingBasicData (T53)
+    TaskHuntingData              = 0xBB,  // GameServerTaskHuntingData (187)                — parseTaskHuntingData (T53)
+    MonkData                     = 0xC1,  // GameServerMonkData (193)                       — parseMonkData (T53)
+    CyclopediaHouseAuctionMessage= 0xC3,  // GameServerCyclopediaHouseAuctionMessage (195)  — parseCyclopediaHouseAuctionMessage (T53)
+    WeaponProficiencyInfo        = 0xC4,  // GameServerWeaponProficiencyInfo (196)          — parseWeaponProficiencyInfo2 (T53)
+    ChooseOutfit                 = 0xC8,  // GameServerChooseOutfit (200)                   — parseChooseOutfit (T53)
+    BestiaryCharmsData           = 0xD8,  // GameServerBestiaryCharmsData (216)             — parseBestiaryCharmsData (T53)
 }
 
 /// <summary>Walk / look directions (Tibia wire encoding).</summary>
@@ -1370,6 +1382,79 @@ public sealed partial class ProtocolGame : Protocol
     /// </summary>
     public event Action? PlayerTradeClosed;
 
+    // ─── T53 events ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the server sends forge history (0x88).
+    /// Parameters: (pageNumber, lastPage, list of history entries).
+    /// Maps to <c>ProtocolGame::parseBrowseForgeHistory</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<ushort, ushort, IReadOnlyList<ForgeHistoryEntry>>? ForgeHistoryReceived;
+
+    /// <summary>
+    /// Raised when the server sends bless dialog data (0x9B).
+    /// Maps to <c>ProtocolGame::parseBlessDialog</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<BlessDialogData>? BlessDialogReceived;
+
+    /// <summary>
+    /// Raised when the server sends bestiary tracker data (0xB9).
+    /// Parameters: (trackerType, list of tracker entries).
+    /// trackerType: 0 = bestiary, 1 = boss (only at protocol ≥ 1320).
+    /// Maps to <c>ProtocolGame::parseBestiaryTracker</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<byte, IReadOnlyList<(ushort RaceId, uint KillCount, ushort FirstUnlock, ushort SecondUnlock, ushort LastUnlock, byte Status)>>? BestiaryTrackerReceived;
+
+    /// <summary>
+    /// Raised when the server sends task hunting slot data (0xBB).
+    /// Parameters: (slot, state, nextFreeRoll, optional creature list for state 2/3,
+    ///   optional active-task fields for state 4/5).
+    /// Maps to <c>ProtocolGame::parseTaskHuntingData</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<byte, byte, uint, IReadOnlyList<(ushort RaceId, bool Unlocked)>, ushort, ushort, ushort, byte, ushort>? TaskHuntingDataReceived;
+
+    /// <summary>
+    /// Raised when the server sends monk vocation data (0xC1).
+    /// Parameters: (subtype, value).  subtype 0=harmony, 1=serene, 2=virtue.
+    /// Maps to <c>ProtocolGame::parseMonkData</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<byte, byte>? MonkDataReceived;
+
+    /// <summary>
+    /// Raised when the server sends a house auction message (0xC3).
+    /// Parameters: (houseId, type, index).
+    /// Maps to <c>ProtocolGame::parseCyclopediaHouseAuctionMessage</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<uint, byte, byte>? HouseAuctionMessageReceived;
+
+    /// <summary>
+    /// Raised when the server sends weapon proficiency info (0xC4).
+    /// Parameters: (itemId, experience, list of (proficiencyLevel, perkPosition) pairs).
+    /// Maps to <c>ProtocolGame::parseWeaponProficiencyInfo</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<ushort, uint, IReadOnlyList<(byte ProficiencyLevel, byte PerkPosition)>>? WeaponProficiencyInfoReceived;
+
+    /// <summary>
+    /// Raised when the server sends the outfit window data (0xC8).
+    /// Maps to <c>ProtocolGame::parseOpenOutfitWindow</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<OutfitWindowData>? OutfitWindowReceived;
+
+    /// <summary>
+    /// Raised when the server sends bestiary charms data (0xD8).
+    /// Maps to <c>ProtocolGame::parseBestiaryCharmsData</c>.
+    /// Task T53.
+    /// </summary>
+    public event Action<BestiaryCharmsData>? BestiaryCharmsDataReceived;
+
     // ─── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -1556,6 +1641,18 @@ public sealed partial class ProtocolGame : Protocol
         RegisterHandler((byte)GameServerPacket.KillTracker,            ParseKillTracker);
         RegisterHandler((byte)GameServerPacket.ItemInfo,               ParseItemInfo);
         RegisterHandler((byte)GameServerPacket.PlayerInventory,        ParsePlayerInventory);
+
+        // T53
+        RegisterHandler((byte)GameServerPacket.BrowseForgeHistory,            ParseBrowseForgeHistory);
+        RegisterHandler((byte)GameServerPacket.BlessDialog,                   ParseBlessDialog);
+        RegisterHandler((byte)GameServerPacket.BestiaryRefreshTracker,        ParseBestiaryTracker);
+        RegisterHandler((byte)GameServerPacket.TaskHuntingBasicData,          ParseTaskHuntingBasicData);
+        RegisterHandler((byte)GameServerPacket.TaskHuntingData,               ParseTaskHuntingData);
+        RegisterHandler((byte)GameServerPacket.MonkData,                      ParseMonkData);
+        RegisterHandler((byte)GameServerPacket.CyclopediaHouseAuctionMessage, ParseCyclopediaHouseAuctionMessage);
+        RegisterHandler((byte)GameServerPacket.WeaponProficiencyInfo,         ParseWeaponProficiencyInfo2);
+        RegisterHandler((byte)GameServerPacket.ChooseOutfit,                  ParseChooseOutfit);
+        RegisterHandler((byte)GameServerPacket.BestiaryCharmsData,            ParseBestiaryCharmsData);
     }
 
     // ─── Lifecycle overrides ──────────────────────────────────────────────────
