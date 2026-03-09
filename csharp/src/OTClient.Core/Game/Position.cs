@@ -84,5 +84,22 @@ public readonly record struct Position(int X, int Y, int Z)
     /// <summary>Returns a position offset by (dx, dy, dz).</summary>
     public Position Offset(int dx, int dy, int dz = 0) => new(X + dx, Y + dy, Z + dz);
 
+    /// <summary>
+    /// Returns the position diagonally up one floor (x+n, y+n, z-n), which is
+    /// the position that "covers" this tile when viewed from above.
+    /// Returns this position unchanged when the result would be out of bounds.
+    /// Maps to <c>Position::coveredUp(n)</c> in <c>src/client/position.cpp</c>.
+    /// Task T25.
+    /// </summary>
+    public Position CoveredUp(int n = 1)
+    {
+        int nx = X + n, ny = Y + n, nz = Z - n;
+        if (nx is >= 0 and <= ushort.MaxValue
+            && ny is >= 0 and <= ushort.MaxValue
+            && nz is >= 0 and < MaxFloors)
+            return new Position(nx, ny, nz);
+        return this;
+    }
+
     public override string ToString() => $"({X}, {Y}, {Z})";
 }

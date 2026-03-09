@@ -1,3 +1,5 @@
+using MoonSharp.Interpreter;
+
 namespace OTClient.Framework.Game;
 
 // ─── Outfit ───────────────────────────────────────────────────────────────────
@@ -6,31 +8,35 @@ namespace OTClient.Framework.Game;
 /// Describes the visual appearance of a creature — outfit type, colour layers,
 /// addon flags, and optional mount.
 /// Maps to <c>src/client/outfit.h</c>.
-/// Task 8.7.
+/// Task 8.7 / T40.
 /// </summary>
-public sealed record Outfit
+[MoonSharpUserData]
+public sealed class Outfit
 {
     /// <summary>Outfit type ID (0 = hidden).</summary>
-    public int Id { get; init; }
+    public int Id { get; set; }
 
     /// <summary>Mount creature ID (0 = not mounted).</summary>
-    public int MountId { get; init; }
+    public int MountId { get; set; }
+
+    /// <summary>Familiar look type (0 = none; feature GamePlayerFamiliars).</summary>
+    public int FamiliarId { get; set; }
 
     // ─── Colour layers ────────────────────────────────────────────────────────
 
     /// <summary>Head colour index.</summary>
-    public byte Head  { get; init; }
+    public byte Head  { get; set; }
     /// <summary>Body colour index.</summary>
-    public byte Body  { get; init; }
+    public byte Body  { get; set; }
     /// <summary>Legs colour index.</summary>
-    public byte Legs  { get; init; }
+    public byte Legs  { get; set; }
     /// <summary>Feet colour index.</summary>
-    public byte Feet  { get; init; }
+    public byte Feet  { get; set; }
 
     // ─── Addons ───────────────────────────────────────────────────────────────
 
     /// <summary>Addon bitmask: bit 0 = addon 1, bit 1 = addon 2.</summary>
-    public byte Addons { get; init; }
+    public byte Addons { get; set; }
 
     public bool HasAddon1 => (Addons & 1) != 0;
     public bool HasAddon2 => (Addons & 2) != 0;
@@ -40,6 +46,46 @@ public sealed record Outfit
 
     /// <summary>Default "naked" human outfit.</summary>
     public static readonly Outfit Default = new() { Id = 128 };
+
+    // ─── Lua camelCase accessors (Task T40) ───────────────────────────────────
+
+    /// <summary>Lua: <c>outfit:getId()</c></summary>
+    public int  getId()             => Id;
+    /// <summary>Lua: <c>outfit:setId(id)</c></summary>
+    public void setId(int id)       { Id = id; }
+
+    /// <summary>Lua: <c>outfit:getMount()</c></summary>
+    public int  getMount()          => MountId;
+    /// <summary>Lua: <c>outfit:setMount(id)</c></summary>
+    public void setMount(int id)    { MountId = id; }
+
+    /// <summary>Lua: <c>outfit:hasMount()</c></summary>
+    public bool hasMount()          => IsMounted;
+
+    /// <summary>Lua: <c>outfit:getHead()</c></summary>
+    public int  getHead()           => Head;
+    /// <summary>Lua: <c>outfit:setHead(v)</c></summary>
+    public void setHead(int v)      { Head = (byte)Math.Clamp(v, 0, 255); }
+
+    /// <summary>Lua: <c>outfit:getBody()</c></summary>
+    public int  getBody()           => Body;
+    /// <summary>Lua: <c>outfit:setBody(v)</c></summary>
+    public void setBody(int v)      { Body = (byte)Math.Clamp(v, 0, 255); }
+
+    /// <summary>Lua: <c>outfit:getLegs()</c></summary>
+    public int  getLegs()           => Legs;
+    /// <summary>Lua: <c>outfit:setLegs(v)</c></summary>
+    public void setLegs(int v)      { Legs = (byte)Math.Clamp(v, 0, 255); }
+
+    /// <summary>Lua: <c>outfit:getFeet()</c></summary>
+    public int  getFeet()           => Feet;
+    /// <summary>Lua: <c>outfit:setFeet(v)</c></summary>
+    public void setFeet(int v)      { Feet = (byte)Math.Clamp(v, 0, 255); }
+
+    /// <summary>Lua: <c>outfit:getAddons()</c></summary>
+    public int  getAddons()         => Addons;
+    /// <summary>Lua: <c>outfit:setAddons(v)</c></summary>
+    public void setAddons(int v)    { Addons = (byte)Math.Clamp(v, 0, 255); }
 }
 
 // ─── Animator ─────────────────────────────────────────────────────────────────

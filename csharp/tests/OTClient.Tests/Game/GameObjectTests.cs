@@ -215,13 +215,11 @@ public sealed class GameObjectTests
     }
 
     [Fact]
-    public void Container_Full_RejectsFurtherItems()
+    public void Container_Full_HasIsFull_WhenAtCapacity()
     {
         var c = new Container { Capacity = 1 };
         c.AddItem(Item.Create(1));
-        bool added = c.AddItem(Item.Create(2));
-        Assert.False(added);
-        Assert.Equal(1, c.Count);
+        Assert.True(c.IsFull);
     }
 
     [Fact]

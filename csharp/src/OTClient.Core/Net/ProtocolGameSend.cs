@@ -155,6 +155,48 @@ public sealed partial class ProtocolGame
         SendEncrypted(msg, _xteaKey);
     }
 
+    /// <summary>Sends a <c>Stop</c> packet to halt the character's movement.</summary>
+    public void SendStop()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Stop);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // Direction wire bytes used in the AutoWalk packet (Tibia protocol encoding).
+    // These differ from the Direction enum values.
+    private static readonly Dictionary<Direction, byte> AutoWalkByte = new()
+    {
+        { Direction.East,      1 },
+        { Direction.NorthEast, 2 },
+        { Direction.North,     3 },
+        { Direction.NorthWest, 4 },
+        { Direction.West,      5 },
+        { Direction.SouthWest, 6 },
+        { Direction.South,     7 },
+        { Direction.SouthEast, 8 },
+    };
+
+    /// <summary>
+    /// Sends an <c>AutoWalk</c> packet describing a multi-step path.
+    /// Each step is encoded with its own direction byte per the Tibia wire format.
+    /// </summary>
+    public void SendAutoWalk(IReadOnlyList<Direction> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Count == 0) return;
+
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AutoWalk);
+        msg.WriteU8((byte)Math.Min(path.Count, 255));
+        for (int i = 0; i < Math.Min(path.Count, 255); i++)
+        {
+            byte wireByte = AutoWalkByte.TryGetValue(path[i], out byte b) ? b : (byte)0;
+            msg.WriteU8(wireByte);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
     // ─── Chat ─────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -174,6 +216,1565 @@ public sealed partial class ProtocolGame
             msg.WriteString(receiver);
         }
         msg.WriteString(message);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request for the list of available public channels.
+    /// Maps to <c>ProtocolGame::sendRequestChannels</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendRequestChannels()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestChannels);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a join-channel request for the channel identified by
+    /// <paramref name="channelId"/>.
+    /// Maps to <c>ProtocolGame::sendJoinChannel</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendJoinChannel(ushort channelId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.JoinChannel);
+        msg.WriteU16(channelId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a leave-channel request for the channel identified by
+    /// <paramref name="channelId"/>.
+    /// Maps to <c>ProtocolGame::sendLeaveChannel</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendLeaveChannel(ushort channelId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LeaveChannel);
+        msg.WriteU16(channelId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to open a private chat channel with
+    /// <paramref name="receiver"/>.
+    /// Maps to <c>ProtocolGame::sendOpenPrivateChannel</c>.
+    /// Task T10.
+    /// </summary>
+    public void SendOpenPrivateChannel(string receiver)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(receiver);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenPrivateChannel);
+        msg.WriteString(receiver);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Combat (T12) ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends updated fight, chase and safe-mode settings to the server.
+    /// Protocol 1281: PvpMode byte is always included (GamePVPMode feature present).
+    /// Maps to <c>ProtocolGame::sendChangeFightModes</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendChangeFightModes(Game.FightMode fightMode, Game.ChaseMode chaseMode,
+        bool safeFight, Game.PvpMode pvpMode = Game.PvpMode.WhiteDove)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ChangeFightModes);
+        msg.WriteU8((byte)fightMode);
+        msg.WriteU8((byte)chaseMode);
+        msg.WriteU8(safeFight ? (byte)1 : (byte)0);
+        msg.WriteU8((byte)pvpMode);  // GamePVPMode — always present at protocol 1281
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends an attack request targeting <paramref name="creatureId"/>.
+    /// Pass 0 to cancel the current attack.
+    /// The sequence counter is included (GameAttackSeq feature always present at 1281).
+    /// Maps to <c>ProtocolGame::sendAttack</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendAttack(uint creatureId, uint seq = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Attack);
+        msg.WriteU32(creatureId);
+        msg.WriteU32(seq);  // GameAttackSeq — always present at protocol 1281
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a follow request targeting <paramref name="creatureId"/>.
+    /// Pass 0 to cancel following.
+    /// Maps to <c>ProtocolGame::sendFollow</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendFollow(uint creatureId, uint seq = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Follow);
+        msg.WriteU32(creatureId);
+        msg.WriteU32(seq);  // GameAttackSeq — always present at protocol 1281
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to cancel both the current attack and follow targets.
+    /// Maps to <c>ProtocolGame::sendCancelAttackAndFollow</c>.
+    /// Task T12.
+    /// </summary>
+    public void SendCancelAttackAndFollow()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CancelAttackAndFollow);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── NPC trade (T15) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Asks the server for detailed information on an NPC trade item.
+    /// Maps to <c>ProtocolGame::sendInspectNpcTrade</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendInspectNpcTrade(int itemId, int count)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectNpcTrade);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU16((ushort)count);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the server to buy an item from the active NPC.
+    /// Maps to <c>ProtocolGame::sendBuyItem</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendBuyItem(int itemId, int subType, int amount, bool ignoreCapacity, bool buyWithBackpack)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BuyItem);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)subType);
+        msg.WriteU16((ushort)amount);
+        msg.WriteU8(ignoreCapacity  ? (byte)1 : (byte)0);
+        msg.WriteU8(buyWithBackpack ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the server to sell an item to the active NPC.
+    /// Maps to <c>ProtocolGame::sendSellItem</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendSellItem(int itemId, int subType, int amount, bool ignoreEquipped)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.SellItem);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)subType);
+        msg.WriteU16((ushort)amount);
+        msg.WriteU8(ignoreEquipped ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Notifies the server that the player closed the NPC trade window.
+    /// Maps to <c>ProtocolGame::sendCloseNpcTrade</c>.
+    /// Task T15.
+    /// </summary>
+    public void SendCloseNpcTrade()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseNpcTrade);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Player-to-player trade (T16) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the server to initiate a player trade with the specified item.
+    /// Maps to <c>ProtocolGame::sendRequestTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendRequestTrade(Game.Position position, int itemId, int stackPos, uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestTrade);
+        msg.WriteU16((ushort)position.X);
+        msg.WriteU16((ushort)position.Y);
+        msg.WriteU8((byte)position.Z);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Asks the server to inspect a trade slot (own or partner's).
+    /// Maps to <c>ProtocolGame::sendInspectTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendInspectTrade(bool counterOffer, int index)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectTrade);
+        msg.WriteU8(counterOffer ? (byte)1 : (byte)0);
+        msg.WriteU8((byte)index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Accepts the current player-to-player trade.
+    /// Maps to <c>ProtocolGame::sendAcceptTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendAcceptTrade()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AcceptTrade);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Rejects the current player-to-player trade.
+    /// Maps to <c>ProtocolGame::sendRejectTrade</c>.
+    /// Task T16.
+    /// </summary>
+    public void SendRejectTrade()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RejectTrade);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── VIP management (T21) ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a request to add a player to the VIP (friends) list.
+    /// Maps to <c>ProtocolGame::sendAddVip</c>.
+    /// Task T21.
+    /// </summary>
+    public void SendAddVip(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AddVip);
+        msg.WriteString(name);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to remove a player from the VIP (friends) list.
+    /// Maps to <c>ProtocolGame::sendRemoveVip</c>.
+    /// Task T21.
+    /// </summary>
+    public void SendRemoveVip(uint id)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RemoveVip);
+        msg.WriteU32(id);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Quest log (T23) ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the quest log from the server.
+    /// Maps to <c>ProtocolGame::sendRequestQuestLog</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendRequestQuestLog()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestQuestLog);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the mission details for a specific quest.
+    /// Maps to <c>ProtocolGame::sendRequestQuestLine</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendRequestQuestLine(ushort questId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestQuestLine);
+        msg.WriteU16(questId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Modal dialog (T23) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends the player's answer to a modal dialog.
+    /// Maps to <c>ProtocolGame::sendAnswerModalDialog</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendAnswerModalDialog(uint dialogId, byte buttonId, byte choiceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.AnswerModalDialog);
+        msg.WriteU32(dialogId);
+        msg.WriteU8(buttonId);
+        msg.WriteU8(choiceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Edit text / edit list (T23) ──────────────────────────────────────────
+
+    /// <summary>
+    /// Submits the player's text for an editable window.
+    /// Maps to <c>ProtocolGame::sendEditText</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendEditText(uint id, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditText);
+        msg.WriteU32(id);
+        msg.WriteString(text);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Submits the player's text for an editable list window.
+    /// Maps to <c>ProtocolGame::sendEditList</c>.
+    /// Task T23.
+    /// </summary>
+    public void SendEditList(uint id, byte doorId, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditList);
+        msg.WriteU8(doorId);
+        msg.WriteU32(id);
+        msg.WriteString(text);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Market (T26) ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a request to leave the market.
+    /// Maps to <c>ProtocolGame::sendMarketLeave</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketLeave()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketLeave);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a market browse request.
+    /// At protocol 1281: writes browseId U8; if browseId == 3 (item browse),
+    /// also writes browseType U16 and optionally the item tier U8.
+    /// Maps to <c>ProtocolGame::sendMarketBrowse</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketBrowse(byte browseId, ushort browseType, byte tier,
+                                 Game.ThingTypeManager? things = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketBrowse);
+        msg.WriteU8(browseId);
+        if (browseType > 0)
+        {
+            msg.WriteU16(browseType);
+            if (browseId == 3)
+            {
+                var tt = things?.Get(Game.ThingCategory.Item, browseType);
+                if (tt?.Classification > 0)
+                    msg.WriteU8(tier);
+            }
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to create a new market offer.
+    /// Maps to <c>ProtocolGame::sendMarketCreateOffer</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketCreateOffer(byte type, ushort itemId, byte itemTier,
+                                      ushort amount, ulong price, byte anonymous,
+                                      Game.ThingTypeManager? things = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketCreate);
+        msg.WriteU8(type);
+        msg.WriteU16(itemId);
+        var tt = things?.Get(Game.ThingCategory.Item, itemId);
+        if (tt?.Classification > 0)
+            msg.WriteU8(itemTier);
+        msg.WriteU16(amount);
+        msg.WriteU64(price);
+        msg.WriteU8(anonymous);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to cancel a market offer.
+    /// Maps to <c>ProtocolGame::sendMarketCancelOffer</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketCancelOffer(uint timestamp, ushort counter)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketCancel);
+        msg.WriteU32(timestamp);
+        msg.WriteU16(counter);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a request to accept a market offer.
+    /// Maps to <c>ProtocolGame::sendMarketAcceptOffer</c>.
+    /// Task T26.
+    /// </summary>
+    public void SendMarketAcceptOffer(uint timestamp, ushort counter, ushort amount)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MarketAccept);
+        msg.WriteU32(timestamp);
+        msg.WriteU16(counter);
+        msg.WriteU16(amount);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Item / container operations (T39) ────────────────────────────────────
+
+    private void WritePosition(OutputMessage msg, Game.Position pos)
+    {
+        msg.WriteU16((ushort)pos.X);
+        msg.WriteU16((ushort)pos.Y);
+        msg.WriteU8((byte)pos.Z);
+    }
+
+    /// <summary>
+    /// Moves an item from one position to another (drag-and-drop).
+    /// Wire: U8 opcode, fromPos (U16x,U16y,U8z), U16 itemId, U8 stackPos,
+    ///       toPos (U16x,U16y,U8z), U16 count.
+    /// Maps to <c>ProtocolGame::sendMove</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendMoveItem(Game.Position fromPos, int itemId, int stackPos,
+                              Game.Position toPos, int count)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MoveItem);
+        WritePosition(msg, fromPos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        WritePosition(msg, toPos);
+        msg.WriteU16((ushort)count);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Uses an item on the ground or in a container.
+    /// Wire: U8 opcode, pos (U16x,U16y,U8z), U16 itemId, U8 stackPos, U8 containerIndex.
+    /// Maps to <c>ProtocolGame::sendUseItem</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUseItem(Game.Position pos, int itemId, int stackPos, int containerIndex)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UseItem);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        msg.WriteU8((byte)containerIndex);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Uses item from <paramref name="fromPos"/> on item at <paramref name="toPos"/>.
+    /// Wire: U8 opcode, fromPos, U16 itemId, U8 stackPos, toPos, U16 toItemId, U8 toStackPos.
+    /// Maps to <c>ProtocolGame::sendUseItemWith</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUseItemWith(Game.Position fromPos, int itemId, int fromStackPos,
+                                 Game.Position toPos, int toItemId, int toStackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UseItemWith);
+        WritePosition(msg, fromPos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)fromStackPos);
+        WritePosition(msg, toPos);
+        msg.WriteU16((ushort)toItemId);
+        msg.WriteU8((byte)toStackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Uses item at <paramref name="pos"/> on creature <paramref name="creatureId"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendUseOnCreature</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUseOnCreature(Game.Position pos, int itemId, int stackPos, uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UseOnCreature);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Rotates item at <paramref name="pos"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos.
+    /// Maps to <c>ProtocolGame::sendRotateItem</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendRotateItem(Game.Position pos, int itemId, int stackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RotateItem);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Wraps (or unwraps) the item at <paramref name="pos"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos.
+    /// Maps to <c>ProtocolGame::sendWrapItem</c>.
+    /// Task T58.
+    /// </summary>
+    public void SendWrapItem(Game.Position pos, int itemId, int stackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OnWrapItem);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests to close the container at wire slot <paramref name="containerId"/>.
+    /// Wire: U8 opcode, U8 containerId.
+    /// Maps to <c>ProtocolGame::sendCloseContainer</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendCloseContainer(int containerId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseContainer);
+        msg.WriteU8((byte)containerId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Navigates up to the parent container (open-parent).
+    /// Wire: U8 opcode, U8 containerId.
+    /// Maps to <c>ProtocolGame::sendUpContainer</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendUpContainer(int containerId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.UpContainer);
+        msg.WriteU8((byte)containerId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Looks at the item at <paramref name="pos"/>.
+    /// Wire: U8 opcode, pos, U16 itemId, U8 stackPos.
+    /// Maps to <c>ProtocolGame::sendLook</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendLookAt(Game.Position pos, int itemId, int stackPos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LookAt);
+        WritePosition(msg, pos);
+        msg.WriteU16((ushort)itemId);
+        msg.WriteU8((byte)stackPos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Looks at a creature.
+    /// Wire: U8 opcode, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendLookCreature</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendLookCreature(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LookCreature);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Browses the field at <paramref name="pos"/> (opens a tile stack view).
+    /// Wire: U8 opcode, pos.
+    /// Maps to <c>ProtocolGame::sendBrowseField</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendBrowseField(Game.Position pos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BrowseField);
+        WritePosition(msg, pos);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Seeks to page <paramref name="index"/> within paginated container <paramref name="containerId"/>.
+    /// Wire: U8 opcode, U8 containerId, U16 index.
+    /// Maps to <c>ProtocolGame::sendSeekInContainer</c>.
+    /// Task T39.
+    /// </summary>
+    public void SendSeekInContainer(int containerId, int index)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.SeekInContainer);
+        msg.WriteU8((byte)containerId);
+        msg.WriteU16((ushort)index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Party management (T57) ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Invites <paramref name="creatureId"/> to the player's party.
+    /// Wire: U8 0xA3, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendInviteToParty</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendInviteToParty(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InviteToParty);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Joins the party of <paramref name="creatureId"/>.
+    /// Wire: U8 0xA4, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendJoinParty</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendJoinParty(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.JoinParty);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Revokes the party invitation sent to <paramref name="creatureId"/>.
+    /// Wire: U8 0xA5, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendRevokeInvitation</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendRevokeInvitation(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RevokeInvitation);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Passes party leadership to <paramref name="creatureId"/>.
+    /// Wire: U8 0xA6, U32 creatureId.
+    /// Maps to <c>ProtocolGame::sendPassLeadership</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendPassLeadership(uint creatureId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PassLeadership);
+        msg.WriteU32(creatureId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Leaves the current party.
+    /// Wire: U8 0xA7.
+    /// Maps to <c>ProtocolGame::sendLeaveParty</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendLeaveParty()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.LeaveParty);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Toggles experience sharing within the party.
+    /// Wire: U8 0xA8, U8 active.
+    /// Maps to <c>ProtocolGame::sendShareExperience</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendShareExperience(bool active)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ShareExperience);
+        msg.WriteU8(active ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a party analyzer action.
+    /// Wire: U8 0x2B, U8 action; if action==3 (set price values): U16 count + loop{U16 itemId, U64 price}.
+    /// Maps to <c>ProtocolGame::sendPartyAnalyzerAction</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendPartyAnalyzerAction(byte action,
+        IReadOnlyList<(ushort ItemId, ulong Price)>? priceValues = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PartyAnalyzerAction);
+        msg.WriteU8(action);
+        if (action == 3 && priceValues != null)
+        {
+            msg.WriteU16((ushort)priceValues.Count);
+            foreach (var (itemId, price) in priceValues)
+            {
+                msg.WriteU16(itemId);
+                msg.WriteU64(price);
+            }
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Own-channel management (T57) ─────────────────────────────────────────
+
+    /// <summary>
+    /// Opens the player's own private channel.
+    /// Wire: U8 0xAA.
+    /// Maps to <c>ProtocolGame::sendOpenOwnChannel</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendOpenOwnChannel()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenOwnChannel);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Invites <paramref name="name"/> to the player's own private channel.
+    /// Wire: U8 0xAB, str name.
+    /// Maps to <c>ProtocolGame::sendInviteToOwnChannel</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendInviteToOwnChannel(string name)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InviteToOwnChannel);
+        msg.WriteString(name);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Excludes <paramref name="name"/> from the player's own private channel.
+    /// Wire: U8 0xAC, str name.
+    /// Maps to <c>ProtocolGame::sendExcludeFromOwnChannel</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendExcludeFromOwnChannel(string name)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ExcludeFromOwnChannel);
+        msg.WriteString(name);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── Outfit / mount / typing (T57) ────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the server to open the outfit-selection window.
+    /// Wire: U8 0xD2.
+    /// Maps to <c>ProtocolGame::sendRequestOutfit</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendRequestOutfit()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestOutfit);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends the player's chosen outfit to the server.
+    /// Wire (protocol ≥ 1281):
+    ///   U8 0xD3, U8 0x00 (normal window), U16 outfitId,
+    ///   U8 head/body/legs/feet/addons,
+    ///   U16 mountId + 4×U8 zeros (mount colours),
+    ///   [U8 hasMountBool if proto ≥ 1334],
+    ///   [U16 familiarId if feature GamePlayerFamiliars (123)],
+    ///   U8 0x00 (randomizeMount),
+    ///   [U16 wing + U16 aura + U16 effect + str shader if feature GameWingsAurasEffectsShader (118)].
+    /// Maps to <c>ProtocolGame::sendChangeOutfit</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendChangeOutfit(Game.Outfit outfit)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ChangeOutfit);
+        if (ProtocolVersion >= 1281)
+            msg.WriteU8(0x00);   // normal outfit window
+        msg.WriteU16((ushort)outfit.Id);
+        msg.WriteU8(outfit.Head);
+        msg.WriteU8(outfit.Body);
+        msg.WriteU8(outfit.Legs);
+        msg.WriteU8(outfit.Feet);
+        msg.WriteU8(outfit.Addons);
+        // Mount
+        msg.WriteU16((ushort)outfit.MountId);
+        if (ProtocolVersion >= 1281)
+        {
+            msg.WriteU8(0); msg.WriteU8(0); msg.WriteU8(0); msg.WriteU8(0); // mount colour bytes
+        }
+        if (ProtocolVersion >= 1334)
+            msg.WriteU8(outfit.IsMounted ? (byte)1 : (byte)0);
+        // Familiar
+        if (HasFeature(123))   // GamePlayerFamiliars
+            msg.WriteU16((ushort)outfit.FamiliarId);
+        if (ProtocolVersion >= 1281)
+            msg.WriteU8(0);  // randomizeMount
+        // Wings / auras / effects / shader
+        if (HasFeature(118))  // GameWingsAurasEffectsShader
+        {
+            msg.WriteU16(0); // wing
+            msg.WriteU16(0); // aura
+            msg.WriteU16(0); // effect
+            msg.WriteString(string.Empty); // shader
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Toggles mount state.
+    /// Wire: U8 0xD4, U8 mount.
+    /// Maps to <c>ProtocolGame::sendMountStatus</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendMountStatus(bool mount)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.MountToggle);
+        msg.WriteU8(mount ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Informs the server whether the player is currently typing.
+    /// Wire: U8 0x38 (reuses GameServerCreatureTyping opcode), U8 typing.
+    /// Maps to <c>ProtocolGame::sendTyping</c>.
+    /// Task T57.
+    /// </summary>
+    public void SendTyping(bool typing)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.Typing);
+        msg.WriteU8(typing ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── VIP edit / misc utility / bug-report (T59) ───────────────────────────
+
+    /// <summary>
+    /// Teleports the GM character to the given position (GM-only command).
+    /// Wire: U8 0x73, U16 x, U16 y, U8 z.
+    /// Maps to <c>ProtocolGame::sendGmTeleport</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendGmTeleport(Game.Position pos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.GmTeleport);
+        msg.WriteU16((ushort)pos.X);
+        msg.WriteU16((ushort)pos.Y);
+        msg.WriteU8((byte)pos.Z);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Equips an item by server ID and tier.
+    /// Wire: U8 0x77, U16 itemId, U8 tier.
+    /// Maps to <c>ProtocolGame::sendEquipItemWithTier</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEquipItemWithTier(ushort itemId, byte tier)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EquipItem);
+        msg.WriteU16(itemId);
+        msg.WriteU8(tier);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Equips an item by server ID and count/subType.
+    /// Wire: U8 0x77, U16 itemId, U16 countOrSubType (feature GameCountU16=104)
+    ///        or U8 countOrSubType for older protocols.
+    /// Maps to <c>ProtocolGame::sendEquipItemWithCountOrSubType</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEquipItemWithCountOrSubType(ushort itemId, ushort countOrSubType)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EquipItem);
+        msg.WriteU16(itemId);
+        if (HasFeature(104))   // GameCountU16 = 104
+            msg.WriteU16(countOrSubType);
+        else
+            msg.WriteU8((byte)countOrSubType);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Asks the server to resend the full contents of a container.
+    /// Wire: U8 0xCA, U8 containerId.
+    /// Maps to <c>ProtocolGame::sendRefreshContainer</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendRefreshContainer(byte containerId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RefreshContainer);
+        msg.WriteU8(containerId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the server to send the blessing list for the player.
+    /// Wire: U8 0xCF (no payload).
+    /// Maps to <c>ProtocolGame::sendRequestBless</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendRequestBless()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestBless);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a quest-tracker subscription list to the server.
+    /// Wire: U8 0xD0, U8 count, then per-entry: U16 questId [+ str name if proto ≥ 1410].
+    /// Maps to <c>ProtocolGame::sendRequestTrackerQuestLog</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendRequestTrackerQuestLog(IReadOnlyList<(ushort Id, string Name)> quests)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestTrackerQuestLog);
+        msg.WriteU8((byte)quests.Count);
+        foreach (var (id, name) in quests)
+        {
+            msg.WriteU16(id);
+            if (ProtocolVersion >= 1410)
+                msg.WriteString(name);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Edits a VIP entry (description, icon, notify-login flag, and optional group list).
+    /// Wire: U8 0xDE, U32 playerId, str description, U32 iconId, U8 notifyLogin,
+    ///        [feature GameVipGroups(96): U8 groupCount + U8[] groupIds].
+    /// Maps to <c>ProtocolGame::sendEditVip</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEditVip(uint playerId, string description, uint iconId, bool notifyLogin, IReadOnlyList<byte>? groupIds = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditVip);
+        msg.WriteU32(playerId);
+        msg.WriteString(description);
+        msg.WriteU32(iconId);
+        msg.WriteU8(notifyLogin ? (byte)1 : (byte)0);
+        if (HasFeature(96))   // GameVipGroups = 96
+        {
+            var ids = groupIds ?? Array.Empty<byte>();
+            msg.WriteU8((byte)ids.Count);
+            foreach (var g in ids)
+                msg.WriteU8(g);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Adds, edits, or removes a VIP group.
+    /// Wire: U8 0xDF, U8 action (1=Add, 2=Edit, 3=Remove), then per action:
+    ///   Add:    str groupName
+    ///   Edit:   U8 groupId, str groupName
+    ///   Remove: U8 groupId
+    /// Maps to <c>ProtocolGame::sendEditVipGroups</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendEditVipGroups(byte action, byte groupId = 0, string groupName = "")
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.EditVipGroups);
+        msg.WriteU8(action);
+        switch (action)
+        {
+            case 1: // VIP_GROUP_ADD
+                msg.WriteString(groupName);
+                break;
+            case 2: // VIP_GROUP_EDIT
+                msg.WriteU8(groupId);
+                msg.WriteString(groupName);
+                break;
+            case 3: // VIP_GROUP_REMOVE
+                msg.WriteU8(groupId);
+                break;
+            default:
+                return; // unknown action — do not send
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a bug report to the server.
+    /// Wire: U8 0xE6, [U8 category=3 if proto > 1000], str comment.
+    /// Maps to <c>ProtocolGame::sendBugReport</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendBugReport(string comment)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BugReport);
+        if (ProtocolVersion > 1000)
+            msg.WriteU8(3); // category
+        msg.WriteString(comment);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a debug report to the server with four string fields.
+    /// Wire: U8 0xE8, str a, str b, str c, str d.
+    /// Maps to <c>ProtocolGame::sendDebugReport</c>.
+    /// Task T59.
+    /// </summary>
+    public void SendDebugReport(string a, string b, string c, string d)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.DebugReport);
+        msg.WriteString(a);
+        msg.WriteString(b);
+        msg.WriteString(c);
+        msg.WriteString(d);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── T60: Channel closure, rule violations, item inspection ───────────────
+
+    /// <summary>
+    /// Closes the NPC channel (e.g. when leaving an NPC dialog).
+    /// Wire: U8 0x9E.
+    /// Maps to <c>ProtocolGame::sendCloseNpcChannel</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCloseNpcChannel()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseNpcChannel);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Opens a rule violation report for the given reporter.
+    /// Wire: U8 0x9B, str reporter.
+    /// Maps to <c>ProtocolGame::sendOpenRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendOpenRuleViolation(string reporter)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRuleViolation);
+        msg.WriteString(reporter);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Closes the rule violation report for the given reporter.
+    /// Wire: U8 0x9C, str reporter.
+    /// Maps to <c>ProtocolGame::sendCloseRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCloseRuleViolation(string reporter)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseRuleViolation);
+        msg.WriteString(reporter);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Cancels the active rule violation report.
+    /// Wire: U8 0x9D.
+    /// Maps to <c>ProtocolGame::sendCancelRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCancelRuleViolation()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CancelRuleViolation);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a new-format rule violation (report / appeal) to the server.
+    /// Wire: U8 0xF2, U8 reason, U8 action, str characterName, str comment, str translation.
+    /// Maps to <c>ProtocolGame::sendNewNewRuleViolation</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendNewNewRuleViolation(byte reason, byte action, string characterName, string comment, string translation)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.NewRuleViolation);
+        msg.WriteU8(reason);
+        msg.WriteU8(action);
+        msg.WriteString(characterName);
+        msg.WriteString(comment);
+        msg.WriteString(translation);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests detailed information for an item.
+    /// Wire: U8 0xF3, U8 subType, U16 itemId, U8 index.
+    /// Maps to <c>ProtocolGame::sendRequestItemInfo</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestItemInfo(ushort itemId, byte subType, byte index)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.RequestItemInfo);
+        msg.WriteU8(subType);
+        msg.WriteU16(itemId);
+        msg.WriteU8(index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests inspection of a normal world object at a map position.
+    /// Wire: U8 0xCD, U8 0 (INSPECT_NORMALOBJECT), U16 x, U16 y, U8 z.
+    /// Maps to <c>ProtocolGame::sendInspectionNormalObject</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendInspectionNormalObject(Game.Position pos)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectionObject);
+        msg.WriteU8(0); // INSPECT_NORMALOBJECT
+        msg.WriteU16((ushort)pos.X);
+        msg.WriteU16((ushort)pos.Y);
+        msg.WriteU8((byte)pos.Z);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests inspection of an NPC trade or Cyclopedia item.
+    /// <paramref name="inspectionType"/>: 1 = INSPECT_NPCTRADE, 3 = INSPECT_CYCLOPEDIA.
+    /// Wire: U8 0xCD, U8 inspectionType, U16 itemId, U8 itemCount.
+    /// Maps to <c>ProtocolGame::sendInspectionObject</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendInspectionObject(byte inspectionType, ushort itemId, byte itemCount)
+    {
+        if (inspectionType != 1 && inspectionType != 3)
+            return; // only NPC trade (1) and Cyclopedia (3) are accepted
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.InspectionObject);
+        msg.WriteU8(inspectionType);
+        msg.WriteU16(itemId);
+        msg.WriteU8(itemCount);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── T60: Bestiary and Bosstiary ─────────────────────────────────────────
+
+    /// <summary>
+    /// Requests the full bestiary creature list from the server.
+    /// Wire: U8 0xE1.
+    /// Maps to <c>ProtocolGame::sendRequestBestiary</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBestiary()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequest);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the bestiary overview for a category or a list of race IDs.
+    /// Wire: U8 0xE2, U8 isSearch, then [U16 count + U16[] raceIds] if search or [str catName] if browse.
+    /// Maps to <c>ProtocolGame::sendRequestBestiaryOverview</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBestiaryOverview(string catName, bool search, IReadOnlyList<ushort>? raceIds = null)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequestOverview);
+        msg.WriteU8(search ? (byte)0x01 : (byte)0x00);
+        if (search)
+        {
+            var ids = raceIds ?? Array.Empty<ushort>();
+            msg.WriteU16((ushort)ids.Count);
+            foreach (var id in ids)
+                msg.WriteU16(id);
+        }
+        else
+        {
+            msg.WriteString(catName);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests detailed bestiary data for a single race.
+    /// Wire: U8 0xE3, U16 raceId.
+    /// Maps to <c>ProtocolGame::sendRequestBestiarySearch</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBestiarySearch(ushort raceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryRequestSearch);
+        msg.WriteU16(raceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Buys or upgrades a charm rune.
+    /// Wire: U8 0xE4, U8 runeId, U8 action, U16 raceId.
+    /// Maps to <c>ProtocolGame::sendBuyCharmRune</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendBuyCharmRune(byte runeId, byte action, ushort raceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BuyCharmRune);
+        msg.WriteU8(runeId);
+        msg.WriteU8(action);
+        msg.WriteU16(raceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests Cyclopedia character information.
+    /// <paramref name="characterInfoType"/>: see <c>CyclopediaCharacterInfoType_t</c>.
+    /// For types RECENTDEATHS (3) and RECENTPVPKILLS (4), pagination fields are included.
+    /// Wire: U8 0xE5, U32 playerId, U8 infoType, [U16 entriesPerPage, U16 page] if type==3||4.
+    /// Maps to <c>ProtocolGame::sendCyclopediaRequestCharacterInfo</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCyclopediaRequestCharacterInfo(uint playerId, byte characterInfoType, ushort entriesPerPage = 0, ushort page = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CyclopediaRequestCharacterInfo);
+        msg.WriteU32(playerId);
+        msg.WriteU8(characterInfoType);
+        if (characterInfoType == 3 || characterInfoType == 4) // RECENTDEATHS / RECENTPVPKILLS
+        {
+            msg.WriteU16(entriesPerPage);
+            msg.WriteU16(page);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a Cyclopedia house auction action.
+    /// <paramref name="auctionType"/>: 0=none (townName), 1=bid (houseId+bid), 2=moveout (houseId+ts),
+    /// 3=transfer (houseId+ts+name+bid), 4=cancelMoveout, 5=cancelTransfer, 6=acceptTransfer, 7=rejectTransfer.
+    /// Maps to <c>ProtocolGame::sendCyclopediaHouseAuction</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendCyclopediaHouseAuction(byte auctionType, uint houseId = 0, uint timestamp = 0, ulong bidValue = 0, string name = "")
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CyclopediaHouseAuction);
+        msg.WriteU8(auctionType);
+        switch (auctionType)
+        {
+            case 0: // CYCLOPEDIA_HOUSE_TYPE_NONE — send town name
+                msg.WriteString(name);
+                break;
+            case 1: // CYCLOPEDIA_HOUSE_TYPE_BID
+                msg.WriteU32(houseId);
+                msg.WriteU64(bidValue);
+                break;
+            case 2: // CYCLOPEDIA_HOUSE_TYPE_MOVEOUT
+                msg.WriteU32(houseId);
+                msg.WriteU32(timestamp);
+                break;
+            case 3: // CYCLOPEDIA_HOUSE_TYPE_TRANSFER
+                msg.WriteU32(houseId);
+                msg.WriteU32(timestamp);
+                msg.WriteString(name);
+                msg.WriteU64(bidValue);
+                break;
+            case 4: // CYCLOPEDIA_HOUSE_TYPE_CANCEL_MOVEOUT
+            case 5: // CYCLOPEDIA_HOUSE_TYPE_CANCEL_TRANSFER
+            case 6: // CYCLOPEDIA_HOUSE_TYPE_ACCEPT_TRANSFER
+            case 7: // CYCLOPEDIA_HOUSE_TYPE_REJECT_TRANSFER
+                msg.WriteU32(houseId);
+                break;
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests general bosstiary information (boss list and kill statistics).
+    /// Wire: U8 0xAE.
+    /// Maps to <c>ProtocolGame::sendRequestBosstiaryInfo</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBosstiaryInfo()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BosstiaryRequestInfo);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests the bosstiary slot loot information (which boss drops items into the slot).
+    /// Wire: U8 0xAF.
+    /// Maps to <c>ProtocolGame::sendRequestBossSlootInfo</c> ("sloot" = slot loot).
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBossSlootInfo()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BosstiaryRequestSlotInfo);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Performs an action on a bosstiary slot (e.g. unlock, switch boss).
+    /// Wire: U8 0xB0, U8 action, U32 raceId.
+    /// Maps to <c>ProtocolGame::sendRequestBossSlotAction</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendRequestBossSlotAction(byte action, uint raceId)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BosstiaryRequestSlotAction);
+        msg.WriteU8(action);
+        msg.WriteU32(raceId);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sets the bestiary tracker status (enabled/disabled) for a creature race.
+    /// Wire: U8 0x2A, U16 raceId, U8 status.
+    /// Maps to <c>ProtocolGame::sendStatusTrackerBestiary</c>.
+    /// Task T60.
+    /// </summary>
+    public void SendStatusTrackerBestiary(ushort raceId, bool status)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.BestiaryTrackerStatus);
+        msg.WriteU16(raceId);
+        msg.WriteU8(status ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    // ─── T61: Prey, forge, imbuement, reward ──────────────────────────────────
+
+    /// <summary>
+    /// Sends a prey action for the given slot.
+    /// actionType 2 or 5 → U8 index; actionType 4 → U16 raceId; others → no extra data.
+    /// Wire: U8 0xEB, U8 slot, U8 actionType[, U8|U16 index].
+    /// Maps to <c>ProtocolGame::sendPreyAction</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendPreyAction(byte slot, byte actionType, ushort index = 0)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyAction);
+        msg.WriteU8(slot);
+        msg.WriteU8(actionType);
+        if (actionType == 2 || actionType == 5)
+            msg.WriteU8((byte)index);
+        else if (actionType == 4)
+            msg.WriteU16(index);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends a prey request (open prey window).
+    /// Wire: U8 0xED.
+    /// Maps to <c>ProtocolGame::sendPreyRequest</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendPreyRequest()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.PreyRequest);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Sends an open-portable-forge request.
+    /// Uses the same opcode as <see cref="SendPreyRequest"/> (0xED).
+    /// Wire: U8 0xED.
+    /// Maps to <c>ProtocolGame::sendOpenPortableForge</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendOpenPortableForge() => SendPreyRequest();
+
+    /// <summary>
+    /// Sends a forge action request.
+    /// actionType 0 (FUSION) or 1 (TRANSFER) carries extra fields.
+    /// Wire: U8 0xBF, U8 actionType[, U8 convergence, U16 firstItemId, U8 firstItemTier, U16 secondItemId, U8 improveChance, U8 tierLoss].
+    /// Maps to <c>ProtocolGame::sendForgeRequest</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendForgeRequest(byte actionType, bool convergence = false,
+        ushort firstItemId = 0, byte firstItemTier = 0,
+        ushort secondItemId = 0, bool improveChance = false, bool tierLoss = false)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ForgeEnter);
+        msg.WriteU8(actionType);
+        if (actionType == 0 /* FUSION */ || actionType == 1 /* TRANSFER */)
+        {
+            msg.WriteU8(convergence ? (byte)1 : (byte)0);
+            msg.WriteU16(firstItemId);
+            msg.WriteU8(firstItemTier);
+            msg.WriteU16(secondItemId);
+            msg.WriteU8(improveChance ? (byte)1 : (byte)0);
+            msg.WriteU8(tierLoss ? (byte)1 : (byte)0);
+        }
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Requests a page of forge browse history.
+    /// Wire: U8 0xC0, U8 page.
+    /// Maps to <c>ProtocolGame::sendForgeBrowseHistoryRequest</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendForgeBrowseHistoryRequest(byte page)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ForgeBrowseHistory);
+        msg.WriteU8(page);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Applies an imbuement to an item slot.
+    /// For protocol versions &lt; 1510, <paramref name="protectionCharm"/> is also sent.
+    /// Wire: U8 0xD5, U8 slot, U32 imbuementId[, U8 protectionCharm if proto&lt;1510].
+    /// Maps to <c>ProtocolGame::sendApplyImbuement</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendApplyImbuement(byte slot, uint imbuementId, bool protectionCharm = false)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ApplyImbuement);
+        msg.WriteU8(slot);
+        msg.WriteU32(imbuementId);
+        if (ProtocolVersion < 1510)
+            msg.WriteU8(protectionCharm ? (byte)1 : (byte)0);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Clears the imbuement in a given item slot.
+    /// Wire: U8 0xD6, U8 slot.
+    /// Maps to <c>ProtocolGame::sendClearImbuement</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendClearImbuement(byte slot)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.ClearImbuement);
+        msg.WriteU8(slot);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Closes the imbuement window.
+    /// Wire: U8 0xD7.
+    /// Maps to <c>ProtocolGame::sendCloseImbuingWindow</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendCloseImbuingWindow()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.CloseImbuingWindow);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Opens the daily reward wall.
+    /// Wire: U8 0xD8.
+    /// Maps to <c>ProtocolGame::sendOpenRewardWall</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendOpenRewardWall()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRewardWall);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Opens the daily reward history.
+    /// Wire: U8 0xD9.
+    /// Maps to <c>ProtocolGame::sendOpenRewardHistory</c>.
+    /// Task T61.
+    /// </summary>
+    public void SendOpenRewardHistory()
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.OpenRewardHistory);
+        SendEncrypted(msg, _xteaKey);
+    }
+
+    /// <summary>
+    /// Collects the daily reward.
+    /// Wire: U8 0xDA, U8 bonusShrine, U8 itemCount, then for each item: U16 itemId, U8 count.
+    /// Maps to <c>ProtocolGame::sendGetRewardDaily</c> (opcode <c>sendGetRewardDaily</c> = 0xDA).
+    /// Task T61.
+    /// </summary>
+    public void SendGetDailyReward(byte bonusShrine, IReadOnlyList<(ushort ItemId, byte Count)> items)
+    {
+        var msg = new OutputMessage();
+        msg.WriteU8((byte)GameClientPacket.GetDailyReward);
+        msg.WriteU8(bonusShrine);
+        msg.WriteU8((byte)items.Count);
+        foreach (var (itemId, count) in items)
+        {
+            msg.WriteU16(itemId);
+            msg.WriteU8(count);
+        }
         SendEncrypted(msg, _xteaKey);
     }
 }

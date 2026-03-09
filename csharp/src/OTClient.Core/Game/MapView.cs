@@ -1,3 +1,5 @@
+using System.Numerics;
+using OTClient.Framework.UI;
 using Raylib_cs;
 
 namespace OTClient.Framework.Game;
@@ -118,6 +120,86 @@ public sealed class MapView
         => new((int)(_cameraActual.X - TilesX / 2f),
                (int)(_cameraActual.Y - TilesY / 2f),
                Floor);
+
+    // ─── Draw pipeline (T17) ──────────────────────────────────────────────────
+
+    // Tile placeholder color (blue-grey, mirrors C++ tile fill)
+    private static readonly Color TileGroundColor    = new(60,  80,  100, 255);
+    private static readonly Color TileCreatureColor  = new(0,   200, 80,  255);
+    private static readonly Color TileEffectColor    = new(255, 165, 0,   200);
+
+    /// <summary>
+    /// Builds the full draw-command list for one frame.
+    /// <para>
+    /// Render order (matches C++ mapview.cpp):
+    /// <list type="number">
+    ///   <item>Ground/item tiles for the current floor (visible only)</item>
+    ///   <item>Tile-anchored effects</item>
+    ///   <item>Creatures on each tile</item>
+    ///   <item>Map-level missile overlay</item>
+    ///   <item>Map-level animated-text overlay</item>
+    ///   <item>Map-level static-text overlay</item>
+    /// </list>
+    /// </para>
+    /// All coordinates use pixel-space; culling to the viewport is applied before
+    /// adding each command so the caller receives only visible draw calls.
+    /// Task T17.
+    /// </summary>
+    public void Draw(Map map, List<UIDrawCommand> commands)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentNullException.ThrowIfNull(commands);
+
+        float tileF = TileSize;
+
+        // ── Pass 1: ground tiles + effects + creatures ─────────────────────────
+        for (int dy = -TilesY / 2 - 1; dy <= TilesY / 2 + 1; dy++)
+        {
+            for (int dx = -TilesX / 2 - 1; dx <= TilesX / 2 + 1; dx++)
+            {
+                var pos   = new Position(
+                    (int)_cameraActual.X + dx,
+                    (int)_cameraActual.Y + dy,
+                    Floor);
+                var tile  = map.Get(pos);
+
+                if (tile is null) continue;
+
+                var screen = WorldToScreen(pos);
+                var rect   = new Rectangle(screen.X, screen.Y, tileF, tileF);
+
+                // 1a. Ground placeholder
+                commands.Add(new UIDrawCommand.FillRect(rect, TileGroundColor));
+
+                // 1b. Effects (tile-anchored)
+                foreach (var effect in tile.Effects)
+                {
+                    if (effect.IsFinished) continue;
+                    var eRect = new Rectangle(screen.X + 2, screen.Y + 2, tileF - 4, tileF - 4);
+                    commands.Add(new UIDrawCommand.FillRect(eRect, TileEffectColor));
+                }
+
+                // 1c. Creatures
+                foreach (var creature in tile.Creatures)
+                {
+                    var cRect = new Rectangle(screen.X + 4, screen.Y + 4, tileF - 8, tileF - 8);
+                    commands.Add(new UIDrawCommand.FillRect(cRect, TileCreatureColor));
+                }
+            }
+        }
+
+        // ── Pass 2: missiles ──────────────────────────────────────────────────
+        foreach (var missile in map.Missiles)
+            missile.Draw(commands, this);
+
+        // ── Pass 3: animated texts ─────────────────────────────────────────────
+        foreach (var text in map.AnimatedTexts)
+            text.Draw(commands, this);
+
+        // ── Pass 4: static texts ───────────────────────────────────────────────
+        foreach (var text in map.StaticTexts)
+            text.Draw(commands, this);
+    }
 }
 
 // ─── LightView ────────────────────────────────────────────────────────────────
